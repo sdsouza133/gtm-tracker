@@ -14,8 +14,8 @@ from app.services.fractional import FractionalError
 router = APIRouter(prefix="/api/fx", tags=["fractional"], dependencies=[SignedIn])
 
 
-def get_prospect(session: DbSession, prospect_id: str) -> Prospect:
-    p = session.get(Prospect, prospect_id)
+def get_prospect(session: DbSession, prospect_id: str, *, lock: bool = False) -> Prospect:
+    p = session.get(Prospect, prospect_id, with_for_update=lock)
     if p is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That prospect isn't in the list.")
     return p
@@ -54,7 +54,7 @@ def one(prospect_id: str, session: DbSession, today: Today) -> ProspectDetail:
 def update(prospect_id: str, body: ProspectPatch, session: DbSession, today: Today) -> ProspectDetail:
     """Tick a message or a step, close or reopen, move it to another day, or save notes and the draft. Several can go
     in one change (marking it lost with the reason, for example)."""
-    p = get_prospect(session, prospect_id)
+    p = get_prospect(session, prospect_id, lock=True)  # two saves at once (a tick and a notes autosave) both land
     try:
         fx_board.change(session, p, body, today)
     except FractionalError as e:

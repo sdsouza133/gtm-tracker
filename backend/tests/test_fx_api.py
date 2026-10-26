@@ -117,4 +117,36 @@ def test_sync_validates_input(signed_in: TestClient) -> None:
     goals = signed_in.patch("/api/settings", json={"fx_goals": {"default": 10, "2026-10-31": 0}})
     assert goals.status_code == 200
     assert signed_in.patch("/api/settings", json={"fx_goals": {"someday": 3}}).status_code == 422
+    assert signed_in.patch("/api/settings", json={"fx_goals": {"20261031": 3}}).status_code == 422  # only YYYY-MM-DD
+    twice = {"prospects": [prospect("acme"), prospect("acme")]}
+    assert signed_in.put("/api/fx/prospects", json=twice).status_code == 422
     assert signed_in.patch("/api/settings", json={"fx_goals": {"default": 99}}).status_code == 422
+
+
+def test_links_that_arent_http_are_dropped_not_fatal(signed_in: TestClient) -> None:
+    people = [{"key": "ana", "name": "Ana Example", "linkedin": "Not found"}]
+    sync(
+        signed_in,
+        prospect("acme", website="javascript:alert(1)", linkedin="https://linkedin.com/company/acme", people=people),
+    )
+    d = signed_in.get("/api/fx/prospects/acme").json()
+    assert (d["website"], d["linkedin"], d["people"][0]["linkedin"]) == (
+        None,
+        "https://linkedin.com/company/acme",
+        None,
+    )
+
+
+def test_board_lists_are_capped_and_counted(signed_in: TestClient) -> None:
+    sync(signed_in, *(prospect(f"p{i:02}", day=TODAY - timedelta(days=1), rank=i + 1) for i in range(55)))
+    b = signed_in.get("/api/fx/board").json()
+    assert (len(b["carried_over"]), b["carried_over_total"]) == (50, 55)
+    assert b["carried_over"][0]["id"] == "p00"
+    signed_in.patch("/api/fx/prospects/p03", json={"touch": {"person": "ana", "kind": "dm"}, "when": "2026-10-19"})
+    b = signed_in.get("/api/fx/board").json()
+    assert ([c["id"] for c in b["follow_ups_due"]], b["follow_ups_due_total"]) == (["p03"], 1)
+    assert b["carried_over_total"] == 54
+    cols = {c["key"]: c["total"] for c in signed_in.get("/api/fx/pipeline").json()}
+    assert (cols["untouched"], cols["waiting"]) == (54, 1)
+    page = signed_in.get("/api/fx/prospects", params={"show": "untouched", "limit": 10, "offset": 50}).json()
+    assert ([c["id"] for c in page["items"]], page["total"]) == (["p51", "p52", "p53", "p54"], 54)

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import Text, cast, select
+from sqlalchemy import ColumnElement, Text, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.models import Prospect, Setting
@@ -30,6 +30,7 @@ from app.services.history import record
 
 COMING_UP = 12
 COLUMN_ITEMS = 50
+LIST_ITEMS = 50  # most cards in one list on the board; the totals say how many more there are
 TOP_LEVEL = ("id", "day", "rank", "name", "domain", "fit")
 PIPELINE = (
     (fx.Stage.UNTOUCHED, "Not reached yet"),
@@ -62,14 +63,29 @@ class Light:
     rank: int
     mine: dict[str, Any]
 
-    @property
-    def effective_day(self) -> date:
-        return fx.effective_day(self.day, self.mine)
+
+ORDER = (Prospect.effective_day, Prospect.rank, Prospect.id)
+UNTOUCHED = Prospect.stage == fx.Stage.UNTOUCHED.value
 
 
-def _lights(session: Session) -> list[Light]:
-    rows = session.execute(select(Prospect.id, Prospect.day, Prospect.rank, Prospect.mine))
+def _acted_on(session: Session) -> list[Light]:
+    """The prospects you've done something with. This grows with your own work, not with the research history."""
+    rows = session.execute(
+        select(Prospect.id, Prospect.day, Prospect.rank, Prospect.mine).where(
+            (Prospect.xp > 0) | (Prospect.stage != fx.Stage.UNTOUCHED.value)
+        )
+    )
     return [Light(i, d, r, m or {}) for i, d, r, m in rows]
+
+
+def _count(session: Session, *where: ColumnElement[bool]) -> int:
+    return session.scalar(select(func.count()).select_from(Prospect).where(*where)) or 0
+
+
+def _page(
+    session: Session, today: date, *where: ColumnElement[bool], order: Any = ORDER, limit: int = LIST_ITEMS
+) -> list[ProspectCard]:
+    return [card(p, today) for p in session.scalars(select(Prospect).where(*where).order_by(*order).limit(limit))]
 
 
 def goals(session: Session) -> dict[str, int]:
@@ -126,16 +142,10 @@ def detail(p: Prospect, today: date) -> ProspectDetail:
     )
 
 
-def _cards(session: Session, lights: list[Light], today: date) -> list[ProspectCard]:
-    if not lights:
-        return []
-    rows = {p.id: p for p in session.scalars(select(Prospect).where(Prospect.id.in_([x.id for x in lights])))}
-    return [card(rows[x.id], today) for x in lights if x.id in rows]
-
-
-def stats(lights: list[Light], goal_map: dict[str, int], today: date) -> FxStats:
+def stats(session: Session, goal_map: dict[str, int], today: date) -> FxStats:
+    lights = _acted_on(session)
     hits: Counter[date] = Counter(t for x in lights if (t := fx.first_touch(x.mine)))
-    start = min((x.day for x in lights), default=None)
+    start = session.scalar(select(func.min(Prospect.day)))
     run = fx.streak(hits, goal_map, start, today)
     total_xp = sum(fx.xp(x.mine) for x in lights)
     level = fx.level_for(total_xp)
@@ -165,43 +175,38 @@ def stats(lights: list[Light], goal_map: dict[str, int], today: date) -> FxStats
 
 
 def board(session: Session, today: date) -> FxBoard:
-    lights = _lights(session)
     goal_map = goals(session)
-    by_order = sorted(lights, key=lambda x: (x.effective_day, x.rank, x.id))
-    open_untouched = [
-        x for x in by_order if fx.stage(x.mine) is fx.Stage.UNTOUCHED and (x.mine.get("status") or "open") == "open"
-    ]
-    follow = [(x, f) for x in lights if (f := fx.next_follow_up(x.mine))]
-    due = sorted([(x, f) for x, f in follow if f.due <= today], key=lambda xf: (xf[1].due, xf[0].rank))
-    upcoming = [x for x in open_untouched if x.effective_day > today]
+    due = (Prospect.follow_up_due <= today,)
+    carried = (UNTOUCHED, Prospect.effective_day < today)
+    upcoming = (UNTOUCHED, Prospect.effective_day > today)
     return FxBoard(
         today=today,
         goal=fx.goal_for(today, goal_map),
-        hits_today=sum(1 for x in lights if fx.first_touch(x.mine) == today),
-        follow_ups_due=_cards(session, [x for x, _ in due], today),
-        follow_ups_later=len(follow) - len(due),
-        carried_over=_cards(session, [x for x in open_untouched if x.effective_day < today], today),
-        todays_list=_cards(session, [x for x in open_untouched if x.effective_day == today], today),
-        reached_today=_cards(
-            session, sorted([x for x in lights if fx.first_touch(x.mine) == today], key=lambda x: x.rank), today
-        ),
-        coming_up=_cards(session, upcoming[:COMING_UP], today),
-        coming_up_total=len(upcoming),
-        stats=stats(lights, goal_map, today),
+        hits_today=_count(session, Prospect.first_touch == today),
+        follow_ups_due=_page(session, today, *due, order=(Prospect.follow_up_due, Prospect.rank, Prospect.id)),
+        follow_ups_due_total=_count(session, *due),
+        follow_ups_later=_count(session, Prospect.follow_up_due > today),
+        carried_over=_page(session, today, *carried),
+        carried_over_total=_count(session, *carried),
+        todays_list=_page(session, today, UNTOUCHED, Prospect.effective_day == today),
+        reached_today=_page(session, today, Prospect.first_touch == today, order=(Prospect.rank, Prospect.id)),
+        coming_up=_page(session, today, *upcoming, limit=COMING_UP),
+        coming_up_total=_count(session, *upcoming),
+        stats=stats(session, goal_map, today),
     )
 
 
 def pipeline(session: Session, today: date) -> list[FxColumn]:
-    lights = sorted(_lights(session), key=lambda x: (x.effective_day, x.rank, x.id))
-    columns = []
-    for key, label in PIPELINE:
-        members = [x for x in lights if fx.stage(x.mine) is key]
-        columns.append(
-            FxColumn(
-                key=key.value, label=label, total=len(members), items=_cards(session, members[:COLUMN_ITEMS], today)
-            )
+    totals = dict(session.execute(select(Prospect.stage, func.count()).group_by(Prospect.stage)).all())
+    return [
+        FxColumn(
+            key=key.value,
+            label=label,
+            total=totals.get(key.value, 0),
+            items=_page(session, today, Prospect.stage == key.value, limit=COLUMN_ITEMS),
         )
-    return columns
+        for key, label in PIPELINE
+    ]
 
 
 SHOW = {
@@ -215,19 +220,17 @@ SHOW = {
 def search(
     session: Session, today: date, *, q: str | None, show: str, limit: int, offset: int
 ) -> tuple[list[ProspectCard], int]:
-    query = select(Prospect.id, Prospect.day, Prospect.rank, Prospect.mine)
+    where: list[ColumnElement[bool]] = []
     if q:
         like = f"%{q.strip().replace('%', r'\%').replace('_', r'\_')}%"
         # name, domain, what they do and the people's names all live in the row; search them as text
-        query = query.where(
+        where.append(
             Prospect.name.ilike(like) | Prospect.domain.ilike(like) | cast(Prospect.research, Text).ilike(like)
         )
-    lights = [Light(i, d, r, m or {}) for i, d, r, m in session.execute(query)]
-    wanted = SHOW[show]
-    if wanted is not None:
-        lights = [x for x in lights if fx.stage(x.mine) in wanted]
-    lights.sort(key=lambda x: (x.effective_day, x.rank, x.id))
-    return _cards(session, lights[offset : offset + limit], today), len(lights)
+    if (wanted := SHOW[show]) is not None:
+        where.append(Prospect.stage.in_([s.value for s in wanted]))
+    rows = session.scalars(select(Prospect).where(*where).order_by(*ORDER).limit(limit).offset(offset))
+    return [card(p, today) for p in rows], _count(session, *where)
 
 
 def sync(session: Session, prospects: list[ProspectIn]) -> Synced:
@@ -263,7 +266,7 @@ def change(session: Session, p: Prospect, body: ProspectPatch, today: date) -> l
         t = body.touch
         fx.set_touch(mine, set(people), t.person, t.kind, t.on, when)
         if t.on:
-            notes.append(f"{p.name}: {TOUCH_WORDS[t.kind]} sent to {people[t.person].get('name', t.person)}")
+            notes.append(f"{p.name}: {TOUCH_WORDS[t.kind]} sent to {people.get(t.person, {}).get('name', t.person)}")
     if body.step:
         fx.set_step(mine, body.step.name, body.step.on, when)
         if body.step.on:

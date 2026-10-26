@@ -16,6 +16,7 @@ import {
 import { ProspectDrawer } from "@/components/ProspectDrawer";
 import { Button, Card, Chip, EmptyState, PageHeader } from "@/components/ui";
 import { formatDay, formatLongDay, initials, nextWorkday } from "@/lib/format";
+import { safeUrl } from "@/lib/safe";
 
 type View = "today" | "pipeline" | "all";
 const VIEWS: [View, string][] = [
@@ -33,6 +34,10 @@ const STAGE_LABEL: Record<string, string> = {
   closed: "Closed",
 };
 const MAX_GOAL = 30;
+
+/** When a board list is capped: say so, and where the rest are. */
+const more = (total: number, shown: number) =>
+  total > shown ? ` Showing the first ${shown} of ${total}; the rest are under All.` : "";
 
 function Section({
   title,
@@ -111,8 +116,9 @@ function ProspectTile({ p, today, onOpen }: { p: ProspectCard; today: string; on
             "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px]",
             touched ? "bg-good-tint text-good" : "bg-chip text-body",
           );
-          return person.linkedin ? (
-            <a key={person.key} href={person.linkedin} target="_blank" rel="noreferrer" className={style}>
+          const linkedin = safeUrl(person.linkedin);
+          return linkedin ? (
+            <a key={person.key} href={linkedin} target="_blank" rel="noreferrer" className={style}>
               <Linkedin size={11} aria-hidden="true" />
               {label}
             </a>
@@ -182,7 +188,7 @@ function Hero() {
           <Button
             variant="quiet"
             aria-label="Lower today's goal"
-            disabled={save.isPending || goal === 0}
+            disabled={!settings || save.isPending || goal === 0}
             onClick={() => setGoal(goal - 1)}
           >
             <Minus size={14} aria-hidden="true" />
@@ -191,7 +197,7 @@ function Hero() {
           <Button
             variant="quiet"
             aria-label="Raise today's goal"
-            disabled={save.isPending || goal >= MAX_GOAL}
+            disabled={!settings || save.isPending || goal >= MAX_GOAL}
             onClick={() => setGoal(goal + 1)}
           >
             <Plus size={14} aria-hidden="true" />
@@ -279,8 +285,8 @@ function TodayView({ onOpen }: { onOpen: (id: string) => void }) {
       {b.follow_ups_due.length > 0 && (
         <Section
           title="Follow-ups due"
-          count={b.follow_ups_due.length}
-          hint={`Do these first: most replies come from the follow-up.${b.follow_ups_later ? ` ${b.follow_ups_later} more coming up.` : ""}`}
+          count={b.follow_ups_due_total}
+          hint={`Do these first: most replies come from the follow-up.${more(b.follow_ups_due_total, b.follow_ups_due.length)}${b.follow_ups_later ? ` ${b.follow_ups_later} more coming up.` : ""}`}
         >
           <Card className="divide-y divide-line-soft">
             {b.follow_ups_due.map((p) => (
@@ -311,8 +317,8 @@ function TodayView({ onOpen }: { onOpen: (id: string) => void }) {
       {b.carried_over.length > 0 && (
         <Section
           title="Carried over"
-          count={b.carried_over.length}
-          hint="Not reached yet from earlier days. They count toward today."
+          count={b.carried_over_total}
+          hint={`Not reached yet from earlier days. They count toward today.${more(b.carried_over_total, b.carried_over.length)}`}
         >
           <div className={grid}>
             {b.carried_over.map((p) => (
