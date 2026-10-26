@@ -24,6 +24,7 @@ class LoginBody(BaseModel):
 class Me(BaseModel):
     signed_in: bool
     csrf: str | None = None
+    open_access: bool = False  # no login: the front end hides sign-in and sign-out
 
 
 @router.post("/login")
@@ -49,5 +50,7 @@ def logout(request: Request, response: Response, session: DbSession, settings: A
 
 @router.get("/me")
 def me(request: Request, session: DbSession, settings: AppSettings) -> Me:
+    if settings.open_access:
+        return Me(signed_in=True, open_access=True)
     row = current_session(request, session, settings)
     return Me(signed_in=row is not None, csrf=row.csrf if row else None)

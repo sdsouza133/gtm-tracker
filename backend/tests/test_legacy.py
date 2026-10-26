@@ -278,3 +278,14 @@ def test_backup_download(signed_in: TestClient, db: Session) -> None:
     assert r.status_code == 200
     assert r.headers["content-disposition"] == 'attachment; filename="gtm-tracker-2026-10-26.json"'
     assert [c["name"] for c in r.json()["companies"]] == ["Downloaded Example"]
+
+
+def test_restore_over_the_api_only_into_an_empty_tracker(signed_in: TestClient, db: Session) -> None:
+    import_legacy(db, legacy_export(), legacy_fx())
+    backup = json.loads("".join(stream(db)))
+    assert signed_in.post("/api/restore", json=backup).status_code == 409  # it already has data
+    for table in reversed(tables()):
+        db.execute(delete(table))
+    r = signed_in.post("/api/restore", json=backup)
+    assert r.status_code == 200, r.text
+    assert (r.json()["companies"], r.json()["prospects"]) == (3, 1)

@@ -450,6 +450,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Backup
+         * @description Load a backup (from Download backup) into an empty tracker: the same as `python -m app.cli restore`, for a
+         *     server whose database can only be reached through the app. A tracker that has any data refuses (409).
+         */
+        post: operations["restore_backup_api_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -813,6 +834,11 @@ export interface components {
             signed_in: boolean;
             /** Csrf */
             csrf?: string | null;
+            /**
+             * Open Access
+             * @default false
+             */
+            open_access?: boolean;
         };
         /**
          * MoveCard
@@ -2495,6 +2521,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    restore_backup_api_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

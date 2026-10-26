@@ -1457,6 +1457,54 @@
      }
     }
    }
+  },
+  "/api/restore": {
+   "post": {
+    "tags": [
+     "backup"
+    ],
+    "summary": "Restore Backup",
+    "description": "Load a backup (from Download backup) into an empty tracker: the same as `python -m app.cli restore`, for a\nserver whose database can only be reached through the app. A tracker that has any data refuses (409).",
+    "operationId": "restore_backup_api_restore_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "additionalProperties": true,
+        "type": "object",
+        "title": "Backup"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "type": "integer"
+         },
+         "type": "object",
+         "title": "Response Restore Backup Api Restore Post"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -2731,6 +2779,11 @@
        }
       ],
       "title": "Csrf"
+     },
+     "open_access": {
+      "type": "boolean",
+      "title": "Open Access",
+      "default": false
      }
     },
     "type": "object",

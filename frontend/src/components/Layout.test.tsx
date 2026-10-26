@@ -37,3 +37,12 @@ describe("Download backup", () => {
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });
 });
+
+describe("Open access", () => {
+  it("has no sign-out button when the server runs without a login", async () => {
+    mockApi({ "GET /api/auth/me": { body: { signed_in: true, csrf: null, open_access: true } }, ...TODAY_PAGE });
+    renderApp(<App />, { path: "/" });
+    expect(await screen.findByRole("button", { name: "Download backup" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+  });
+});
