@@ -80,8 +80,10 @@ const board: S["FxBoard"] = {
       follow_up: { step: "fu1", due: TODAY },
     }),
   ],
+  follow_ups_due_total: 3,
   follow_ups_later: 2,
   carried_over: [],
+  carried_over_total: 0,
   todays_list: [card()],
   reached_today: [],
   coming_up: [],
@@ -97,6 +99,7 @@ describe("Fractional", () => {
     expect(screen.getByText("2 to go")).toBeInTheDocument();
     const due = screen.getByRole("region", { name: "Follow-ups due" });
     expect(within(due).getByText(/2 more coming up/)).toBeInTheDocument();
+    expect(within(due).getByText(/Showing the first 1 of 3; the rest are under All/)).toBeInTheDocument();
     expect(within(due).getByText("Follow-up 1, due today")).toBeInTheDocument();
     expect(screen.getByText("Billing for vets")).toBeInTheDocument();
     expect(screen.getByText("No DMARC")).toBeInTheDocument();
@@ -136,6 +139,31 @@ describe("Fractional", () => {
     });
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps Tab inside the dossier and never links a non-http URL", async () => {
+    const risky = detail({
+      website: "javascript:alert(1)",
+      research: { one_liner: "Billing", sources: ["javascript:alert(2)", "https://news.example/a", { x: 1 }] },
+    });
+    mockApi({
+      ...SIGNED_IN,
+      "GET /api/fx/board": { body: board },
+      "GET /api/settings": { body: {} },
+      "GET /api/fx/prospects/acme": { body: risky },
+    });
+    renderApp(<App />, { path: "/fractional?open=acme" });
+    const dialog = await screen.findByRole("dialog", { name: "Acme Example" });
+    for (const link of within(dialog).getAllByRole("link")) {
+      expect(link.getAttribute("href")).toMatch(/^https:/);
+    }
+    await userEvent.click(within(dialog).getByRole("tab", { name: "Research" }));
+    expect(within(dialog).getByRole("link", { name: "https://news.example/a" })).toBeInTheDocument();
+    expect(within(dialog).getByText("javascript:alert(2)").tagName).toBe("SPAN");
+    for (let i = 0; i < 40; i += 1) await userEvent.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await userEvent.tab({ shift: true });
+    expect(dialog.contains(document.activeElement)).toBe(true);
   });
 
   it("writes a draft from the research", () => {

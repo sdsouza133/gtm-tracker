@@ -262,7 +262,9 @@ class FractionalError(ValueError):
 
 
 def set_touch(mine: dict[str, Any], person_keys: set[str], person: str, kind: str, on: bool, when: date) -> str:
-    if kind not in TOUCH_KINDS or person not in person_keys:
+    """Tick or untick a message. A person the research no longer lists can still be unticked."""
+    ticked = person in (mine.get("touches") or {})
+    if kind not in TOUCH_KINDS or (person not in person_keys and not (ticked and not on)):
         raise FractionalError("Unknown person or message type.")
     touches = {k: dict(v) for k, v in (mine.get("touches") or {}).items()}
     kinds = touches.setdefault(person, {})

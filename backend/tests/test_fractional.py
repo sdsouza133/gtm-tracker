@@ -99,6 +99,11 @@ def test_changes() -> None:
     assert mine["touches"] == {}
     with pytest.raises(fx.FractionalError):
         fx.set_touch(mine, {"ana"}, "bo", "connect", True, MON)
+    fx.set_touch(mine, {"ana"}, "ana", "dm", True, MON)
+    fx.set_touch(mine, set(), "ana", "dm", False, MON)  # the research dropped Ana: her tick can still come off
+    assert mine["touches"] == {}
+    with pytest.raises(fx.FractionalError):
+        fx.set_touch(mine, set(), "ana", "dm", True, MON)
     fx.set_step(mine, "won", True, MON)
     assert mine["status"] == "won"
     fx.set_step(mine, "won", False, MON)

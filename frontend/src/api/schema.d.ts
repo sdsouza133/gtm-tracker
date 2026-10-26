@@ -719,10 +719,14 @@ export interface components {
             hits_today: number;
             /** Follow Ups Due */
             follow_ups_due: components["schemas"]["ProspectCard"][];
+            /** Follow Ups Due Total */
+            follow_ups_due_total: number;
             /** Follow Ups Later */
             follow_ups_later: number;
             /** Carried Over */
             carried_over: components["schemas"]["ProspectCard"][];
+            /** Carried Over Total */
+            carried_over_total: number;
             /** Todays List */
             todays_list: components["schemas"]["ProspectCard"][];
             /** Reached Today */

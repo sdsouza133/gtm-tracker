@@ -27,12 +27,15 @@ from sqlalchemy import (
     MetaData,
     String,
     Text,
+    event,
     false,
     func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship
+
+from app.services import fractional
 
 JSONType = JSON().with_variant(JSONB(), "postgresql")
 
@@ -280,6 +283,28 @@ class Prospect(Timestamps, Base):
     fit: Mapped[str] = mapped_column(String(12))
     research: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
     mine: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)  # ticks, notes, drafts: never overwritten
+    # worked out from `mine` on every save (see `derive`), so lists filter, sort and page in the database
+    stage: Mapped[str] = mapped_column(String(12), default="untouched", index=True)
+    effective_day: Mapped[date] = mapped_column(Date, index=True)
+    first_touch: Mapped[date | None] = mapped_column(Date, index=True)
+    follow_up_due: Mapped[date | None] = mapped_column(Date, index=True)
+    xp: Mapped[int] = mapped_column(Integer, default=0)
+
+    def derive(self) -> None:
+        mine = self.mine or {}
+        follow = fractional.next_follow_up(mine)
+        self.stage = fractional.stage(mine).value
+        self.effective_day = fractional.effective_day(self.day, mine)
+        self.first_touch = fractional.first_touch(mine)
+        self.follow_up_due = follow.due if follow else None
+        self.xp = fractional.xp(mine)
+
+
+@event.listens_for(Session, "before_flush")
+def _derive_prospects(session: Session, _context: object, _instances: object) -> None:
+    for obj in (*session.new, *session.dirty):
+        if isinstance(obj, Prospect):
+            obj.derive()
 
 
 class Magnet(Timestamps, Base):

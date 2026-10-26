@@ -206,7 +206,11 @@ export function useUpdateSettings() {
     mutationFn: async (body: S["SettingsOut"]) => unwrap(await api.PATCH("/api/settings", { body })),
     onSuccess: (data) => {
       client.setQueryData(keys.settings, data);
-      return client.invalidateQueries({ queryKey: keys.stats });
+      // the Fractional board shows today's goal, which lives in settings
+      return Promise.all([
+        client.invalidateQueries({ queryKey: keys.stats }),
+        client.invalidateQueries({ queryKey: fxKeys.board }),
+      ]);
     },
   });
 }
