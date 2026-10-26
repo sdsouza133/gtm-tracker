@@ -1435,6 +1435,28 @@
      }
     }
    }
+  },
+  "/api/export": {
+   "get": {
+    "tags": [
+     "backup"
+    ],
+    "summary": "Export",
+    "description": "Everything in the tracker as one JSON file. Restore it with `python -m app.cli restore <file>`.",
+    "operationId": "export_api_export_get",
+    "responses": {
+     "200": {
+      "description": "The backup",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {

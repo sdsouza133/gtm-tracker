@@ -50,6 +50,13 @@ npm install
 npm run dev                     # http://localhost:5173, proxied to the API on :8000
 ```
 
+## Backups and moving data
+
+- **Download backup** in the sidebar (or `GET /api/export`) saves everything as one JSON file.
+- `python -m app.cli restore backup.json` loads a backup into an empty database.
+- `python -m app.cli import-legacy export.json [fx.json]` brings data over from the first version of the tracker,
+  keeping its ids. Fields without a column of their own are kept in each row's JSON.
+
 ## Checks
 
 ```sh

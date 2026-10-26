@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { AuthProvider } from "@/auth";
 import { makeQueryClient } from "@/queryClient";
 
-type Route = { status?: number; body: unknown };
+type Route = { status?: number; body: unknown; headers?: Record<string, string> };
 
 /** Stubs fetch with a map of "METHOD /path" to responses, and records every request. */
 export function mockApi(routes: Record<string, Route>) {
@@ -27,7 +27,7 @@ export function mockApi(routes: Record<string, Route>) {
     if (!route) return new Response(JSON.stringify({ detail: "Not found" }), { status: 404 });
     return new Response(JSON.stringify(route.body), {
       status: route.status ?? 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...route.headers },
     });
   });
   return calls;
