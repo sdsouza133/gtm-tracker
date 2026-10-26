@@ -95,6 +95,23 @@ describe("Today", () => {
     expect(tick?.headers.get("X-CSRF-Token")).toBe("token");
   });
 
+  it("gets Today's companies ready, and looks up a missing email when a company opens", async () => {
+    const noEmail = { ...detail, people: [person({ email: null })] };
+    const calls = mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": { body: noEmail },
+      "POST /api/enrich/today": { body: { tried: 0, found: 0, companies: 1 } },
+      "POST /api/companies/c1/enrich": { body: { tried: 1, found: 0, companies: 1 } },
+    });
+    renderApp(<App />);
+    await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/enrich/today")).toBe(true));
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/companies/c1/enrich")).toBe(true));
+    expect(calls.filter((c) => c.path === "/api/companies/c1/enrich")).toHaveLength(1);
+  });
+
   it("lists Loom requests until the Loom is sent", async () => {
     const calls = mockApi({
       ...SIGNED_IN,

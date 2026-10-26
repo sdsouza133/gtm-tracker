@@ -603,6 +603,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{company_id}/enrich": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enrich One
+         * @description Find work emails for this company's people, and what it does if research left that blank.
+         */
+        post: operations["enrich_one_api_companies__company_id__enrich_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrich/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enrich Today
+         * @description Get the companies on Today ready before they're opened. Each person is only looked up once, so calling this
+         *     again costs nothing.
+         */
+        post: operations["enrich_today_api_enrich_today_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -855,6 +896,21 @@ export interface components {
             subject?: string;
             /** Body */
             body: string;
+        };
+        /** EnrichOut */
+        EnrichOut: {
+            /**
+             * Tried
+             * @description People looked up with Apollo this time
+             */
+            tried: number;
+            /**
+             * Found
+             * @description Of them, how many now have a work email
+             */
+            found: number;
+            /** Companies */
+            companies: number;
         };
         /** FollowUpOut */
         FollowUpOut: {
@@ -3051,6 +3107,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enrich_one_api_companies__company_id__enrich_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrichOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enrich_today_api_enrich_today_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrichOut"];
                 };
             };
         };

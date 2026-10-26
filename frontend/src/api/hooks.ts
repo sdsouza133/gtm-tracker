@@ -143,6 +143,27 @@ export function useReply() {
   );
 }
 
+/** Finding work emails with Apollo. Quiet: it runs on its own in the background, and a "not set up yet" isn't news. */
+function useEnrich<TVars>(fn: (vars: TVars) => Promise<S["EnrichOut"]>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    meta: { quiet: true },
+    onSuccess: (r) =>
+      r.tried ? Promise.all(AFFECTED.map((queryKey) => client.invalidateQueries({ queryKey }))) : undefined,
+  });
+}
+
+export function useEnrichCompany() {
+  return useEnrich(async (id: string) =>
+    unwrap(await api.POST("/api/companies/{company_id}/enrich", { params: { path: { company_id: id } } })),
+  );
+}
+
+export function useEnrichToday() {
+  return useEnrich<undefined>(async () => unwrap(await api.POST("/api/enrich/today")));
+}
+
 export function useUpdatePerson() {
   return useChange(async ({ id, ...body }: { id: string } & S["PersonPatch"]) =>
     unwrap(await api.PATCH("/api/people/{person_id}", { params: { path: { person_id: id } }, body })),

@@ -1742,6 +1742,71 @@
      }
     }
    }
+  },
+  "/api/companies/{company_id}/enrich": {
+   "post": {
+    "tags": [
+     "enrich"
+    ],
+    "summary": "Enrich One",
+    "description": "Find work emails for this company's people, and what it does if research left that blank.",
+    "operationId": "enrich_one_api_companies__company_id__enrich_post",
+    "parameters": [
+     {
+      "name": "company_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Company Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EnrichOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/enrich/today": {
+   "post": {
+    "tags": [
+     "enrich"
+    ],
+    "summary": "Enrich Today",
+    "description": "Get the companies on Today ready before they're opened. Each person is only looked up once, so calling this\nagain costs nothing.",
+    "operationId": "enrich_today_api_enrich_today_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EnrichOut"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -2721,6 +2786,31 @@
      "body"
     ],
     "title": "Draft"
+   },
+   "EnrichOut": {
+    "properties": {
+     "tried": {
+      "type": "integer",
+      "title": "Tried",
+      "description": "People looked up with Apollo this time"
+     },
+     "found": {
+      "type": "integer",
+      "title": "Found",
+      "description": "Of them, how many now have a work email"
+     },
+     "companies": {
+      "type": "integer",
+      "title": "Companies"
+     }
+    },
+    "type": "object",
+    "required": [
+     "tried",
+     "found",
+     "companies"
+    ],
+    "title": "EnrichOut"
    },
    "FollowUpOut": {
     "properties": {
