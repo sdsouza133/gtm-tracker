@@ -206,6 +206,10 @@ class Pulled(BaseModel):
     pulled: list[MoveOut]
 
 
+class Cleared(BaseModel):
+    cleared: int
+
+
 # ----------------------------------------------------------------------------- companies
 
 
@@ -289,6 +293,7 @@ class TodayOut(BaseModel):
     today: date
     groups: list[TodayGroup]
     overdue: int
+    more: int = Field(description="Moves from the last week held back for another day by the daily limit")
     done_today: list[MoveCard]
     waiting: list[MoveCard]
     waiting_total: int

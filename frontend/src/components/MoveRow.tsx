@@ -96,7 +96,7 @@ export function MoveRow({ move, today, compact = false }: { move: MoveCard; toda
           {person?.sureness && <span>{SURE_LABEL[person.sureness]}</span>}
           {isLocal(person?.location) && <Chip tone="warm">Toronto</Chip>}
           {person?.left && <Chip tone="bad">Left the company</Chip>}
-          {overdue && <Chip tone="bad">Due {formatDay(move.due)}</Chip>}
+          {overdue && <Chip>From {formatDay(move.due)}</Chip>}
           {move.type === "apply" && company?.open_role && <span>{company.open_role}</span>}
           {steps.email && steps.email !== "na" && !pending.includes("email") && (
             <span>Emailed {formatDay(steps.email)}</span>

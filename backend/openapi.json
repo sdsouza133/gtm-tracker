@@ -871,6 +871,28 @@
     }
    }
   },
+  "/api/moves/clear-backlog": {
+   "post": {
+    "tags": [
+     "moves"
+    ],
+    "summary": "Clear Backlog",
+    "description": "Skip every open move overdue by more than a week, so Today starts fresh.",
+    "operationId": "clear_backlog_api_moves_clear_backlog_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Cleared"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/today": {
    "get": {
     "tags": [
@@ -1780,6 +1802,19 @@
      "earned"
     ],
     "title": "BadgeOut"
+   },
+   "Cleared": {
+    "properties": {
+     "cleared": {
+      "type": "integer",
+      "title": "Cleared"
+     }
+    },
+    "type": "object",
+    "required": [
+     "cleared"
+    ],
+    "title": "Cleared"
    },
    "CompanyBrief": {
     "properties": {
@@ -5603,6 +5638,11 @@
       "type": "integer",
       "title": "Overdue"
      },
+     "more": {
+      "type": "integer",
+      "title": "More",
+      "description": "Moves from the last week held back for another day by the daily limit"
+     },
      "done_today": {
       "items": {
        "$ref": "#/components/schemas/MoveCard"
@@ -5627,6 +5667,7 @@
      "today",
      "groups",
      "overdue",
+     "more",
      "done_today",
      "waiting",
      "waiting_total"

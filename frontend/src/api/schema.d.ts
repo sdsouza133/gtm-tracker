@@ -254,6 +254,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/moves/clear-backlog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear Backlog
+         * @description Skip every open move overdue by more than a week, so Today starts fresh.
+         */
+        post: operations["clear_backlog_api_moves_clear_backlog_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/today": {
         parameters: {
             query?: never;
@@ -602,6 +622,11 @@ export interface components {
             description: string;
             /** Earned */
             earned: boolean;
+        };
+        /** Cleared */
+        Cleared: {
+            /** Cleared */
+            cleared: number;
         };
         /** CompanyBrief */
         CompanyBrief: {
@@ -1777,6 +1802,11 @@ export interface components {
             groups: components["schemas"]["TodayGroup"][];
             /** Overdue */
             overdue: number;
+            /**
+             * More
+             * @description Moves from the last week held back for another day by the daily limit
+             */
+            more: number;
             /** Done Today */
             done_today: components["schemas"]["MoveCard"][];
             /** Waiting */
@@ -2363,6 +2393,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_backlog_api_moves_clear_backlog_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cleared"];
                 };
             };
         };
