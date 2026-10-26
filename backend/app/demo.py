@@ -2,11 +2,12 @@
 fictional; real data never lives in the repository."""
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import Company, Move, MoveType, Person, PersonStatus, RoleInHire, Setting, Stage, Sureness
 
 
@@ -116,7 +117,7 @@ def seed_demo(session: Session, today: date | None = None) -> str:
     """Adds the demo data to an empty database. Refuses to touch a database that already has companies."""
     if session.scalar(select(func.count()).select_from(Company)):
         return "The database already has companies; nothing added."
-    today = today or date.today()  # noqa: DTZ011  (a demo date, not a timestamp)
+    today = today or datetime.now(get_settings().tz).date()
     for spec in COMPANIES:
         company = Company(
             id=spec.id,
@@ -155,6 +156,7 @@ def seed_demo(session: Session, today: date | None = None) -> str:
                     sequence={"day0": day0.isoformat(), "steps": {}, "next": "request"},
                 )
             )
-    session.add(Setting(key="candidate", value="Demo Candidate"))
+    if session.get(Setting, "candidate") is None:  # keep a name that's already set
+        session.add(Setting(key="candidate", value="Demo Candidate"))
     session.commit()
     return f"Added {len(COMPANIES)} demo companies."

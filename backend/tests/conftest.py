@@ -8,7 +8,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import Connection, create_engine
+from sqlalchemy import Connection, create_engine, make_url
 from sqlalchemy.orm import Session
 
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg://gt:gt@localhost:5432/gt_test")
@@ -31,6 +31,9 @@ from app.main import create_app  # noqa: E402
 
 @pytest.fixture(scope="session")
 def engine():
+    name = make_url(TEST_DB).database or ""
+    if not name.endswith("_test"):  # the fixture drops every table: never point it at a real database
+        pytest.exit(f"Refusing to reset {name!r}: the test database's name must end in _test.", returncode=2)
     get_settings.cache_clear()
     cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
     cfg.set_main_option("script_location", os.path.join(os.path.dirname(__file__), "..", "migrations"))

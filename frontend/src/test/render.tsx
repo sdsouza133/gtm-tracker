@@ -1,9 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 
 import { AuthProvider } from "@/auth";
+import { makeQueryClient } from "@/queryClient";
 
 type Route = { status?: number; body: unknown };
 
@@ -26,7 +27,7 @@ export function mockApi(routes: Record<string, Route>) {
 }
 
 export function renderApp(ui: ReactElement, { path = "/" } = {}) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = makeQueryClient({ retry: false });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>

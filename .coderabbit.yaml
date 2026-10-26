@@ -34,7 +34,12 @@ reviews:
         every query and mutation, and that optimistic updates roll back on failure. No dangerouslySetInnerHTML.
     - path: ".github/workflows/**"
       instructions: "Workflows should request the least permissions they need and never print secrets."
+  pre_merge_checks:
+    docstrings:
+      mode: "off" # the code comments the why where it isn't obvious; a docstring on every function is noise
   tools:
+    biome:
+      enabled: false # the front end uses ESLint and Prettier; Biome can't parse the Tailwind directives
     ruff:
       enabled: true
     eslint:

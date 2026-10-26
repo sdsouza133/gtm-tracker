@@ -35,7 +35,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it fits together.
 You need Python 3.12 with [uv](https://docs.astral.sh/uv/), Node 22, and PostgreSQL.
 
 ```sh
-createdb gt_dev
+psql postgres -c "CREATE ROLE gt LOGIN PASSWORD 'gt' CREATEDB"   # once: the role .env.example and the tests use
+createdb -O gt gt_dev
+createdb -O gt gt_test
 cd backend
 cp .env.example .env            # then fill in SECRET_KEY and PASSWORD_HASH (see the comments)
 uv sync
@@ -56,6 +58,7 @@ cd frontend && npm run format:check && npm run lint && npm run typecheck && npm 
 ```
 
 Tests need a Postgres database at `TEST_DATABASE_URL` (default `postgresql+psycopg://gt:gt@localhost:5432/gt_test`).
+The tests drop and recreate every table, so they refuse to run against a database whose name doesn't end in `_test`.
 
 ## License
 

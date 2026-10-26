@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
 import { CalendarDays, Columns3, LogOut, Radar, Sparkles, Sun, Users } from "lucide-react";
+import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { useAuth } from "@/auth";
@@ -15,6 +16,11 @@ const NAV = [
 
 export function Layout() {
   const { logout } = useAuth();
+  const [signOutFailed, setSignOutFailed] = useState(false);
+  const signOut = () => {
+    setSignOutFailed(false);
+    logout().catch(() => setSignOutFailed(true));
+  };
   return (
     <div className="flex min-h-screen flex-wrap">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4">
@@ -50,12 +56,17 @@ export function Layout() {
         </div>
         <button
           type="button"
-          onClick={() => void logout()}
-          className="mt-auto hidden min-h-[40px] items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink md:flex"
+          onClick={signOut}
+          className="flex min-h-[40px] w-fit items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink md:mt-auto md:w-auto"
         >
           <LogOut size={16} aria-hidden="true" />
           Sign out
         </button>
+        {signOutFailed && (
+          <p role="alert" className="px-2.5 text-[13px] text-bad">
+            Couldn't sign out. Check your connection and try again.
+          </p>
+        )}
       </nav>
       <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-12 pt-6 md:px-8 md:pt-7">
         <Outlet />

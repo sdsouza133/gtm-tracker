@@ -3,12 +3,23 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { useAuth } from "@/auth";
 import { Layout } from "@/components/Layout";
-import { EmptyState, PageHeader } from "@/components/ui";
+import { Button, EmptyState, PageHeader } from "@/components/ui";
 import { LoginPage } from "@/pages/Login";
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { signedIn, loading } = useAuth();
+  const { signedIn, loading, failed, retry } = useAuth();
   if (loading) return <p className="p-8 text-sm text-muted">Loading…</p>;
+  if (failed)
+    return (
+      <div className="mx-auto mt-24 max-w-sm px-4">
+        <EmptyState title="Can't reach the tracker">
+          <p>The server didn't answer. Check your connection, then try again.</p>
+          <Button className="mt-4" onClick={retry}>
+            Try again
+          </Button>
+        </EmptyState>
+      </div>
+    );
   if (!signedIn) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }

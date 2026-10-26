@@ -83,3 +83,17 @@ def test_automation_token_works_without_a_session(client: TestClient) -> None:
     headers = {"Authorization": "Bearer automation-token-for-tests"}
     assert c.post("/api/test/write", headers=headers).status_code == 200
     assert c.post("/api/test/write", headers={"Authorization": "Bearer wrong"}).status_code == 401
+
+
+def test_non_ascii_tokens_are_refused_not_crashed(signed_in: TestClient) -> None:
+    c = _guarded(signed_in)
+    odd = "Bearer caf\xe9".encode("latin-1")
+    del c.headers["X-CSRF-Token"]
+    assert c.post("/api/test/write", headers={b"X-CSRF-Token": "caf\xe9".encode("latin-1")}).status_code == 403
+    signed_in.cookies.clear()
+    assert c.post("/api/test/write", headers={b"Authorization": odd}).status_code == 401
+
+
+def test_no_public_api_docs(client: TestClient) -> None:
+    assert client.get("/api/docs").status_code == 404
+    assert client.get("/api/openapi.json").status_code == 404

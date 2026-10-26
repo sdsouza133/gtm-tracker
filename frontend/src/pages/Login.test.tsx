@@ -36,4 +36,21 @@ describe("signing in", () => {
     const logout = calls.find((c) => c.path === "/api/auth/logout");
     expect(logout?.headers.get("X-CSRF-Token")).toBe("tok123");
   });
+
+  it("says when the server can't be reached instead of asking to sign in", async () => {
+    mockApi({ "GET /api/auth/me": { status: 503, body: { detail: "down" } } });
+    renderApp(<App />);
+    expect(await screen.findByText("Can't reach the tracker")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+  });
+
+  it("says when signing out fails", async () => {
+    mockApi({
+      "GET /api/auth/me": { body: { signed_in: true, csrf: "tok" } },
+      "POST /api/auth/logout": { status: 503, body: { detail: "down" } },
+    });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't sign out");
+  });
 });

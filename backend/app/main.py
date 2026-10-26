@@ -33,7 +33,8 @@ HEADERS = {
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="GTM Tracker", docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
+    # No public docs or schema: the schema is written to openapi.json by `python -m app.cli openapi` instead.
+    app = FastAPI(title="GTM Tracker", docs_url=None, openapi_url=None, redoc_url=None)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.middleware("http")
