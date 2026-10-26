@@ -52,32 +52,55 @@ class BlockedURLError(ValueError):
     """A request to somewhere that isn't the public web."""
 
 
-def public_only(request: httpx2.Request) -> None:
-    """Refuse a request, or a redirect, to anything but http(s) on a public address. Company domains are typed in by
-    whoever uses the tracker, so a crafted one mustn't reach the server's own network."""
-    url = request.url
+def public_address(url: httpx2.URL) -> str:
+    """The address to connect to for an http(s) URL, if every address its host resolves to is public. Company domains
+    are typed in by whoever uses the tracker, so a crafted one mustn't reach the server's own network."""
     if url.scheme not in {"http", "https"} or not url.host:
         raise BlockedURLError(f"blocked: {url}")
     try:
         port = url.port or (443 if url.scheme == "https" else 80)
         infos = socket.getaddrinfo(url.host, port, type=socket.SOCK_STREAM)
-        addresses = {ipaddress.ip_address(str(info[4][0]).split("%")[0]) for info in infos}
+        addresses = [ipaddress.ip_address(str(info[4][0]).split("%")[0]) for info in infos]
     except (OSError, ValueError):
         raise BlockedURLError(f"blocked: {url}") from None
     if not addresses or not all(a.is_global for a in addresses):
         raise BlockedURLError(f"blocked: {url}")
+    return str(addresses[0])
+
+
+class PublicTransport(httpx2.BaseTransport):
+    """Checks each request, redirects included, and connects to the address it checked, so a DNS answer that changes
+    between the check and the connection can't point the request inward. The Host header and the TLS name stay the
+    site's own."""
+
+    def __init__(self, inner: httpx2.BaseTransport | None = None) -> None:
+        # no kept-alive connections: one to an address must not be reused for another site on the same address
+        self.inner = inner or httpx2.HTTPTransport(limits=httpx2.Limits(max_keepalive_connections=0))
+
+    def handle_request(self, request: httpx2.Request) -> httpx2.Response:
+        address = public_address(request.url)
+        pinned = httpx2.Request(
+            request.method,
+            request.url.copy_with(host=address),
+            headers=request.headers,  # Host is already the site's name
+            stream=request.stream,
+            extensions={**request.extensions, "sni_hostname": request.url.host},
+        )
+        return self.inner.handle_request(pinned)
+
+    def close(self) -> None:
+        self.inner.close()
 
 
 class Web:
     """The real network, with a timeout and a size cap on every response, and only to public addresses."""
 
-    def __init__(self, transport: httpx2.BaseTransport | None = None) -> None:
+    def __init__(self, inner: httpx2.BaseTransport | None = None) -> None:
         self.client = httpx2.Client(
             timeout=TIMEOUT_S,
-            follow_redirects=True,
+            follow_redirects=True,  # the client sends every hop through the transport, so each is checked
             headers={"User-Agent": USER_AGENT},
-            event_hooks={"request": [public_only]},  # runs for every redirect too
-            transport=transport,
+            transport=PublicTransport(inner),
         )
 
     def _get(self, url: str, accept: str) -> bytes:
@@ -272,8 +295,10 @@ def boards_on_careers_page(web: Http, domain: str) -> list[tuple[str, str]]:
 def belongs(name: str, domain: str, board_name: str, postings: list[Posting]) -> str:
     """How sure a guessed board is this company's: "domain" (a posting names their domain), "name", or ""."""
     root = (domain or "").lower().removeprefix("www.").split("/")[0]
-    if root and any(
-        root in (j.get("text") or "").lower() or root in (j.get("url") or "").lower() for j in postings[:60]
+    # the domain itself or a subdomain of it: "acme.example" is in "jobs.acme.example", not in "notacme.example"
+    named = re.compile(rf"(?<![\w-]){re.escape(root)}(?![\w-]|\.[\w-])") if root else None
+    if named and any(
+        named.search((j.get("text") or "").lower() + " " + (j.get("url") or "").lower()) for j in postings[:60]
     ):
         return "domain"
     if board_name and norm(board_name) == norm(name):

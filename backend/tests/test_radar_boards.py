@@ -1,5 +1,6 @@
 """Finding and reading a company's job board, with a fake network."""
 
+import socket
 from datetime import date
 
 import httpx2
@@ -116,14 +117,52 @@ def test_slug_guesses() -> None:
 
 
 def test_the_real_network_reaches_only_public_addresses() -> None:
+    sent: list[httpx2.Request] = []
+
     def site(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
         if request.url.path == "/careers":  # a public page that redirects inward
             return httpx2.Response(302, headers={"Location": "http://169.254.169.254/latest/meta-data/"})
+        if request.url.path == "/moved":
+            return httpx2.Response(302, headers={"Location": "/jobs"})
         return httpx2.Response(200, text="ok")
 
-    web = boards.Web(transport=httpx2.MockTransport(site))
-    assert web.text("https://93.184.216.34/") == "ok"
+    web = boards.Web(inner=httpx2.MockTransport(site))
+    assert web.text("https://93.184.216.34/moved") == "ok"  # a relative redirect keeps the site's name
+    assert [r.url.path for r in sent] == ["/moved", "/jobs"]
     for url in ("https://93.184.216.34/careers", "http://127.0.0.1/", "http://10.0.0.5/", "http://localhost/"):
         with pytest.raises(boards.BlockedURLError):
             web.text(url)
     assert boards.boards_on_careers_page(web, "127.0.0.1") == []  # a crafted domain finds nothing, quietly
+
+
+def test_requests_go_to_the_address_that_was_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    answers = iter(["93.184.216.34", "127.0.0.1"])  # a DNS answer that changes after the check
+
+    def resolve(host: str, port: int, **_: object) -> list[tuple[object, ...]]:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (next(answers), port))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    sent: list[httpx2.Request] = []
+
+    def site(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        return httpx2.Response(200, text="ok")
+
+    web = boards.Web(inner=httpx2.MockTransport(site))
+    assert web.text("https://jobs.acme.example/careers") == "ok"
+    (r,) = sent
+    assert (r.url.host, r.headers["Host"], r.extensions["sni_hostname"]) == (
+        "93.184.216.34",
+        "jobs.acme.example",
+        "jobs.acme.example",
+    )
+
+
+def test_a_board_belongs_by_domain_not_by_a_longer_one() -> None:
+    post = [{"title": "GTM Engineer", "url": "https://jobs.example/1", "text": "Apply at notacme.example"}]
+    assert boards.belongs("Acme", "acme.example", "Other", post) == ""
+    post[0]["text"] = "Apply at careers.acme.example today."
+    assert boards.belongs("Acme", "acme.example", "Other", post) == "domain"
+    post[0]["text"] = "See acme.example.evil for more"
+    assert boards.belongs("Acme", "acme.example", "Other", post) == ""
