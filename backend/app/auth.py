@@ -107,7 +107,7 @@ def _bearer_ok(request: Request, settings: Settings) -> bool:
     header = request.headers.get("authorization", "")
     if settings.api_token is None or not header.lower().startswith("bearer "):
         return False
-    return hmac.compare_digest(header[7:].strip(), settings.api_token.get_secret_value())
+    return hmac.compare_digest(header[7:].strip().encode(), settings.api_token.get_secret_value().encode())
 
 
 def require_user(request: Request, session: DbSession, settings: AppSettings) -> None:
@@ -119,7 +119,7 @@ def require_user(request: Request, session: DbSession, settings: AppSettings) ->
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in first.")
     if request.method not in SAFE_METHODS:
         sent = request.headers.get("x-csrf-token", "")
-        if not hmac.compare_digest(sent, row.csrf):
+        if not hmac.compare_digest(sent.encode(), row.csrf.encode()):  # bytes: a non-ASCII header can't raise
             raise HTTPException(status.HTTP_403_FORBIDDEN, "This page is out of date. Reload it and try again.")
 
 

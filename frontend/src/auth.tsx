@@ -6,6 +6,9 @@ import { api, setCsrfToken, unwrap } from "@/api/client";
 type Auth = {
   signedIn: boolean;
   loading: boolean;
+  /** The server couldn't say who's signed in (down, or the network dropped). */
+  failed: boolean;
+  retry: () => void;
   login: (password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -32,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
   const logoutMutation = useMutation({
+    meta: { quiet: true }, // the layout shows its own message
     mutationFn: async () => unwrap(await api.POST("/api/auth/logout")),
     onSuccess: () => {
       setCsrfToken(null);
@@ -42,6 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: Auth = {
     signedIn: me.data?.signed_in ?? false,
     loading: me.isPending,
+    failed: me.isError,
+    retry: () => void me.refetch(),
     login: async (password) => {
       await loginMutation.mutateAsync(password);
     },
