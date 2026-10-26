@@ -157,8 +157,8 @@ function useEnrich<TVars>(fn: (vars: TVars) => Promise<S["EnrichOut"]>) {
   return useMutation({
     mutationFn: fn,
     meta: { quiet: NOT_SET_UP },
-    onSuccess: (r) =>
-      r.tried ? Promise.all(AFFECTED.map((queryKey) => client.invalidateQueries({ queryKey }))) : undefined,
+    // refetch even when no one was looked up: "what they do" may have been filled in
+    onSuccess: () => Promise.all(AFFECTED.map((queryKey) => client.invalidateQueries({ queryKey }))),
   });
 }
 
