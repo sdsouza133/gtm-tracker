@@ -1,7 +1,13 @@
 import { MutationCache, QueryCache, QueryClient } from "@tanstack/react-query";
 
 import { ApiError } from "@/api/client";
+import type { components } from "@/api/schema";
 import { notify } from "@/components/Toast";
+
+/** Show the sign-in page, keeping what the server said about how to sign in (Google, password). */
+export function markSignedOut(client: QueryClient): void {
+  client.setQueryData<components["schemas"]["Me"]>(["me"], (me) => ({ ...me, signed_in: false, csrf: null }));
+}
 
 export function makeQueryClient({ retry = true } = {}): QueryClient {
   const client: QueryClient = new QueryClient({
@@ -9,7 +15,7 @@ export function makeQueryClient({ retry = true } = {}): QueryClient {
     queryCache: new QueryCache({
       onError: (error, query) => {
         if (error instanceof ApiError && error.status === 401 && query.queryKey[0] !== "me") {
-          client.setQueryData(["me"], { signed_in: false, csrf: null });
+          markSignedOut(client);
         }
       },
     }),
@@ -18,7 +24,7 @@ export function makeQueryClient({ retry = true } = {}): QueryClient {
       onError: (error, _vars, _context, mutation) => {
         if (mutation.meta?.["quiet"]) return; // the form shows its own message
         if (error instanceof ApiError && error.status === 401) {
-          client.setQueryData(["me"], { signed_in: false, csrf: null });
+          markSignedOut(client);
           return;
         }
         notify(error instanceof ApiError ? error.message : "Couldn't save that. Try again.", "error");

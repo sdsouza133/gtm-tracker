@@ -1,9 +1,13 @@
+from typing import Any
+
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 
 from app.auth import SignedIn
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.main import create_app
 from tests.conftest import PASSWORD
 
@@ -16,12 +20,19 @@ def test_health_endpoints(client: TestClient) -> None:
 def test_security_headers_on_every_response(client: TestClient) -> None:
     r = client.get("/healthz")
     assert "default-src 'self'" in r.headers["content-security-policy"]
+    assert "frame-src https://accounts.google.com/gsi/;" in r.headers["content-security-policy"]  # the sign-in button
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["x-request-id"]
 
 
 def test_signed_out_by_default(client: TestClient) -> None:
-    assert client.get("/api/auth/me").json() == {"signed_in": False, "csrf": None, "open_access": False}
+    assert client.get("/api/auth/me").json() == {
+        "signed_in": False,
+        "csrf": None,
+        "open_access": False,
+        "google_client_id": None,
+        "password_login": True,
+    }
 
 
 def test_wrong_password_is_refused(client: TestClient) -> None:
@@ -168,6 +179,110 @@ def test_open_access_lets_everyone_in_but_only_when_turned_on(client: TestClient
     assert client.get("/api/companies").status_code == 401
     open_settings = get_settings().model_copy(update={"open_access": True})
     client.app.dependency_overrides[get_settings] = lambda: open_settings  # type: ignore[attr-defined]
-    assert client.get("/api/auth/me").json() == {"signed_in": True, "csrf": None, "open_access": True}
+    me = client.get("/api/auth/me").json()
+    assert (me["signed_in"], me["csrf"], me["open_access"]) == (True, None, True)
     assert client.get("/api/companies").status_code == 200
     assert client.post("/api/companies", json={"name": "Open Example"}).status_code == 201  # no CSRF needed
+
+
+CLIENT_ID = "test-client.apps.googleusercontent.com"
+# The fake verifier reads the claims off the credential's name, so each test says what Google would have vouched for.
+TOKENS: dict[str, dict[str, Any]] = {
+    "owner": {"email": "Owner@Example.com", "email_verified": True},
+    "stranger": {"email": "stranger@example.com", "email_verified": True},
+    "unverified": {"email": "owner@example.com", "email_verified": False},
+}
+
+
+def _use(client: TestClient, settings: Settings) -> None:
+    client.app.dependency_overrides[get_settings] = lambda: settings  # type: ignore[attr-defined]
+
+
+@pytest.fixture
+def google(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    """Google sign-in set up for owner@example.com, with Google's side faked: no network in tests."""
+
+    def verify(credential: str, request: object, audience: str) -> dict[str, Any]:
+        assert isinstance(request, google_requests.Request)
+        assert audience == CLIENT_ID
+        if credential not in TOKENS:
+            raise ValueError("Wrong number of segments in token")
+        return {"iss": "https://accounts.google.com", "aud": audience, **TOKENS[credential]}
+
+    monkeypatch.setattr(id_token, "verify_oauth2_token", verify)
+    settings = get_settings().model_copy(
+        update={"google_client_id": CLIENT_ID, "allowed_emails": ["owner@example.com"]}
+    )
+    _use(client, settings)
+    return client
+
+
+def test_me_offers_google_sign_in_when_it_is_set_up(google: TestClient) -> None:
+    me = google.get("/api/auth/me").json()
+    assert me["google_client_id"] == CLIENT_ID
+    assert me["signed_in"] is False
+
+
+def test_an_allowed_google_account_signs_in(google: TestClient) -> None:
+    r = google.post("/api/auth/google", json={"credential": "owner"})
+    assert r.status_code == 200
+    assert r.json()["csrf"]
+    assert "httponly" in r.headers["set-cookie"].lower()
+    me = google.get("/api/auth/me").json()
+    assert me["signed_in"] is True
+    assert me["csrf"] == r.json()["csrf"]
+    google.headers["X-CSRF-Token"] = me["csrf"]
+    assert google.post("/api/companies", json={"name": "Google Example"}).status_code == 201
+
+
+@pytest.mark.parametrize(
+    ("credential", "message"),
+    [("stranger", "stranger@example.com isn't allowed"), ("unverified", "hasn't verified"), ("forged", "Couldn't")],
+)
+def test_other_google_sign_ins_are_refused(google: TestClient, credential: str, message: str) -> None:
+    r = google.post("/api/auth/google", json={"credential": credential})
+    assert r.status_code == 401
+    assert message in r.json()["detail"]
+    assert "gt_session" not in r.cookies
+    assert google.get("/api/auth/me").json()["signed_in"] is False
+
+
+def test_google_sign_in_needs_a_client_id(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def verify(*_args: object) -> dict[str, Any]:
+        raise AssertionError("there's no client ID to check a token against")
+
+    monkeypatch.setattr(id_token, "verify_oauth2_token", verify)
+    _use(client, get_settings().model_copy(update={"allowed_emails": ["owner@example.com"]}))
+    assert client.get("/api/auth/me").json()["google_client_id"] is None
+    assert client.post("/api/auth/google", json={"credential": "owner"}).status_code == 404
+
+
+def test_failed_google_sign_ins_count_towards_the_lock(google: TestClient) -> None:
+    for _ in range(8):
+        google.post("/api/auth/google", json={"credential": "stranger"})
+    assert google.post("/api/auth/google", json={"credential": "owner"}).status_code == 429
+    assert google.post("/api/auth/login", json={"password": PASSWORD}).status_code == 429
+
+
+def test_without_a_password_only_google_is_offered(google: TestClient) -> None:
+    settings = get_settings().model_copy(
+        update={"google_client_id": CLIENT_ID, "allowed_emails": ["owner@example.com"], "password_hash": None}
+    )
+    _use(google, settings)
+    assert google.get("/api/auth/me").json()["password_login"] is False
+    assert google.post("/api/auth/google", json={"credential": "owner"}).status_code == 200
+
+
+def test_allowed_emails_are_read_as_a_comma_separated_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ALLOWED_EMAILS", " Owner@Example.com, second@example.com ,")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "")
+    monkeypatch.delenv("SESSION_DAYS", raising=False)
+    settings = Settings()
+    assert settings.allowed_emails == ["owner@example.com", "second@example.com"]
+    assert settings.google_client_id is None
+    assert settings.session_days == 180
+
+
+def test_a_blank_password_hash_means_no_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PASSWORD_HASH", "  ")
+    assert Settings().password_hash is None

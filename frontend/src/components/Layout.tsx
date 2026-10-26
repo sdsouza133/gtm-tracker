@@ -6,6 +6,7 @@ import { NavLink, Outlet } from "react-router-dom";
 
 import { useAuth } from "@/auth";
 import { notify } from "@/components/Toast";
+import { markSignedOut } from "@/queryClient";
 
 const NAV = [
   { to: "/", label: "Today", icon: Sun, end: true },
@@ -25,7 +26,7 @@ function useDownloadBackup() {
     try {
       const r = await fetch(new Request(`${window.location.origin}/api/export`, { credentials: "same-origin" }));
       if (r.status === 401) {
-        client.setQueryData(["me"], { signed_in: false, csrf: null });
+        markSignedOut(client);
         return;
       }
       if (!r.ok) throw new Error(`HTTP ${r.status}`);

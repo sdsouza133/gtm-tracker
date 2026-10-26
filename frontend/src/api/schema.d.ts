@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Google */
+        post: operations["google_api_auth_google_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/logout": {
         parameters: {
             query?: never;
@@ -915,6 +932,11 @@ export interface components {
             /** Badges */
             badges: components["schemas"]["BadgeOut"][];
         };
+        /** GoogleBody */
+        GoogleBody: {
+            /** Credential */
+            credential: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -988,6 +1010,13 @@ export interface components {
              * @default false
              */
             open_access?: boolean;
+            /** Google Client Id */
+            google_client_id?: string | null;
+            /**
+             * Password Login
+             * @default false
+             */
+            password_login?: boolean;
         };
         /**
          * MoveCard
@@ -1878,6 +1907,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LoginBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    google_api_auth_google_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleBody"];
             };
         };
         responses: {

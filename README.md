@@ -25,7 +25,7 @@ The demo data in this repository is made up. Real data lives only in the databas
 | API contract | OpenAPI schema generated from the API; typed client generated from the schema; CI fails if they drift |
 | Tests | pytest against real Postgres; Vitest and Testing Library |
 | Quality | Ruff, mypy `--strict`, ESLint, Prettier, CodeRabbit review on every pull request |
-| Security | argon2 password hash, server-side sessions (hashed tokens), CSRF header, login rate limit, strict CSP |
+| Security | Sign in with Google (ID token checked on the server, allow-listed accounts) or an argon2 password hash, server-side sessions (hashed tokens), CSRF header, login rate limit, strict CSP |
 | Deploy | One Docker image (API serves the built front end), migrations as a pre-deploy step |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it fits together.
@@ -39,7 +39,7 @@ psql postgres -c "CREATE ROLE gt LOGIN PASSWORD 'gt' CREATEDB"   # once: the rol
 createdb -O gt gt_dev
 createdb -O gt gt_test
 cd backend
-cp .env.example .env            # then fill in SECRET_KEY and PASSWORD_HASH (see the comments)
+cp .env.example .env            # then fill in SECRET_KEY, and GOOGLE_CLIENT_ID + ALLOWED_EMAILS or PASSWORD_HASH
 uv sync
 uv run alembic upgrade head
 uv run python -m app.cli seed-demo
