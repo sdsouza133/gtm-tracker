@@ -71,8 +71,9 @@ export function MoveRow({ move, today, compact = false }: { move: MoveCard; toda
   const later = () => update.mutate({ id: move.id, due: nextWorkday(today) });
 
   return (
-    <article className={clsx("flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center", compact && "py-3")}>
-      <div className="min-w-0 flex-1">
+    // the text keeps a readable width; when the buttons don't fit beside it they wrap onto their own line below
+    <article className={clsx("flex flex-wrap items-center gap-x-4 gap-y-2.5 px-4 py-3.5", compact && "py-3")}>
+      <div className="min-w-0 flex-1 basis-80">
         <p className="text-[15px] leading-snug">
           <span className="font-semibold text-ink">{headline(move)}</span>
           {person && <span className="text-muted"> · {person.title}</span>}
@@ -104,7 +105,7 @@ export function MoveRow({ move, today, compact = false }: { move: MoveCard; toda
       </div>
 
       {!compact && move.status === "open" && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
           {move.type === "reach" ? (
             <>
               {pending.map((p) => {
