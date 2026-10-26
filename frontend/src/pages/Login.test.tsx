@@ -1,0 +1,39 @@
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+import { App } from "@/App";
+import { mockApi, renderApp } from "@/test/render";
+
+describe("signing in", () => {
+  it("sends signed-out visitors to the login page", async () => {
+    mockApi({ "GET /api/auth/me": { body: { signed_in: false, csrf: null } } });
+    renderApp(<App />);
+    expect(await screen.findByLabelText("Password")).toBeInTheDocument();
+  });
+
+  it("shows the server's message when the password is wrong", async () => {
+    mockApi({
+      "GET /api/auth/me": { body: { signed_in: false, csrf: null } },
+      "POST /api/auth/login": { status: 401, body: { detail: "That password isn't right." } },
+    });
+    renderApp(<App />, { path: "/login" });
+    await userEvent.type(await screen.findByLabelText("Password"), "nope");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("That password isn't right.");
+  });
+
+  it("opens Today after signing in, and sends the CSRF token on changes", async () => {
+    const calls = mockApi({
+      "GET /api/auth/me": { body: { signed_in: false, csrf: null } },
+      "POST /api/auth/login": { body: { signed_in: true, csrf: "tok123" } },
+      "POST /api/auth/logout": { body: { signed_in: false, csrf: null } },
+    });
+    renderApp(<App />, { path: "/login" });
+    await userEvent.type(await screen.findByLabelText("Password"), "right password");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    const logout = calls.find((c) => c.path === "/api/auth/logout");
+    expect(logout?.headers.get("X-CSRF-Token")).toBe("tok123");
+  });
+});

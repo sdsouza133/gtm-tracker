@@ -1,0 +1,70 @@
+[project]
+name = "gtm-tracker"
+version = "0.1.0"
+description = "A job-search and outreach command center for a GTM engineer."
+readme = "../README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "alembic>=1.13",
+    "argon2-cffi>=23.1",
+    "fastapi>=0.115",
+    "httpx2>=1.0",
+    "psycopg[binary]>=3.2",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.7",
+    "sqlalchemy>=2.0.30",
+    "uvicorn[standard]>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.11",
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+allowed-confusables = ["–"]  # en dashes in ranges are deliberate
+select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "C4", "DTZ", "PT", "RET", "ARG", "N", "PL", "RUF"]
+ignore = [
+    "PLR0913",  # FastAPI routes legitimately take many arguments
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "PLR2004", "ARG001"]
+"migrations/**" = ["N999"]
+"app/cli.py" = ["PLC0415"]  # each command imports only what it needs, so hash-password runs without a database
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+exclude = ["migrations/versions/"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
+skip_covered = true

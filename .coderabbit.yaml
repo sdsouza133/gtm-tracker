@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit reviews every pull request. These notes tell it what matters most in this codebase.
+language: en-US
+reviews:
+  profile: assertive
+  high_level_summary: true
+  review_status: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - ".*" # stacked pull requests target another PR's branch, not main; review those too
+  path_instructions:
+    - path: "backend/app/**/*.py"
+      instructions: |
+        A single-user app holding real personal data (names, titles, LinkedIn URLs, emails of people being contacted).
+        Check in particular:
+        - every /api route except /api/auth/* depends on `SignedIn`, and changes check the CSRF header;
+        - no personal data, tokens or passwords are written to logs;
+        - queries stay bounded (pagination or limits) so a large table can't be loaded whole by accident;
+        - datetimes are timezone-aware, and "today" uses the configured timezone, not UTC;
+        - research written by automation never overwrites what the user edited (stage, notes, ticks, emails).
+    - path: "backend/migrations/versions/**"
+      instructions: |
+        Each migration must match app/models.py, include a working downgrade, and avoid long table locks.
+    - path: "backend/tests/**"
+      instructions: |
+        Tests must never call real third-party APIs (Apify, Apollo, Anthropic) and must not depend on test order.
+        Fixtures must be made up: no real person's name, email or LinkedIn URL. Prefer assertions on behavior.
+    - path: "frontend/src/**"
+      instructions: |
+        React + TypeScript. Check accessibility (labels, keyboard use, focus, contrast), loading and error states for
+        every query and mutation, and that optimistic updates roll back on failure. No dangerouslySetInnerHTML.
+    - path: ".github/workflows/**"
+      instructions: "Workflows should request the least permissions they need and never print secrets."
+  tools:
+    ruff:
+      enabled: true
+    eslint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    hadolint:
+      enabled: true
+    actionlint:
+      enabled: true
+    semgrep:
+      enabled: true
+chat:
+  auto_reply: true
