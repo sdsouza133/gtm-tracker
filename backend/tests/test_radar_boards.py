@@ -166,3 +166,24 @@ def test_a_board_belongs_by_domain_not_by_a_longer_one() -> None:
     assert boards.belongs("Acme", "acme.example", "Other", post) == "domain"
     post[0]["text"] = "See acme.example.evil for more"
     assert boards.belongs("Acme", "acme.example", "Other", post) == ""
+
+
+def test_a_relative_redirect_keeps_the_site_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    def resolve(host: str, port: int, **_: object) -> list[tuple[object, ...]]:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    sent: list[httpx2.Request] = []
+
+    def site(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        if request.url.path == "/moved":
+            return httpx2.Response(302, headers={"Location": "/jobs"})
+        return httpx2.Response(200, text="ok")
+
+    web = boards.Web(inner=httpx2.MockTransport(site))
+    assert web.text("https://jobs.acme.example/moved") == "ok"
+    assert [(r.url.host, r.url.path, r.headers["Host"], r.extensions["sni_hostname"]) for r in sent] == [
+        ("93.184.216.34", "/moved", "jobs.acme.example", "jobs.acme.example"),
+        ("93.184.216.34", "/jobs", "jobs.acme.example", "jobs.acme.example"),
+    ]
