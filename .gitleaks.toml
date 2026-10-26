@@ -1,0 +1,14 @@
+# Secret scanning uses gitleaks' default rules. The only exceptions are the made-up keys the test suite and CI use,
+# matched by value, so a real key committed anywhere (tests included) is still caught.
+title = "gtm-tracker"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Made-up keys that exist only for tests and CI"
+regexes = [
+  '''test-secret-key-that-is-long-enough''',
+  '''ci-only-secret-key-that-is-long-enough''',
+  '''automation-token-for-tests''',
+]
