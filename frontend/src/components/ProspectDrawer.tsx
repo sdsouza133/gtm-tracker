@@ -6,6 +6,7 @@ import { type ProspectDetail, type S, useFxProspect, useUpdateProspect } from "@
 import { notify } from "@/components/Toast";
 import { Button, Chip } from "@/components/ui";
 import { formatDay, initials, nextWorkday } from "@/lib/format";
+import { safeUrl, strings } from "@/lib/safe";
 
 type Tab = "plan" | "research" | "notes";
 type Touch = "connect" | "dm" | "email";
@@ -34,7 +35,7 @@ function lcFirst(text: string): string {
 
 export function template(p: ProspectDetail): string {
   const first = p.people[0]?.name.split(/\s+/)[0] ?? "there";
-  const hook = (p.research["interview_hooks"] as string[] | undefined)?.[0] ?? "";
+  const hook = strings(p.research["interview_hooks"])[0] ?? "";
   const lines = [
     "LinkedIn request (keep it under 200 characters):",
     `Hi ${first}, I build outbound systems for seed and Series A teams and had an idea for ${p.name}'s pipeline. Would like to connect.`,
@@ -120,8 +121,13 @@ function Checklist({ p, today }: { p: ProspectDetail; today: string }) {
               <p className="text-sm font-semibold">{person.name}</p>
               <p className="text-[13px] text-muted">{[person.title, person.location].filter(Boolean).join(" · ")}</p>
             </div>
-            {person.linkedin && (
-              <a href={person.linkedin} target="_blank" rel="noreferrer" aria-label={`${person.name} on LinkedIn`}>
+            {safeUrl(person.linkedin) && (
+              <a
+                href={safeUrl(person.linkedin)}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`${person.name} on LinkedIn`}
+              >
                 <Linkedin size={16} className="text-muted hover:text-ink" aria-hidden="true" />
               </a>
             )}
@@ -224,7 +230,7 @@ function Checklist({ p, today }: { p: ProspectDetail; today: string }) {
 }
 
 function List({ title, items }: { title: string; items: unknown }) {
-  const list = Array.isArray(items) ? items.filter((x): x is string => typeof x === "string") : [];
+  const list = strings(items);
   if (!list.length) return null;
   return (
     <section className="flex flex-col gap-2">
@@ -251,8 +257,8 @@ function List({ title, items }: { title: string; items: unknown }) {
 function Research({ p }: { p: ProspectDetail }) {
   const r = p.research;
   const text = (k: string) => (typeof r[k] === "string" ? (r[k] as string) : undefined);
-  const competitors = Array.isArray(r["competitors"]) ? (r["competitors"] as string[]) : [];
-  const sources = Array.isArray(r["sources"]) ? (r["sources"] as string[]) : [];
+  const competitors = strings(r["competitors"]);
+  const sources = strings(r["sources"]);
   return (
     <div className="flex flex-col gap-5">
       <section>
@@ -285,17 +291,25 @@ function Research({ p }: { p: ProspectDetail }) {
       {sources.length > 0 && (
         <section className="flex flex-col gap-1">
           <h3 className="text-[15px] font-semibold">Sources</h3>
-          {sources.map((s) => (
-            <a
-              key={s}
-              href={s}
-              target="_blank"
-              rel="noreferrer"
-              className="truncate text-[13px] text-accent hover:underline"
-            >
-              {s.length > 70 ? `${s.slice(0, 70)}…` : s}
-            </a>
-          ))}
+          {sources.map((s) => {
+            const href = safeUrl(s);
+            const label = s.length > 70 ? `${s.slice(0, 70)}…` : s;
+            return href ? (
+              <a
+                key={s}
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="truncate text-[13px] text-accent hover:underline"
+              >
+                {label}
+              </a>
+            ) : (
+              <span key={s} className="truncate text-[13px] text-muted">
+                {label}
+              </span>
+            );
+          })}
         </section>
       )}
     </div>
@@ -375,7 +389,7 @@ function Notes({ p }: { p: ProspectDetail }) {
   const [draft, setDraft] = useState(p.draft);
   const [notes, setNotes] = useState(p.my_notes);
   const firstParagraph = (draft.split(/\n\s*\n/)[0] ?? "").replace(/^LinkedIn request.*\n?/i, "").trim();
-  const hooks = Array.isArray(p.research["interview_hooks"]) ? (p.research["interview_hooks"] as string[]) : [];
+  const hooks = strings(p.research["interview_hooks"]);
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap gap-2">
@@ -418,6 +432,25 @@ function Notes({ p }: { p: ProspectDetail }) {
   );
 }
 
+const FOCUSABLE =
+  "a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled])";
+
+/** Keep Tab inside the dialog: past the last control it wraps to the first, and back. */
+function trapTab(e: KeyboardEvent, panel: HTMLElement) {
+  const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)];
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (!first || !last) return;
+  const at = document.activeElement;
+  if (e.shiftKey && (at === first || at === panel)) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (at === last || !panel.contains(at))) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
 export function ProspectDrawer({ id, today, onClose }: { id: string; today: string; onClose: () => void }) {
   const { data: p, isPending, isError } = useFxProspect(id);
   const [tab, setTab] = useState<Tab>(() => {
@@ -428,19 +461,25 @@ export function ProspectDrawer({ id, today, onClose }: { id: string; today: stri
     }
   });
   const panel = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
 
+  // Once per opening: the parent passes a new onClose on every render, which must not move focus around.
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     panel.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") close.current();
+      if (e.key === "Tab" && panel.current) trapTab(e, panel.current);
     };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
       before?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   const pick = (t: Tab) => {
     setTab(t);
@@ -453,7 +492,7 @@ export function ProspectDrawer({ id, today, onClose }: { id: string; today: stri
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
-      <button type="button" aria-label="Close" className="absolute inset-0 bg-ink/30" onClick={onClose} />
+      <button type="button" aria-label="Close" tabIndex={-1} className="absolute inset-0 bg-ink/30" onClick={onClose} />
       <div
         ref={panel}
         role="dialog"
@@ -491,18 +530,23 @@ export function ProspectDrawer({ id, today, onClose }: { id: string; today: stri
                 {p.status !== "open" && <Chip tone={p.status === "won" ? "good" : "bad"}>{p.status}</Chip>}
               </div>
               <div className="flex flex-wrap gap-3 text-[13px]">
-                {p.website && (
+                {safeUrl(p.website) && (
                   <a
                     className="inline-flex items-center gap-1 text-accent hover:underline"
-                    href={p.website}
+                    href={safeUrl(p.website)}
                     target="_blank"
                     rel="noreferrer"
                   >
                     {p.domain ?? p.website} <ExternalLink size={12} aria-hidden="true" />
                   </a>
                 )}
-                {p.linkedin && (
-                  <a className="text-accent hover:underline" href={p.linkedin} target="_blank" rel="noreferrer">
+                {safeUrl(p.linkedin) && (
+                  <a
+                    className="text-accent hover:underline"
+                    href={safeUrl(p.linkedin)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     Company page
                   </a>
                 )}

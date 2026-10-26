@@ -2431,6 +2431,10 @@
       "type": "array",
       "title": "Follow Ups Due"
      },
+     "follow_ups_due_total": {
+      "type": "integer",
+      "title": "Follow Ups Due Total"
+     },
      "follow_ups_later": {
       "type": "integer",
       "title": "Follow Ups Later"
@@ -2441,6 +2445,10 @@
       },
       "type": "array",
       "title": "Carried Over"
+     },
+     "carried_over_total": {
+      "type": "integer",
+      "title": "Carried Over Total"
      },
      "todays_list": {
       "items": {
@@ -2477,8 +2485,10 @@
      "goal",
      "hits_today",
      "follow_ups_due",
+     "follow_ups_due_total",
      "follow_ups_later",
      "carried_over",
+     "carried_over_total",
      "todays_list",
      "reached_today",
      "coming_up",
@@ -4085,8 +4095,7 @@
      "website": {
       "anyOf": [
        {
-        "type": "string",
-        "maxLength": 1000
+        "type": "string"
        },
        {
         "type": "null"
@@ -4097,8 +4106,7 @@
      "linkedin": {
       "anyOf": [
        {
-        "type": "string",
-        "maxLength": 1000
+        "type": "string"
        },
        {
         "type": "null"
@@ -4334,8 +4342,7 @@
      "linkedin": {
       "anyOf": [
        {
-        "type": "string",
-        "maxLength": 1000
+        "type": "string"
        },
        {
         "type": "null"
