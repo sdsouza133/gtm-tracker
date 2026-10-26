@@ -1450,6 +1450,180 @@
      }
     }
    }
+  },
+  "/api/radar": {
+   "get": {
+    "tags": [
+     "radar"
+    ],
+    "summary": "State",
+    "description": "The radar's last run, its settings, the inbox (newest first, best fit first within a day) and hiring posts.",
+    "operationId": "state_api_radar_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RadarOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/radar/config": {
+   "patch": {
+    "tags": [
+     "radar"
+    ],
+    "summary": "Update Config",
+    "operationId": "update_config_api_radar_config_patch",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RadarConfigPatch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RadarConfigOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/radar/run": {
+   "post": {
+    "tags": [
+     "radar"
+    ],
+    "summary": "Run Now",
+    "description": "Check now, in the background. The status shows progress; a second press while it runs is refused.",
+    "operationId": "run_now_api_radar_run_post",
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "additionalProperties": {
+          "type": "string"
+         },
+         "type": "object",
+         "title": "Response Run Now Api Radar Run Post"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/radar/items/{item_id}/add": {
+   "post": {
+    "tags": [
+     "radar"
+    ],
+    "summary": "Add",
+    "description": "Put a radar role into the tracker: the company (if it's new), an Apply move, and a move to find the hiring\nmanager, both for today.",
+    "operationId": "add_api_radar_items__item_id__add_post",
+    "parameters": [
+     {
+      "name": "item_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Item Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RadarAdded"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/radar/items/{item_id}/dismiss": {
+   "post": {
+    "tags": [
+     "radar"
+    ],
+    "summary": "Dismiss",
+    "operationId": "dismiss_api_radar_items__item_id__dismiss_post",
+    "parameters": [
+     {
+      "name": "item_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Item Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RadarItemOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -2635,6 +2809,54 @@
      "goal"
     ],
     "title": "HeatDay"
+   },
+   "HiringPost": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url"
+     },
+     "posted": {
+      "type": "string",
+      "title": "Posted"
+     },
+     "author": {
+      "type": "string",
+      "title": "Author"
+     },
+     "author_url": {
+      "type": "string",
+      "title": "Author Url"
+     },
+     "headline": {
+      "type": "string",
+      "title": "Headline"
+     },
+     "recruiter": {
+      "type": "boolean",
+      "title": "Recruiter"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "url",
+     "posted",
+     "author",
+     "author_url",
+     "headline",
+     "recruiter",
+     "text"
+    ],
+    "title": "HiringPost"
    },
    "LevelOut": {
     "properties": {
@@ -4423,6 +4645,414 @@
      "pulled"
     ],
     "title": "Pulled"
+   },
+   "RadarAdded": {
+    "properties": {
+     "company_id": {
+      "type": "string",
+      "title": "Company Id"
+     },
+     "move_id": {
+      "type": "string",
+      "title": "Move Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "company_id",
+     "move_id"
+    ],
+    "title": "RadarAdded"
+   },
+   "RadarConfigOut": {
+    "properties": {
+     "keywords": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Keywords"
+     },
+     "locations": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Locations"
+     },
+     "per_search": {
+      "type": "integer",
+      "title": "Per Search"
+     },
+     "daily_usd": {
+      "type": "number",
+      "title": "Daily Usd"
+     },
+     "hour": {
+      "type": "integer",
+      "title": "Hour"
+     },
+     "min_fit": {
+      "type": "integer",
+      "title": "Min Fit"
+     },
+     "recent_days": {
+      "type": "integer",
+      "title": "Recent Days"
+     },
+     "ats_search": {
+      "type": "boolean",
+      "title": "Ats Search"
+     },
+     "post_search": {
+      "type": "boolean",
+      "title": "Post Search"
+     },
+     "core_only": {
+      "type": "boolean",
+      "title": "Core Only"
+     },
+     "toronto_ok": {
+      "type": "boolean",
+      "title": "Toronto Ok"
+     },
+     "min_usd": {
+      "type": "integer",
+      "title": "Min Usd"
+     },
+     "min_cad": {
+      "type": "integer",
+      "title": "Min Cad"
+     }
+    },
+    "type": "object",
+    "required": [
+     "keywords",
+     "locations",
+     "per_search",
+     "daily_usd",
+     "hour",
+     "min_fit",
+     "recent_days",
+     "ats_search",
+     "post_search",
+     "core_only",
+     "toronto_ok",
+     "min_usd",
+     "min_cad"
+    ],
+    "title": "RadarConfigOut"
+   },
+   "RadarConfigPatch": {
+    "properties": {
+     "keywords": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string",
+         "maxLength": 100,
+         "minLength": 1
+        },
+        "type": "array",
+        "maxItems": 20
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Keywords"
+     },
+     "locations": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string",
+         "maxLength": 100,
+         "minLength": 1
+        },
+        "type": "array",
+        "maxItems": 10
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Locations"
+     },
+     "per_search": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 100.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Per Search"
+     },
+     "daily_usd": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 5.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Usd"
+     },
+     "hour": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 23.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Hour"
+     },
+     "min_fit": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 3.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Min Fit"
+     },
+     "recent_days": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 60.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Recent Days"
+     },
+     "ats_search": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ats Search"
+     },
+     "post_search": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Post Search"
+     },
+     "core_only": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Core Only"
+     },
+     "toronto_ok": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Toronto Ok"
+     },
+     "min_usd": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 1000000.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Min Usd"
+     },
+     "min_cad": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 1000000.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Min Cad"
+     }
+    },
+    "type": "object",
+    "title": "RadarConfigPatch",
+    "description": "Change what the radar looks for; anything not named keeps its value."
+   },
+   "RadarItemOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "company": {
+      "type": "string",
+      "title": "Company"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "url": {
+      "type": "string",
+      "title": "Url"
+     },
+     "posted": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Posted"
+     },
+     "fit": {
+      "type": "integer",
+      "title": "Fit"
+     },
+     "state": {
+      "type": "string",
+      "title": "State"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     },
+     "location": {
+      "type": "string",
+      "title": "Location"
+     },
+     "salary": {
+      "type": "string",
+      "title": "Salary"
+     },
+     "flags": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Flags"
+     },
+     "source": {
+      "type": "string",
+      "title": "Source"
+     },
+     "snippet": {
+      "type": "string",
+      "title": "Snippet"
+     },
+     "on_bench": {
+      "type": "boolean",
+      "title": "On Bench"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "company",
+     "title",
+     "url",
+     "posted",
+     "fit",
+     "state",
+     "company_id",
+     "location",
+     "salary",
+     "flags",
+     "source",
+     "snippet",
+     "on_bench"
+    ],
+    "title": "RadarItemOut"
+   },
+   "RadarOut": {
+    "properties": {
+     "status": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Status"
+     },
+     "config": {
+      "$ref": "#/components/schemas/RadarConfigOut"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/RadarItemOut"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "posts": {
+      "items": {
+       "$ref": "#/components/schemas/HiringPost"
+      },
+      "type": "array",
+      "title": "Posts"
+     },
+     "apify": {
+      "type": "boolean",
+      "title": "Apify"
+     }
+    },
+    "type": "object",
+    "required": [
+     "status",
+     "config",
+     "items",
+     "posts",
+     "apify"
+    ],
+    "title": "RadarOut"
    },
    "Reply": {
     "properties": {

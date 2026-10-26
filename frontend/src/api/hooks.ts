@@ -264,3 +264,47 @@ export function useUpdateProspect() {
     },
   });
 }
+
+// ----------------------------------------------------------------------------- radar
+
+export type RadarState = S["RadarOut"];
+export type RadarItem = S["RadarItemOut"];
+const RADAR = ["radar"] as const;
+const RUNNING_POLL_MS = 4000;
+
+export function useRadar() {
+  return useQuery({
+    queryKey: RADAR,
+    queryFn: async () => unwrap(await api.GET("/api/radar")),
+    // while a run is going, follow its progress
+    refetchInterval: (query) => (query.state.data?.status["running"] ? RUNNING_POLL_MS : false),
+  });
+}
+
+function useRadarChange<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSettled: () => Promise.all([RADAR, ...AFFECTED].map((queryKey) => client.invalidateQueries({ queryKey }))),
+  });
+}
+
+export function useRunRadar() {
+  return useRadarChange(async () => unwrap(await api.POST("/api/radar/run")));
+}
+
+export function useAddRadarItem() {
+  return useRadarChange(async (id: string) =>
+    unwrap(await api.POST("/api/radar/items/{item_id}/add", { params: { path: { item_id: id } } })),
+  );
+}
+
+export function useDismissRadarItem() {
+  return useRadarChange(async (id: string) =>
+    unwrap(await api.POST("/api/radar/items/{item_id}/dismiss", { params: { path: { item_id: id } } })),
+  );
+}
+
+export function useUpdateRadarConfig() {
+  return useRadarChange(async (body: S["RadarConfigPatch"]) => unwrap(await api.PATCH("/api/radar/config", { body })));
+}

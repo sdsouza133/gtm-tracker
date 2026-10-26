@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     static_dir: str = "static"
     # Optional tokens for automation (the daily refresh) to call the API without a browser session.
     api_token: SecretStr | None = None
+    # The job radar's paid searches (LinkedIn, Google, hiring posts) run only with an Apify token; job boards are free.
+    apify_token: SecretStr | None = None
+    # Run the radar every morning (at radar_config.hour, local time). Off in tests and one-off scripts.
+    radar_schedule: bool = True
 
     @property
     def tz(self) -> ZoneInfo:

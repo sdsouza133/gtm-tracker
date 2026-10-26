@@ -3,7 +3,8 @@
 import logging
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
@@ -12,9 +13,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import auth_routes, backup, companies, fractional, moves, people, today
+from app.api import auth_routes, backup, companies, fractional, moves, people, radar, today
 from app.config import get_settings
-from app.db import get_engine
+from app.db import get_engine, session_factory
+from app.radar import run as radar_run
 from app.services.outreach import NotFoundError, RuleError
 
 log = logging.getLogger("gtm_tracker")
@@ -34,8 +36,20 @@ HEADERS = {
 
 def create_app() -> FastAPI:
     settings = get_settings()
+
     # No public docs or schema: the schema is written to openapi.json by `python -m app.cli openapi` instead.
-    app = FastAPI(title="GTM Tracker", docs_url=None, openapi_url=None, redoc_url=None)
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        stop = (
+            radar_run.start_scheduler(session_factory(), settings, lambda: radar_run.default_tools(settings))
+            if settings.radar_schedule
+            else None
+        )
+        yield
+        if stop is not None:
+            stop.set()
+
+    app = FastAPI(title="GTM Tracker", docs_url=None, openapi_url=None, redoc_url=None, lifespan=lifespan)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.middleware("http")
@@ -81,7 +95,7 @@ def create_app() -> FastAPI:
         code = 404 if isinstance(exc, NotFoundError) else 409
         return JSONResponse({"detail": str(exc)}, status_code=code)
 
-    for module in (auth_routes, companies, people, moves, today, fractional, backup):
+    for module in (auth_routes, companies, people, moves, today, fractional, backup, radar):
         app.include_router(module.router)
 
     static = Path(settings.static_dir)

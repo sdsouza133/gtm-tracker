@@ -33,7 +33,7 @@ target-version = "py312"
 extend-exclude = ["migrations/versions"]
 
 [tool.ruff.lint]
-allowed-confusables = ["–"]  # en dashes in ranges are deliberate
+allowed-confusables = ["–", "’"]  # en dashes in ranges and curly apostrophes in posts are deliberate
 select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "C4", "DTZ", "PT", "RET", "ARG", "N", "PL", "RUF"]
 ignore = [
     "PLR0913",  # FastAPI routes legitimately take many arguments

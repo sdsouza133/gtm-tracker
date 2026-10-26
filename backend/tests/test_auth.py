@@ -130,6 +130,11 @@ PROTECTED = [
     ("GET", "/api/fx/prospects/x1"),
     ("PATCH", "/api/fx/prospects/x1"),
     ("GET", "/api/export"),
+    ("GET", "/api/radar"),
+    ("PATCH", "/api/radar/config"),
+    ("POST", "/api/radar/run"),
+    ("POST", "/api/radar/items/r1/add"),
+    ("POST", "/api/radar/items/r1/dismiss"),
 ]
 
 
@@ -151,6 +156,6 @@ def test_every_api_route_is_covered_above() -> None:
     routes = {
         (method.upper(), path) for path, ops in paths.items() for method in ops if not path.startswith("/api/auth/")
     }
-    ids = {"c1": "{company_id}", "p1": "{person_id}", "m1": "{move_id}", "x1": "{prospect_id}"}
+    ids = {"c1": "{company_id}", "p1": "{person_id}", "m1": "{move_id}", "x1": "{prospect_id}", "r1": "{item_id}"}
     covered = {(m, "/".join(ids.get(part, part) for part in p.split("/"))) for m, p in PROTECTED}
     assert routes == covered
