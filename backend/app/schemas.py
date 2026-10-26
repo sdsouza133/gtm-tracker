@@ -542,3 +542,81 @@ class FxColumn(BaseModel):
     label: str
     total: int
     items: list[ProspectCard]
+
+
+# ----------------------------------------------------------------------------- radar
+
+
+class RadarConfigPatch(BaseModel):
+    """Change what the radar looks for; anything not named keeps its value."""
+
+    keywords: list[Annotated[str, Field(min_length=1, max_length=100)]] | None = Field(default=None, max_length=20)
+    locations: list[Annotated[str, Field(min_length=1, max_length=100)]] | None = Field(default=None, max_length=10)
+    per_search: int | None = Field(default=None, ge=1, le=100)
+    daily_usd: float | None = Field(default=None, ge=0, le=5)
+    hour: int | None = Field(default=None, ge=0, le=23)
+    min_fit: int | None = Field(default=None, ge=1, le=3)
+    recent_days: int | None = Field(default=None, ge=1, le=60)
+    ats_search: bool | None = None
+    post_search: bool | None = None
+    core_only: bool | None = None
+    toronto_ok: bool | None = None
+    min_usd: int | None = Field(default=None, ge=0, le=1_000_000)
+    min_cad: int | None = Field(default=None, ge=0, le=1_000_000)
+
+
+class RadarConfigOut(BaseModel):
+    keywords: list[str]
+    locations: list[str]
+    per_search: int
+    daily_usd: float
+    hour: int
+    min_fit: int
+    recent_days: int
+    ats_search: bool
+    post_search: bool
+    core_only: bool
+    toronto_ok: bool
+    min_usd: int
+    min_cad: int
+
+
+class RadarItemOut(BaseModel):
+    id: str
+    company: str
+    title: str
+    url: str
+    posted: date | None
+    fit: int
+    state: str
+    company_id: str | None
+    location: str
+    salary: str
+    flags: list[str]
+    source: str
+    snippet: str
+    on_bench: bool
+
+
+class HiringPost(BaseModel):
+    id: str
+    url: str
+    posted: str
+    author: str
+    author_url: str
+    headline: str
+    recruiter: bool
+    text: str
+
+
+class RadarOut(BaseModel):
+    status: dict[str, Any]
+    config: RadarConfigOut
+    items: list[RadarItemOut]
+    posts: list[HiringPost]
+    apify: bool
+
+
+class RadarAdded(BaseModel):
+    company_id: str
+    move_id: str

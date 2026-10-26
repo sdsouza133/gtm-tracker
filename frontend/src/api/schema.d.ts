@@ -471,6 +471,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/radar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * State
+         * @description The radar's last run, its settings, the inbox (newest first, best fit first within a day) and hiring posts.
+         */
+        get: operations["state_api_radar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/radar/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Config */
+        patch: operations["update_config_api_radar_config_patch"];
+        trace?: never;
+    };
+    "/api/radar/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Now
+         * @description Check now, in the background. The status shows progress; a second press while it runs is refused.
+         */
+        post: operations["run_now_api_radar_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/radar/items/{item_id}/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add
+         * @description Put a radar role into the tracker: the company (if it's new), an Apply move, and a move to find the hiring
+         *     manager, both for today.
+         */
+        post: operations["add_api_radar_items__item_id__add_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/radar/items/{item_id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss */
+        post: operations["dismiss_api_radar_items__item_id__dismiss_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -809,6 +904,25 @@ export interface components {
             hits: number;
             /** Goal */
             goal: number;
+        };
+        /** HiringPost */
+        HiringPost: {
+            /** Id */
+            id: string;
+            /** Url */
+            url: string;
+            /** Posted */
+            posted: string;
+            /** Author */
+            author: string;
+            /** Author Url */
+            author_url: string;
+            /** Headline */
+            headline: string;
+            /** Recruiter */
+            recruiter: boolean;
+            /** Text */
+            text: string;
         };
         /** LevelOut */
         LevelOut: {
@@ -1381,6 +1495,119 @@ export interface components {
         Pulled: {
             /** Pulled */
             pulled: components["schemas"]["MoveOut"][];
+        };
+        /** RadarAdded */
+        RadarAdded: {
+            /** Company Id */
+            company_id: string;
+            /** Move Id */
+            move_id: string;
+        };
+        /** RadarConfigOut */
+        RadarConfigOut: {
+            /** Keywords */
+            keywords: string[];
+            /** Locations */
+            locations: string[];
+            /** Per Search */
+            per_search: number;
+            /** Daily Usd */
+            daily_usd: number;
+            /** Hour */
+            hour: number;
+            /** Min Fit */
+            min_fit: number;
+            /** Recent Days */
+            recent_days: number;
+            /** Ats Search */
+            ats_search: boolean;
+            /** Post Search */
+            post_search: boolean;
+            /** Core Only */
+            core_only: boolean;
+            /** Toronto Ok */
+            toronto_ok: boolean;
+            /** Min Usd */
+            min_usd: number;
+            /** Min Cad */
+            min_cad: number;
+        };
+        /**
+         * RadarConfigPatch
+         * @description Change what the radar looks for; anything not named keeps its value.
+         */
+        RadarConfigPatch: {
+            /** Keywords */
+            keywords?: string[] | null;
+            /** Locations */
+            locations?: string[] | null;
+            /** Per Search */
+            per_search?: number | null;
+            /** Daily Usd */
+            daily_usd?: number | null;
+            /** Hour */
+            hour?: number | null;
+            /** Min Fit */
+            min_fit?: number | null;
+            /** Recent Days */
+            recent_days?: number | null;
+            /** Ats Search */
+            ats_search?: boolean | null;
+            /** Post Search */
+            post_search?: boolean | null;
+            /** Core Only */
+            core_only?: boolean | null;
+            /** Toronto Ok */
+            toronto_ok?: boolean | null;
+            /** Min Usd */
+            min_usd?: number | null;
+            /** Min Cad */
+            min_cad?: number | null;
+        };
+        /** RadarItemOut */
+        RadarItemOut: {
+            /** Id */
+            id: string;
+            /** Company */
+            company: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Posted */
+            posted: string | null;
+            /** Fit */
+            fit: number;
+            /** State */
+            state: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Location */
+            location: string;
+            /** Salary */
+            salary: string;
+            /** Flags */
+            flags: string[];
+            /** Source */
+            source: string;
+            /** Snippet */
+            snippet: string;
+            /** On Bench */
+            on_bench: boolean;
+        };
+        /** RadarOut */
+        RadarOut: {
+            /** Status */
+            status: {
+                [key: string]: unknown;
+            };
+            config: components["schemas"]["RadarConfigOut"];
+            /** Items */
+            items: components["schemas"]["RadarItemOut"][];
+            /** Posts */
+            posts: components["schemas"]["HiringPost"][];
+            /** Apify */
+            apify: boolean;
         };
         /** Reply */
         Reply: {
@@ -2549,6 +2776,143 @@ export interface operations {
                     "application/json": {
                         [key: string]: number;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    state_api_radar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarOut"];
+                };
+            };
+        };
+    };
+    update_config_api_radar_config_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RadarConfigPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarConfigOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_now_api_radar_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
+    };
+    add_api_radar_items__item_id__add_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarAdded"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_api_radar_items__item_id__dismiss_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarItemOut"];
                 };
             };
             /** @description Validation Error */

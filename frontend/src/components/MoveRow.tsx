@@ -6,6 +6,7 @@ import { type MoveCard, type S, type Step, useReply, useTickStep, useUpdateMove 
 import { notify } from "@/components/Toast";
 import { Button, Chip } from "@/components/ui";
 import { MOVE_LABEL, ROLE_LABEL, SURE_LABEL, formatDay, nextWorkday } from "@/lib/format";
+import { safeUrl } from "@/lib/safe";
 
 type Draft = S["Draft"];
 
@@ -131,10 +132,10 @@ export function MoveRow({ move, today, compact = false }: { move: MoveCard; toda
                   Open email
                 </a>
               )}
-              {(pending.includes("request") || pending.includes("dm")) && person?.linkedin && (
+              {(pending.includes("request") || pending.includes("dm")) && safeUrl(person?.linkedin) && (
                 <a
                   className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-muted hover:bg-chip hover:text-ink"
-                  href={person.linkedin}
+                  href={safeUrl(person?.linkedin)}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -179,10 +180,10 @@ export function MoveRow({ move, today, compact = false }: { move: MoveCard; toda
             </>
           ) : (
             <>
-              {move.url && (
+              {safeUrl(move.url) && (
                 <a
                   className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-muted hover:bg-chip hover:text-ink"
-                  href={move.url}
+                  href={safeUrl(move.url)}
                   target="_blank"
                   rel="noreferrer"
                 >

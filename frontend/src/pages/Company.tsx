@@ -34,6 +34,7 @@ import {
   formatTime,
   initials,
 } from "@/lib/format";
+import { safeUrl } from "@/lib/safe";
 
 const field = "min-h-[38px] rounded-lg border border-line bg-surface px-3 text-sm";
 type Filter = "all" | "local" | "leaders" | "team" | "recruiter";
@@ -109,10 +110,10 @@ function PersonCard({ person }: { person: Person }) {
               ))}
             </select>
           </label>
-          {person.linkedin && (
+          {safeUrl(person.linkedin) && (
             <a
               className="inline-flex items-center gap-1 text-muted hover:text-ink"
-              href={person.linkedin}
+              href={safeUrl(person.linkedin)}
               target="_blank"
               rel="noreferrer"
             >
@@ -387,10 +388,10 @@ export function CompanyPage() {
                 <h2 className="text-lg font-semibold">{c.open_role ?? "No open role yet"}</h2>
                 {c.posted && <p className="text-[13px] text-muted">Posted {formatDay(c.posted)}</p>}
               </div>
-              {c.job_url && (
+              {safeUrl(c.job_url) && (
                 <a
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline"
-                  href={c.job_url}
+                  href={safeUrl(c.job_url)}
                   target="_blank"
                   rel="noreferrer"
                 >

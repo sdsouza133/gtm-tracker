@@ -10,6 +10,7 @@ import { LoginPage } from "@/pages/Login";
 import { PeoplePage } from "@/pages/People";
 import { PipelinePage } from "@/pages/Pipeline";
 import { PlanPage } from "@/pages/Plan";
+import { RadarPage } from "@/pages/Radar";
 import { TodayPage } from "@/pages/Today";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -55,7 +56,7 @@ export function App() {
         <Route path="companies/:id" element={<CompanyPage />} />
         <Route path="people" element={<PeoplePage />} />
         <Route path="plan" element={<PlanPage />} />
-        <Route path="radar" element={<Placeholder title="Radar" />} />
+        <Route path="radar" element={<RadarPage />} />
         <Route path="fractional" element={<FractionalPage />} />
         <Route path="*" element={<Placeholder title="Not found" />} />
       </Route>
