@@ -21,16 +21,19 @@ from app.services.outreach import NotFoundError, RuleError
 
 log = logging.getLogger("gtm_tracker")
 
+# Google's sign-in button is the one thing loaded from elsewhere: its script, its iframe, and its stylesheet.
+GOOGLE = "https://accounts.google.com"
 CSP = (
-    "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; "
-    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    f"default-src 'self'; img-src 'self' data:; style-src 'self' {GOOGLE}/gsi/style; script-src 'self' {GOOGLE}; "
+    f"font-src 'self'; connect-src 'self' {GOOGLE}; frame-src {GOOGLE}; frame-ancestors 'none'; base-uri 'none'; "
+    "form-action 'self'"
 )
 HEADERS = {
     "Content-Security-Policy": CSP,
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Referrer-Policy": "strict-origin-when-cross-origin",  # Google's button checks the page's origin from it
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Opener-Policy": "same-origin-allow-popups",  # Google's sign-in popup reports back to this page
 }
 
 

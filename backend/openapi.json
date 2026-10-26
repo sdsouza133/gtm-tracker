@@ -46,6 +46,47 @@
     }
    }
   },
+  "/api/auth/google": {
+   "post": {
+    "tags": [
+     "auth"
+    ],
+    "summary": "Google",
+    "operationId": "google_api_auth_google_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GoogleBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Me"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/auth/logout": {
    "post": {
     "tags": [
@@ -2873,6 +2914,21 @@
     ],
     "title": "FxStats"
    },
+   "GoogleBody": {
+    "properties": {
+     "credential": {
+      "type": "string",
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Credential"
+     }
+    },
+    "type": "object",
+    "required": [
+     "credential"
+    ],
+    "title": "GoogleBody"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -3040,6 +3096,22 @@
      "open_access": {
       "type": "boolean",
       "title": "Open Access",
+      "default": false
+     },
+     "google_client_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Google Client Id"
+     },
+     "password_login": {
+      "type": "boolean",
+      "title": "Password Login",
       "default": false
      }
     },

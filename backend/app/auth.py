@@ -1,19 +1,24 @@
 """Login for the one user, and the guards every API route uses.
 
-A session is a random token in an HttpOnly cookie; only its hash is stored, so a copy of the database can't be used to
-sign in. Changes need the session's CSRF token in the `X-CSRF-Token` header (the front end reads it from /api/auth/me).
-Automation (the daily refresh) can instead send `Authorization: Bearer <API_TOKEN>`.
+The user signs in with Google (an account in ALLOWED_EMAILS) or with the password. A session is a random token in an
+HttpOnly cookie; only its hash is stored, so a copy of the database can't be used to sign in. Changes need the session's
+CSRF token in the `X-CSRF-Token` header (the front end reads it from /api/auth/me). Automation (the daily refresh) can
+instead send `Authorization: Bearer <API_TOKEN>`.
 """
 
 import hashlib
 import hmac
 import secrets
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 from fastapi import Depends, HTTPException, Request, Response, status
+from google.auth.exceptions import GoogleAuthError
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -50,6 +55,30 @@ def password_ok(password: str, settings: Settings) -> bool:
         return _hasher.verify(settings.password_hash.get_secret_value(), password)
     except (VerificationError, InvalidHashError):
         return False
+
+
+class GoogleSignInError(Exception):
+    """A Google sign-in that can't be let in; the message says why, for the person signing in."""
+
+
+def google_email(credential: str, settings: Settings) -> str:
+    """The email in a Google ID token, once Google's signature, our client ID, the expiry and the issuer check out,
+    Google has verified the address, and it's one of ALLOWED_EMAILS."""
+    if settings.google_client_id is None:
+        raise GoogleSignInError("Google sign-in isn't set up.")
+    try:
+        # google-auth leaves this function unannotated; it returns the token's claims
+        claims: Mapping[str, object] = id_token.verify_oauth2_token(  # type: ignore[no-untyped-call]
+            credential, google_requests.Request(), settings.google_client_id
+        )
+    except (ValueError, GoogleAuthError) as exc:  # a bad, expired or foreign token, or Google's keys didn't load
+        raise GoogleSignInError("Couldn't confirm that Google sign-in. Try again.") from exc
+    email = str(claims.get("email") or "").lower()
+    if claims.get("email_verified") is not True:
+        raise GoogleSignInError("Google hasn't verified that account's email, so it can't sign in here.")
+    if not email or email not in settings.allowed_emails:
+        raise GoogleSignInError(f"{email or 'That account'} isn't allowed to sign in here.")
+    return email
 
 
 def locked_out(session: Session, settings: Settings) -> bool:

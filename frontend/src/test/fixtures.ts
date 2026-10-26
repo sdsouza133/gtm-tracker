@@ -77,7 +77,7 @@ export function summary(over: Partial<CompanySummary> = {}): CompanySummary {
   };
 }
 
-export const SIGNED_IN = { "GET /api/auth/me": { body: { signed_in: true, csrf: "token" } } };
+export const SIGNED_IN = { "GET /api/auth/me": { body: { signed_in: true, csrf: "token", password_login: true } } };
 
 export const STATS: S["StatsOut"] = {
   xp: 52,

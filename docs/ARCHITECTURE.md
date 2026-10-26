@@ -48,16 +48,28 @@ Research written by automation never overwrites what the user changed: stage, no
 
 ## Security
 
-- One user. The password is stored only as an argon2 hash in `PASSWORD_HASH`.
-- A session is a random token in an HttpOnly, Secure, SameSite=Lax cookie. The database stores an HMAC of it, so a
-  copy of the database can't be used to sign in.
+- One user, signing in with Google, a password, or both.
+  - **Google**: Google's own button (Google Identity Services) hands the page an ID token, and
+    `POST /api/auth/google` checks it on the server with `google-auth`: Google's signature, `GOOGLE_CLIENT_ID` as the
+    audience, the expiry, a verified email, and that email in `ALLOWED_EMAILS` (comma-separated, any case). Anyone
+    else gets a 401. Without `GOOGLE_CLIENT_ID` the button doesn't show and the route answers 404.
+  - **Password**: stored only as an argon2 hash in `PASSWORD_HASH`. Without one, the sign-in page shows only Google.
+- Setting up Google sign-in: Google Cloud Console → APIs & Services → Credentials → Create credentials → OAuth client
+  ID → Web application, with the site's address (and `http://localhost:5173` for local work) under Authorized
+  JavaScript origins. No redirect URI or client secret is needed. Put the client ID in `GOOGLE_CLIENT_ID` (it's
+  public: it's in every sign-in page) and the owner's Google address in `ALLOWED_EMAILS`.
+- A session is a random token in an HttpOnly, Secure, SameSite=Lax cookie that lasts `SESSION_DAYS` (180 by default,
+  365 at most), however the user signed in. The database stores an HMAC of it, so a copy of the database can't be
+  used to sign in.
 - Every change needs the session's CSRF token in `X-CSRF-Token`. Automation uses `Authorization: Bearer <API_TOKEN>`.
-- Eight failed sign-ins in 15 minutes lock the form.
-- `OPEN_ACCESS=true` turns the login off: anyone with the address can use the tracker. It is off unless set; a
-  missing `PASSWORD_HASH` never opens the app, it just means nobody can sign in.
+- Eight failed sign-ins (Google or password) in 15 minutes lock both for a while.
+- `OPEN_ACCESS=true` turns the login off: anyone with the address can use the tracker. It is off unless set; missing
+  sign-in settings never open the app, they just mean nobody can sign in.
 - `POST /api/restore` loads a backup into an empty tracker (for a server whose database is reachable only through the
   app). A tracker with any data refuses it.
-- Strict Content Security Policy (`default-src 'self'`), no third-party scripts, fonts or styles at runtime.
+- Strict Content Security Policy (`default-src 'self'`). The one exception is Google's sign-in button: its script,
+  iframe and stylesheet from `https://accounts.google.com`. Opener policy is `same-origin-allow-popups`, so Google's
+  sign-in popup can hand the token back.
 - Logs record method, path, status and timing, never query strings or bodies.
 
 ## Scale
