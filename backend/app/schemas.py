@@ -116,6 +116,7 @@ class PersonPatch(BaseModel):
     notes: Notes | None = None
     left: bool | None = None
     ab_variant: Literal["A", "B"] | None = None
+    loom: Literal["asked", "sent"] | None = Field(default=None, description="They asked for a Loom video; it's sent")
 
 
 class Reply(BaseModel):
@@ -139,6 +140,7 @@ class CompanyBrief(Out):
     name: str
     domain: str | None
     stage: Stage
+    score: float | None
     open_role: str | None
     job_url: str | None
     posted: date | None
@@ -289,14 +291,22 @@ class TodayGroup(BaseModel):
     moves: list[MoveCard]
 
 
+class LoomAsk(Out):
+    """Someone who asked for a Loom video, and where they work."""
+
+    person: PersonOut
+    company: CompanyBrief | None
+
+
 class TodayOut(BaseModel):
     today: date
     groups: list[TodayGroup]
     overdue: int
-    more: int = Field(description="Moves from the last week held back for another day by the daily limit")
+    more: int = Field(description="Companies held back for another day by the daily limit")
     done_today: list[MoveCard]
     waiting: list[MoveCard]
     waiting_total: int
+    looms: list[LoomAsk]
 
 
 class DayCount(BaseModel):

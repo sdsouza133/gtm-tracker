@@ -10,14 +10,15 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import Settings
-from app.models import Company, Move, MoveStatus, MoveType, Sureness
+from app.models import Company, Move, MoveStatus, MoveType, Person, Sureness
 from app.services import reach
 from app.services.history import record
 from app.services.stages import OUT_OF_PLAY
 
 WAITING_LIMIT = 50
-FRESH_DAYS = 7  # a move overdue by more than this has gone stale and drops off
-DAILY_LIMIT = 15  # moves a day, counting the ones already done today
+FRESH_DAYS = 7  # a move overdue by more than this has gone stale and drops off; an unstarted reach-out doesn't
+DAILY_COMPANIES = 5  # companies a day, counting the ones already worked on today; calls and loose tasks always show
+FIRST_TOUCH_DUE = ("email+request", "email", "request")
 
 
 class Group(StrEnum):
@@ -80,10 +81,11 @@ def _in_play(company: Company | None) -> bool:
 class TodayList:
     groups: list[tuple[Group, list[Move]]]
     overdue: int
-    more: int  # fresh moves held back for another day by the daily limit
+    more: int  # companies held back for another day by the daily limit
     done_today: list[Move]
     waiting: list[Move]
     waiting_total: int
+    looms: list[Person]  # asked for a Loom video that hasn't been sent yet
 
 
 def build(session: Session, settings: Settings, today: date) -> TodayList:
@@ -95,7 +97,9 @@ def build(session: Session, settings: Settings, today: date) -> TodayList:
         .where(
             Move.status == MoveStatus.OPEN,
             Move.due <= today,
-            Move.due >= today - timedelta(days=FRESH_DAYS),
+            # a reach-out stays until both the email and the LinkedIn request are sent, or it's skipped
+            (Move.due >= today - timedelta(days=FRESH_DAYS))
+            | (Move.type == MoveType.REACH) & Move.sequence["next"].as_string().in_(FIRST_TOUCH_DUE),
             (Company.id.is_(None)) | (Company.stage.not_in(OUT_OF_PLAY)),
         )
     ).all()
@@ -104,8 +108,7 @@ def build(session: Session, settings: Settings, today: date) -> TodayList:
     touched = session.scalars(select(Move).options(*load).where(Move.updated_at >= start)).all()
     done_today = [m for m in touched if _done_on(m, today, settings)]
 
-    fresh = sorted(due, key=_priority)
-    due = fresh[: max(0, DAILY_LIMIT - len(done_today))]  # the most important first: calls, then applying
+    due, more = _days_worth(sorted(due, key=_priority), {m.company_id for m in done_today if m.company_id})
     groups = [(g, [m for m in due if group_of(m) is g]) for g in Group]
 
     waiting_all = [
@@ -121,11 +124,38 @@ def build(session: Session, settings: Settings, today: date) -> TodayList:
     return TodayList(
         groups=[(g, ms) for g, ms in groups if ms],
         overdue=sum(1 for m in due if m.due < today),
-        more=len(fresh) - len(due),
+        more=more,
         done_today=done_today,
         waiting=waiting_all[:WAITING_LIMIT],
         waiting_total=len(waiting_all),
+        looms=list(
+            session.scalars(
+                select(Person)
+                .options(joinedload(Person.company))
+                .where(Person.details["loom"].as_string() == "asked")
+                .order_by(Person.updated_at)
+            )
+        ),
     )
+
+
+def _days_worth(ordered: list[Move], started: set[str]) -> tuple[list[Move], int]:
+    """Whole companies, most important first, up to the day's limit; a company already worked on today stays and
+    counts toward it. Calls and moves with no company always show. Returns the moves and how many companies wait."""
+    slots = max(0, DAILY_COMPANIES - len(started))
+    chosen: set[str] = set()
+    waiting: set[str] = set()
+    shown: list[Move] = []
+    for m in ordered:
+        cid = m.company_id
+        if cid is None or cid in started or cid in chosen or group_of(m) is Group.CALLS:
+            shown.append(m)
+        elif len(chosen) < slots:
+            chosen.add(cid)
+            shown.append(m)
+        else:
+            waiting.add(cid)
+    return shown, len(waiting)
 
 
 def _done_on(move: Move, today: date, settings: Settings) -> bool:

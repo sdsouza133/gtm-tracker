@@ -1,11 +1,14 @@
-import { ArrowRight, Flame, Sparkles, Trophy } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowRight, Check, Flame, Sparkles, Trophy } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-import { usePull, useStats, useToday } from "@/api/hooks";
+import { type MoveCard, type S, usePull, useStats, useToday, useUpdatePerson } from "@/api/hooks";
+import { CompanyCard } from "@/components/CompanyCard";
+import { CompanyPanel } from "@/components/CompanyPanel";
 import { MoveRow } from "@/components/MoveRow";
 import { Button, Card, EmptyState, PageHeader } from "@/components/ui";
 import { formatLongDay, relativeDay } from "@/lib/format";
+import { safeUrl } from "@/lib/safe";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -82,27 +85,114 @@ function StatsRow({ dueCount }: { dueCount: number }) {
   );
 }
 
+type Group = S["TodayGroup"];
+
+/** Calls stay as rows; everything else is gathered by company, in the order the server ranked it. */
+function arrange(groups: Group[]) {
+  const calls = groups.find((g) => g.key === "calls")?.moves ?? [];
+  const byCompany = new Map<string, MoveCard[]>();
+  const loose: MoveCard[] = [];
+  for (const g of groups) {
+    if (g.key === "calls") continue;
+    for (const m of g.moves) {
+      if (!m.company_id) loose.push(m);
+      else byCompany.set(m.company_id, [...(byCompany.get(m.company_id) ?? []), m]);
+    }
+  }
+  return { calls, companies: [...byCompany.entries()], loose };
+}
+
+function LoomRow({ ask }: { ask: S["LoomAsk"] }) {
+  const patch = useUpdatePerson();
+  const linkedin = safeUrl(ask.person.linkedin);
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+      <span className="min-w-0">
+        <span className="font-semibold">{ask.person.name}</span>
+        <span className="text-muted">
+          {" "}
+          · {ask.person.title}
+          {ask.company && `, ${ask.company.name}`}
+        </span>
+      </span>
+      <span className="flex items-center gap-1">
+        {linkedin && (
+          <a
+            className="inline-flex min-h-[34px] items-center rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink"
+            href={linkedin}
+            target="_blank"
+            rel="noreferrer"
+          >
+            LinkedIn
+          </a>
+        )}
+        <Button
+          variant="primary"
+          disabled={patch.isPending}
+          onClick={() => patch.mutate({ id: ask.person.id, loom: "sent" })}
+        >
+          <Check size={14} aria-hidden="true" />
+          Loom sent
+        </Button>
+      </span>
+    </div>
+  );
+}
+
 export function TodayPage() {
   const { data, isPending, isError } = useToday();
   const pull = usePull();
+  const [open, setOpen] = useState<string | null>(null);
   if (isPending) return <p className="text-sm text-muted">Loading today…</p>;
   if (isError) return <EmptyState title="Couldn't load today">Reload the page to try again.</EmptyState>;
 
   const due = data.groups.reduce((n, g) => n + g.moves.length, 0);
+  const { calls, companies, loose } = arrange(data.groups);
+  const title = companies.length
+    ? `${greeting()}. ${companies.length} ${companies.length === 1 ? "company" : "companies"} today.`
+    : due
+      ? `${greeting()}. ${due} ${due === 1 ? "thing" : "things"} today.`
+      : `${greeting()}. You're clear.`;
   return (
     <div className="flex max-w-6xl flex-col gap-6">
-      <PageHeader
-        eyebrow={formatLongDay(data.today)}
-        title={due ? `${greeting()}. ${due} ${due === 1 ? "move" : "moves"} today.` : `${greeting()}. You're clear.`}
-      />
+      <PageHeader eyebrow={formatLongDay(data.today)} title={title} />
 
       <StatsRow dueCount={due} />
 
-      {data.groups.length === 0 && data.more > 0 ? (
+      {calls.length > 0 && (
+        <section aria-labelledby="g-calls" className="flex flex-col gap-2">
+          <h2 id="g-calls" className="text-[15px] font-semibold">
+            Interviews and calls
+          </h2>
+          <Card className="divide-y divide-line-soft">
+            {calls.map((m) => (
+              <MoveRow key={m.id} move={m} today={data.today} />
+            ))}
+          </Card>
+        </section>
+      )}
+
+      {data.looms.length > 0 && (
+        <section aria-labelledby="g-looms" className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between">
+            <h2 id="g-looms" className="text-[15px] font-semibold">
+              Loom requests
+            </h2>
+            <span className="text-[13px] text-muted">{data.looms.length}</span>
+          </div>
+          <Card className="divide-y divide-line-soft">
+            {data.looms.map((a) => (
+              <LoomRow key={a.person.id} ask={a} />
+            ))}
+          </Card>
+        </section>
+      )}
+
+      {due === 0 && data.more > 0 ? (
         <EmptyState title="Done for today. Nice work.">
           <p>That's enough for one day. The rest will be here tomorrow.</p>
         </EmptyState>
-      ) : data.groups.length === 0 ? (
+      ) : due === 0 ? (
         <EmptyState title="Nothing left for today">
           <p>Get ahead on tomorrow, or plan the week.</p>
           <div className="mt-4 flex justify-center gap-2">
@@ -119,22 +209,38 @@ export function TodayPage() {
           </div>
         </EmptyState>
       ) : (
-        data.groups.map((group) => (
-          <section key={group.key} aria-labelledby={`g-${group.key}`} className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between">
-              <h2 id={`g-${group.key}`} className="text-[15px] font-semibold">
-                {group.label}
+        <>
+          {companies.length > 0 && (
+            <section aria-labelledby="g-companies" className="flex flex-col gap-2">
+              <div className="flex items-baseline justify-between">
+                <h2 id="g-companies" className="text-[15px] font-semibold">
+                  Companies
+                </h2>
+                <span className="text-[13px] text-muted">Click one to see it and reach its people</span>
+              </div>
+              <Card className="divide-y divide-line-soft">
+                {companies.map(([id, moves]) => (
+                  <CompanyCard key={id} moves={moves} onOpen={() => setOpen(id)} />
+                ))}
+              </Card>
+            </section>
+          )}
+          {loose.length > 0 && (
+            <section aria-labelledby="g-other" className="flex flex-col gap-2">
+              <h2 id="g-other" className="text-[15px] font-semibold">
+                Other
               </h2>
-              <span className="text-[13px] text-muted">{group.moves.length} left</span>
-            </div>
-            <Card className="divide-y divide-line-soft">
-              {group.moves.map((m) => (
-                <MoveRow key={m.id} move={m} today={data.today} />
-              ))}
-            </Card>
-          </section>
-        ))
+              <Card className="divide-y divide-line-soft">
+                {loose.map((m) => (
+                  <MoveRow key={m.id} move={m} today={data.today} />
+                ))}
+              </Card>
+            </section>
+          )}
+        </>
       )}
+
+      {open && <CompanyPanel id={open} onClose={() => setOpen(null)} />}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="waiting" className="flex flex-col gap-2">

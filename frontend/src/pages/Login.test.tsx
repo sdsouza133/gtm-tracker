@@ -30,7 +30,16 @@ describe("signing in", () => {
       "POST /api/auth/logout": { body: { signed_in: false, csrf: null } },
       "GET /api/stats": { body: STATS },
       "GET /api/today": {
-        body: { today: TODAY, groups: [], overdue: 0, more: 0, done_today: [], waiting: [], waiting_total: 0 },
+        body: {
+          today: TODAY,
+          groups: [],
+          overdue: 0,
+          more: 0,
+          done_today: [],
+          waiting: [],
+          waiting_total: 0,
+          looms: [],
+        },
       },
     });
     renderApp(<App />, { path: "/login" });
