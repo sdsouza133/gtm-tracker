@@ -436,7 +436,7 @@ const FOCUSABLE =
   "a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled])";
 
 /** Keep Tab inside the dialog: past the last control it wraps to the first, and back. */
-function trapTab(e: KeyboardEvent, panel: HTMLElement) {
+export function trapTab(e: KeyboardEvent, panel: HTMLElement) {
   const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)];
   const first = items[0];
   const last = items[items.length - 1];

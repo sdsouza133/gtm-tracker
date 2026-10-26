@@ -9,6 +9,7 @@ export function company(over: Partial<S["CompanyBrief"]> = {}): S["CompanyBrief"
     name: "Northwind Labs",
     domain: "northwind.example",
     stage: "contacted",
+    score: 4.2,
     open_role: "GTM Engineer",
     job_url: null,
     posted: "2026-10-23",

@@ -66,7 +66,14 @@ def update(person_id: str, body: PersonPatch, session: DbSession, today: Today) 
     fields = body.model_dump(exclude_unset=True)
     new_status = fields.pop("status", None)
     left = fields.pop("left", None)
+    loom = fields.pop("loom", None)
     patching.apply(person, fields)
+    if loom is not None and person.details.get("loom") != loom:
+        person.details = {**person.details, "loom": loom, f"loom_{loom}": today.isoformat()}
+        if loom == "asked":  # asking for one is a reply
+            record_reply(session, person, "asked for a Loom video", today)
+        else:
+            record(session, "contact", f"Loom sent to {person.name}", company_id=person.company_id, person_id=person.id)
     if left is True and not person.left:
         mark_left(session, person, today)
     elif left is False:

@@ -13,9 +13,11 @@ from app.models import Activity, Company, Move, MoveStatus, Person, Setting
 from app.schemas import (
     ActivityOut,
     DayCount,
+    LoomAsk,
     MoveCard,
     NoteCreate,
     Page,
+    PersonOut,
     PlanDay,
     SettingsOut,
     StatsOut,
@@ -50,6 +52,7 @@ def today_list(session: DbSession, settings: AppSettings, today: Today) -> Today
         done_today=cards(built.done_today),
         waiting=cards(built.waiting),
         waiting_total=built.waiting_total,
+        looms=[LoomAsk(person=PersonOut.model_validate(p), company=p.company) for p in built.looms],
     )
 
 

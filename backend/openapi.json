@@ -1881,6 +1881,17 @@
      "stage": {
       "$ref": "#/components/schemas/Stage"
      },
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     },
      "open_role": {
       "anyOf": [
        {
@@ -1937,6 +1948,7 @@
      "name",
      "domain",
      "stage",
+     "score",
      "open_role",
      "job_url",
      "posted",
@@ -2116,6 +2128,17 @@
      "stage": {
       "$ref": "#/components/schemas/Stage"
      },
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     },
      "open_role": {
       "anyOf": [
        {
@@ -2186,17 +2209,6 @@
        }
       ],
       "title": "Rank"
-     },
-     "score": {
-      "anyOf": [
-       {
-        "type": "number"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Score"
      },
      "hq": {
       "anyOf": [
@@ -2315,6 +2327,7 @@
      "name",
      "domain",
      "stage",
+     "score",
      "open_role",
      "job_url",
      "posted",
@@ -2322,7 +2335,6 @@
      "cant_apply",
      "wave",
      "rank",
-     "score",
      "hq",
      "employees",
      "parked_why",
@@ -2485,6 +2497,17 @@
      "stage": {
       "$ref": "#/components/schemas/Stage"
      },
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     },
      "open_role": {
       "anyOf": [
        {
@@ -2556,17 +2579,6 @@
       ],
       "title": "Rank"
      },
-     "score": {
-      "anyOf": [
-       {
-        "type": "number"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Score"
-     },
      "hq": {
       "anyOf": [
        {
@@ -2632,6 +2644,7 @@
      "name",
      "domain",
      "stage",
+     "score",
      "open_role",
      "job_url",
      "posted",
@@ -2639,7 +2652,6 @@
      "cant_apply",
      "wave",
      "rank",
-     "score",
      "hq",
      "employees",
      "parked_why",
@@ -3075,6 +3087,30 @@
      "password"
     ],
     "title": "LoginBody"
+   },
+   "LoomAsk": {
+    "properties": {
+     "person": {
+      "$ref": "#/components/schemas/PersonOut"
+     },
+     "company": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/CompanyBrief"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "person",
+     "company"
+    ],
+    "title": "LoomAsk",
+    "description": "Someone who asked for a Loom video, and where they work."
    },
    "Me": {
     "properties": {
@@ -4018,6 +4054,22 @@
        }
       ],
       "title": "Ab Variant"
+     },
+     "loom": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "asked",
+         "sent"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loom",
+      "description": "They asked for a Loom video; it's sent"
      }
     },
     "type": "object",
@@ -5713,7 +5765,7 @@
      "more": {
       "type": "integer",
       "title": "More",
-      "description": "Moves from the last week held back for another day by the daily limit"
+      "description": "Companies held back for another day by the daily limit"
      },
      "done_today": {
       "items": {
@@ -5732,6 +5784,13 @@
      "waiting_total": {
       "type": "integer",
       "title": "Waiting Total"
+     },
+     "looms": {
+      "items": {
+       "$ref": "#/components/schemas/LoomAsk"
+      },
+      "type": "array",
+      "title": "Looms"
      }
     },
     "type": "object",
@@ -5742,7 +5801,8 @@
      "more",
      "done_today",
      "waiting",
-     "waiting_total"
+     "waiting_total",
+     "looms"
     ],
     "title": "TodayOut"
    },
