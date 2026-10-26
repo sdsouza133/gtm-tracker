@@ -2,6 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { App } from "@/App";
+import { STATS, TODAY } from "@/test/fixtures";
 import { mockApi, renderApp } from "@/test/render";
 
 describe("signing in", () => {
@@ -27,11 +28,15 @@ describe("signing in", () => {
       "GET /api/auth/me": { body: { signed_in: false, csrf: null } },
       "POST /api/auth/login": { body: { signed_in: true, csrf: "tok123" } },
       "POST /api/auth/logout": { body: { signed_in: false, csrf: null } },
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": {
+        body: { today: TODAY, groups: [], overdue: 0, done_today: [], waiting: [], waiting_total: 0 },
+      },
     });
     renderApp(<App />, { path: "/login" });
     await userEvent.type(await screen.findByLabelText("Password"), "right password");
     await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /You're clear/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     const logout = calls.find((c) => c.path === "/api/auth/logout");
     expect(logout?.headers.get("X-CSRF-Token")).toBe("tok123");

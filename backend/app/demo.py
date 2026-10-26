@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Company, Move, MoveType, Person, PersonStatus, RoleInHire, Setting, Stage, Sureness
+from app.services import outreach
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,30 @@ COMPANIES = [
 ]
 
 
+def _drafts(p: DemoPerson, spec: DemoCompany) -> list[dict[str, str]]:
+    first = p.name.split()[0]
+    return [
+        {
+            "type": "email_day0",
+            "subject": f"{spec.open_role} at {spec.name}",
+            "body": (
+                f"Hi {first},\n\nI saw {spec.name} is hiring a {spec.open_role}. I build the agents and data flows "
+                "that this role owns, and I recorded a two-minute video of one I shipped. Worth a look?\n\nDemo"
+            ),
+        },
+        {
+            "type": "li_note",
+            "subject": "",
+            "body": f"Hi {first}, I applied for the {spec.open_role} role at {spec.name}; glad to connect.",
+        },
+        {
+            "type": "bump",
+            "subject": "",
+            "body": f"Hi {first}, bumping this in case it got buried. Happy to send the video if it's useful.",
+        },
+    ]
+
+
 def seed_demo(session: Session, today: date | None = None) -> str:
     """Adds the demo data to an empty database. Refuses to touch a database that already has companies."""
     if session.scalar(select(func.count()).select_from(Company)):
@@ -144,19 +169,13 @@ def seed_demo(session: Session, today: date | None = None) -> str:
                 sureness=p.sure,
                 status=PersonStatus.REQUESTED if p.role is RoleInHire.RECRUITER else PersonStatus.NONE,
             )
+            person.drafts = _drafts(p, spec)
             session.add(person)
-            day0 = today + timedelta(days=i % 3)
-            session.add(
-                Move(
-                    company=company,
-                    person=person,
-                    type=MoveType.REACH,
-                    title=f"Reach {p.name}",
-                    due=day0,
-                    sequence={"day0": day0.isoformat(), "steps": {}, "next": "request"},
-                )
-            )
+            session.flush()
+            outreach.start_reach(session, person, today + timedelta(days=i % 3))
     if session.get(Setting, "candidate") is None:  # keep a name that's already set
         session.add(Setting(key="candidate", value="Demo Candidate"))
+    if session.get(Setting, "deadline") is None:
+        session.add(Setting(key="deadline", value=(today + timedelta(days=60)).isoformat()))
     session.commit()
     return f"Added {len(COMPANIES)} demo companies."

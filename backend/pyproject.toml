@@ -37,6 +37,7 @@ allowed-confusables = ["–"]  # en dashes in ranges are deliberate
 select = ["E", "W", "F", "I", "B", "UP", "S", "SIM", "C4", "DTZ", "PT", "RET", "ARG", "N", "PL", "RUF"]
 ignore = [
     "PLR0913",  # FastAPI routes legitimately take many arguments
+    "PLR0917",  # ... as positional parameters (each one a query parameter or a dependency)
 ]
 
 [tool.ruff.lint.per-file-ignores]

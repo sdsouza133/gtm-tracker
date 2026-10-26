@@ -4,7 +4,12 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "@/auth";
 import { Layout } from "@/components/Layout";
 import { Button, EmptyState, PageHeader } from "@/components/ui";
+import { CompanyPage } from "@/pages/Company";
 import { LoginPage } from "@/pages/Login";
+import { PeoplePage } from "@/pages/People";
+import { PipelinePage } from "@/pages/Pipeline";
+import { PlanPage } from "@/pages/Plan";
+import { TodayPage } from "@/pages/Today";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { signedIn, loading, failed, retry } = useAuth();
@@ -44,10 +49,11 @@ export function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<Placeholder title="Today" />} />
-        <Route path="pipeline" element={<Placeholder title="Pipeline" />} />
-        <Route path="people" element={<Placeholder title="People" />} />
-        <Route path="plan" element={<Placeholder title="Plan" />} />
+        <Route index element={<TodayPage />} />
+        <Route path="pipeline" element={<PipelinePage />} />
+        <Route path="companies/:id" element={<CompanyPage />} />
+        <Route path="people" element={<PeoplePage />} />
+        <Route path="plan" element={<PlanPage />} />
         <Route path="radar" element={<Placeholder title="Radar" />} />
         <Route path="fractional" element={<Placeholder title="Fractional" />} />
         <Route path="*" element={<Placeholder title="Not found" />} />

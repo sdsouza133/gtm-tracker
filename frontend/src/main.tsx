@@ -7,6 +7,7 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "@/App";
 import { AuthProvider } from "@/auth";
+import { ToastHost } from "@/components/Toast";
 import { makeQueryClient } from "@/queryClient";
 
 const queryClient = makeQueryClient();
@@ -20,6 +21,7 @@ createRoot(root).render(
       <BrowserRouter>
         <AuthProvider>
           <App />
+          <ToastHost />
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>
