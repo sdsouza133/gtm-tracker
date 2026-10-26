@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import Activity, MoveStatus, MoveType, Setting, Stage, Sureness
+from app.models import Activity, MoveStatus, MoveType, PersonStatus, Setting, Stage, Sureness
 from app.services.stats import level_for, streaks
 from tests import factories as f
 from tests.conftest import NOON, TODAY
@@ -57,23 +57,40 @@ def test_done_today_and_waiting(signed_in: TestClient, db: Session) -> None:
     assert body["groups"] == []
 
 
-def test_today_keeps_to_the_last_week_and_a_days_worth(signed_in: TestClient, db: Session) -> None:
-    c = f.company(db)
-    f.move(db, c, type=MoveType.PREP, due=TODAY - timedelta(days=8), title="Stale")
-    f.move(db, c, type=MoveType.PREP, due=TODAY - timedelta(days=7), title="A week old")
-    f.move(db, c, type=MoveType.APPLY, due=TODAY - timedelta(days=2), title="Apply first")
-    for i in range(20):
-        f.move(db, c, type=MoveType.PREP, due=TODAY, title=f"Prep {i:02}")
-    done = f.move(db, c, type=MoveType.PREP, due=TODAY, title="Already done")
+def test_today_keeps_to_the_last_week_and_a_days_worth_of_companies(signed_in: TestClient, db: Session) -> None:
+    companies = [f.company(db, name=f"Co {i}") for i in range(7)]
+    for c in companies:
+        f.move(db, c, type=MoveType.PREP, due=TODAY, title=f"Prep {c.name}")
+    f.move(db, companies[0], type=MoveType.APPLY, due=TODAY - timedelta(days=2), title="Apply first")
+    f.move(db, companies[1], type=MoveType.PREP, due=TODAY - timedelta(days=8), title="Stale")
+    _, unstarted = f.person(db, companies[2], name="Old Example", day0=TODAY - timedelta(days=20))
+    assert unstarted is not None
+    f.move(db, None, type=MoveType.PREP, due=TODAY, title="Loose task")
+    done = f.move(db, companies[6], type=MoveType.PREP, due=TODAY, title="Already done")
     signed_in.patch(f"/api/moves/{done.id}", json={"status": "done"})
 
     body = signed_in.get("/api/today").json()
     titles = [m["title"] for g in body["groups"] for m in g["moves"]]
-    assert len(titles) == 14  # 15 a day, one already done
+    shown = {m["company"]["name"] for g in body["groups"] for m in g["moves"] if m["company"]}
     assert titles[0] == "Apply first"
-    assert "A week old" in titles
     assert "Stale" not in titles
-    assert body["more"] == 22 - 14
+    assert "Reach out to Old Example" in titles  # an unstarted reach-out never goes stale
+    assert "Loose task" in titles
+    assert len(shown) == 5  # Co 6, worked on today, counts toward the five
+    assert "Co 6" in shown
+    assert body["more"] == 2
+
+
+def test_a_loom_request_shows_until_its_sent(signed_in: TestClient, db: Session) -> None:
+    c = f.company(db, name="Loom Example")
+    p, _ = f.person(db, c, name="Asker Example", day0=TODAY)
+    signed_in.patch(f"/api/people/{p.id}", json={"loom": "asked"})
+    body = signed_in.get("/api/today").json()
+    assert [(x["person"]["name"], x["company"]["name"]) for x in body["looms"]] == [("Asker Example", "Loom Example")]
+    db.refresh(p)
+    assert (p.status, p.details["loom_asked"]) == (PersonStatus.REPLIED, "2026-10-26")
+    signed_in.patch(f"/api/people/{p.id}", json={"loom": "sent"})
+    assert signed_in.get("/api/today").json()["looms"] == []
 
 
 def test_clearing_the_backlog_skips_only_moves_over_a_week_old(signed_in: TestClient, db: Session) -> None:

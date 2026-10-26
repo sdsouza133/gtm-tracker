@@ -2,7 +2,7 @@ import { clsx } from "clsx";
 import { Check, Copy, ExternalLink, Linkedin, Mail, MessageSquareReply } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import { type MoveCard, type S, type Step, useReply, useTickStep, useUpdateMove } from "@/api/hooks";
+import { type MoveCard, type Person, type S, type Step, useReply, useTickStep, useUpdateMove } from "@/api/hooks";
 import { notify } from "@/components/Toast";
 import { Button, Chip } from "@/components/ui";
 import { MOVE_LABEL, ROLE_LABEL, SURE_LABEL, formatDay, nextWorkday } from "@/lib/format";
@@ -16,13 +16,13 @@ const STEP_BUTTON: Record<string, { step: Step; label: string; done: string }> =
   dm: { step: "dm", label: "Message sent", done: "Message sent" },
   bump: { step: "bump", label: "Bumped", done: "Bumped" },
 };
-const COPY_FOR: Record<string, { draft: string[]; label: string }> = {
+export const COPY_FOR: Record<string, { draft: string[]; label: string }> = {
   email: { draft: ["email_day0", "email_day0_b"], label: "Copy email" },
   request: { draft: ["li_note"], label: "Copy note" },
   bump: { draft: ["bump", "email_day3"], label: "Copy bump" },
 };
 
-async function copy(draft: Draft, what: string) {
+export async function copy(draft: Draft, what: string) {
   const text = draft.subject ? `${draft.subject}\n\n${draft.body}` : draft.body;
   try {
     await navigator.clipboard.writeText(text);
@@ -32,9 +32,9 @@ async function copy(draft: Draft, what: string) {
   }
 }
 
-function findDraft(move: MoveCard, types: string[]): Draft | undefined {
-  const drafts = move.person?.drafts ?? [];
-  const variant = move.person?.ab_variant === "B" ? ["email_day0_b"] : [];
+export function findDraft(person: Person | null | undefined, types: string[]): Draft | undefined {
+  const drafts = person?.drafts ?? [];
+  const variant = person?.ab_variant === "B" ? ["email_day0_b"] : [];
   for (const type of [...variant, ...types]) {
     const d = drafts.find((x) => x.type === type);
     if (d) return d;
@@ -111,7 +111,7 @@ export function MoveRow({ move, today, compact = false }: { move: MoveCard; toda
             <>
               {pending.map((p) => {
                 const c = COPY_FOR[p];
-                const draft = c && findDraft(move, c.draft);
+                const draft = c && findDraft(move.person, c.draft);
                 return draft ? (
                   <Button
                     key={`copy-${p}`}

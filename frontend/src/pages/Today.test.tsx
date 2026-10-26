@@ -3,61 +3,110 @@ import userEvent from "@testing-library/user-event";
 
 import { App } from "@/App";
 import { ToastHost } from "@/components/Toast";
-import { SIGNED_IN, STATS, TODAY, move } from "@/test/fixtures";
+import type { MoveCard, S } from "@/api/hooks";
+import { SIGNED_IN, STATS, TODAY, company, move, person, summary } from "@/test/fixtures";
 import { mockApi, renderApp } from "@/test/render";
 
 const today = (groups: unknown[], extra: object = {}) => ({
-  body: { today: TODAY, groups, overdue: 0, more: 0, done_today: [], waiting: [], waiting_total: 0, ...extra },
+  body: {
+    today: TODAY,
+    groups,
+    overdue: 0,
+    more: 0,
+    done_today: [],
+    waiting: [],
+    waiting_total: 0,
+    looms: [],
+    ...extra,
+  },
 });
 
+function moveOut(card: MoveCard): S["MoveOut"] {
+  const out: Partial<MoveCard> = { ...card };
+  delete out.company;
+  delete out.person;
+  return out as S["MoveOut"];
+}
+const reachOut = moveOut(move());
+const detail: S["CompanyDetail"] = {
+  ...summary(),
+  website: "https://northwind.example",
+  linkedin: null,
+  notes: "",
+  research: { pmf_reason: "Makes made-up widgets for testing." },
+  people: [person()],
+  moves: [reachOut],
+  activity: [],
+};
+const applyMove = move({
+  id: "a1",
+  type: "apply",
+  title: "Apply: GTM Engineer",
+  person: null,
+  person_id: null,
+  sequence: null,
+  url: "https://jobs.example/1",
+});
+
+function firstSent(panel: HTMLElement): HTMLElement {
+  const [email] = within(panel).getAllByRole("button", { name: "Sent" });
+  if (!email) throw new Error("no Sent button");
+  return email;
+}
+
 describe("Today", () => {
-  it("lists the day's moves by group with what each needs", async () => {
+  it("shows one card per company, with an email and a LinkedIn tick for each person", async () => {
     mockApi({
       ...SIGNED_IN,
       "GET /api/stats": { body: STATS },
       "GET /api/today": today([
-        {
-          key: "apply",
-          label: "Apply",
-          moves: [
-            move({
-              id: "a1",
-              type: "apply",
-              title: "Apply: GTM Engineer",
-              person: null,
-              person_id: null,
-              sequence: null,
-              url: "https://jobs.example/1",
-            }),
-          ],
-        },
-        { key: "reach_out", label: "Reach out: email and LinkedIn request", moves: [move()] },
+        { key: "apply", label: "Apply", moves: [applyMove] },
+        { key: "reach_out", label: "Reach out", moves: [move()] },
       ]),
     });
     renderApp(<App />);
-    expect(await screen.findByRole("heading", { name: /2 moves today/ })).toBeInTheDocument();
-    const reachOut = screen.getByRole("region", { name: "Reach out: email and LinkedIn request" });
-    expect(within(reachOut).getByText("Email and connect with Priya Example")).toBeInTheDocument();
-    expect(within(reachOut).getByRole("button", { name: "Copy email" })).toBeInTheDocument();
-    expect(within(reachOut).getByText("Toronto")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open posting" })).toHaveAttribute("href", "https://jobs.example/1");
+    expect(await screen.findByRole("heading", { name: /1 company today/ })).toBeInTheDocument();
+    const card = screen.getByRole("button", { name: /Northwind Labs/ });
+    expect(within(card).getByText("Priya Example")).toBeInTheDocument();
+    expect(within(card).getByText("0 of 2 sent")).toBeInTheDocument();
+    expect(within(card).getByLabelText("Email to send")).toBeInTheDocument();
+    expect(within(card).getByText("Apply")).toBeInTheDocument();
     expect(await screen.findByText("Sending")).toBeInTheDocument();
-    expect(screen.getByText("4 days")).toBeInTheDocument();
   });
 
-  it("ticks a step and asks for the list again", async () => {
+  it("opens the company and ticks the email as sent", async () => {
     const calls = mockApi({
       ...SIGNED_IN,
       "GET /api/stats": { body: STATS },
       "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": { body: detail },
       "POST /api/moves/m1/steps": { body: move() },
     });
     renderApp(<App />);
-    await userEvent.click(await screen.findByRole("button", { name: "Emailed" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
+    expect(within(panel).getByText("Makes made-up widgets for testing.")).toBeInTheDocument();
+    expect(within(panel).getByText("Score 4.2")).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: "priya@northwind.example" })).toBeInTheDocument();
+    await userEvent.click(firstSent(panel));
+    await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/moves/m1/steps")).toBe(true));
     const tick = calls.find((c) => c.path === "/api/moves/m1/steps");
     expect(tick?.body).toEqual({ step: "email", value: "today" });
     expect(tick?.headers.get("X-CSRF-Token")).toBe("token");
-    await vi.waitFor(() => expect(calls.filter((c) => c.path === "/api/today").length).toBeGreaterThan(1));
+  });
+
+  it("lists Loom requests until the Loom is sent", async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([], { looms: [{ person: person(), company: company() }] }),
+      "PATCH /api/people/p1": { body: person() },
+    });
+    renderApp(<App />);
+    const looms = await screen.findByRole("region", { name: "Loom requests" });
+    expect(within(looms).getByText("Priya Example")).toBeInTheDocument();
+    await userEvent.click(within(looms).getByRole("button", { name: "Loom sent" }));
+    await vi.waitFor(() => expect(calls.find((c) => c.path === "/api/people/p1")?.body).toEqual({ loom: "sent" }));
   });
 
   it("offers to pull work forward when the day is clear", async () => {
@@ -77,6 +126,7 @@ describe("Today", () => {
       ...SIGNED_IN,
       "GET /api/stats": { body: STATS },
       "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": { body: detail },
       "POST /api/moves/m1/steps": { status: 409, body: { detail: "A step can't be done in the future." } },
     });
     renderApp(
@@ -85,7 +135,9 @@ describe("Today", () => {
         <ToastHost />
       </>,
     );
-    await userEvent.click(await screen.findByRole("button", { name: "Emailed" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
+    await userEvent.click(firstSent(panel));
     expect(await screen.findByRole("alert")).toHaveTextContent("A step can't be done in the future.");
   });
 
@@ -97,7 +149,7 @@ describe("Today", () => {
     });
     renderApp(<App />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your progress");
-    expect(screen.getByText("Email and connect with Priya Example")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Northwind Labs/ })).toBeInTheDocument();
   });
 
   it("says the day is done when the daily limit is reached", async () => {

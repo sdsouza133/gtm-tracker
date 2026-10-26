@@ -637,6 +637,8 @@ export interface components {
             /** Domain */
             domain: string | null;
             stage: components["schemas"]["Stage"];
+            /** Score */
+            score: number | null;
             /** Open Role */
             open_role: string | null;
             /** Job Url */
@@ -688,6 +690,8 @@ export interface components {
             /** Domain */
             domain: string | null;
             stage: components["schemas"]["Stage"];
+            /** Score */
+            score: number | null;
             /** Open Role */
             open_role: string | null;
             /** Job Url */
@@ -702,8 +706,6 @@ export interface components {
             wave: string | null;
             /** Rank */
             rank: number | null;
-            /** Score */
-            score: number | null;
             /** Hq */
             hq: string | null;
             /** Employees */
@@ -767,6 +769,8 @@ export interface components {
             /** Domain */
             domain: string | null;
             stage: components["schemas"]["Stage"];
+            /** Score */
+            score: number | null;
             /** Open Role */
             open_role: string | null;
             /** Job Url */
@@ -781,8 +785,6 @@ export interface components {
             wave: string | null;
             /** Rank */
             rank: number | null;
-            /** Score */
-            score: number | null;
             /** Hq */
             hq: string | null;
             /** Employees */
@@ -966,6 +968,14 @@ export interface components {
         LoginBody: {
             /** Password */
             password: string;
+        };
+        /**
+         * LoomAsk
+         * @description Someone who asked for a Loom video, and where they work.
+         */
+        LoomAsk: {
+            person: components["schemas"]["PersonOut"];
+            company: components["schemas"]["CompanyBrief"] | null;
         };
         /** Me */
         Me: {
@@ -1210,6 +1220,11 @@ export interface components {
             left?: boolean | null;
             /** Ab Variant */
             ab_variant?: ("A" | "B") | null;
+            /**
+             * Loom
+             * @description They asked for a Loom video; it's sent
+             */
+            loom?: ("asked" | "sent") | null;
         };
         /**
          * PersonStatus
@@ -1804,7 +1819,7 @@ export interface components {
             overdue: number;
             /**
              * More
-             * @description Moves from the last week held back for another day by the daily limit
+             * @description Companies held back for another day by the daily limit
              */
             more: number;
             /** Done Today */
@@ -1813,6 +1828,8 @@ export interface components {
             waiting: components["schemas"]["MoveCard"][];
             /** Waiting Total */
             waiting_total: number;
+            /** Looms */
+            looms: components["schemas"]["LoomAsk"][];
         };
         /** TouchChange */
         TouchChange: {
