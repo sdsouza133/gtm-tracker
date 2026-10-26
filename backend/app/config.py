@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     database_url: str = Field(description="SQLAlchemy URL, for example postgresql+psycopg://user:pass@host/db")
     # The one user's password, as an argon2 hash (make one with `python -m app.cli hash-password`).
     password_hash: SecretStr | None = None
+    # No login at all: anyone with the address can use the tracker. Has to be turned on on purpose; a missing
+    # password never opens the app.
+    open_access: bool = False
     # Signs nothing by itself; mixed into session token hashing so a leaked database can't be replayed elsewhere.
     secret_key: SecretStr = Field(min_length=32)
     timezone: str = "America/Toronto"

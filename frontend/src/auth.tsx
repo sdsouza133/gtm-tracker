@@ -5,6 +5,8 @@ import { api, setCsrfToken, unwrap } from "@/api/client";
 
 type Auth = {
   signedIn: boolean;
+  /** The server runs without a login (OPEN_ACCESS): nothing to sign out of. */
+  openAccess: boolean;
   loading: boolean;
   /** The server couldn't say who's signed in (down, or the network dropped). */
   failed: boolean;
@@ -45,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
   const value: Auth = {
     signedIn: me.data?.signed_in ?? false,
+    openAccess: me.data?.open_access ?? false,
     loading: me.isPending,
     failed: me.isError,
     retry: () => void me.refetch(),

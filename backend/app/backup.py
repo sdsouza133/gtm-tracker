@@ -38,8 +38,13 @@ def snapshot(session: Session) -> None:
         session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
 
 
+FILL_LOCK = 7_204_312  # one restore or import at a time
+
+
 def is_empty(session: Session) -> bool:
-    """Nothing in any table a backup or import would fill."""
+    """Nothing in any table a backup or import would fill. Takes a lock held until the transaction ends, so two
+    restores can't both find the database empty and both fill it."""
+    session.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": FILL_LOCK})
     return not any(session.scalar(select(exists().select_from(t))) for t in tables())
 
 

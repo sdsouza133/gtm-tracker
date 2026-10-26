@@ -3,6 +3,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from app.auth import SignedIn
+from app.config import get_settings
 from app.main import create_app
 from tests.conftest import PASSWORD
 
@@ -20,7 +21,7 @@ def test_security_headers_on_every_response(client: TestClient) -> None:
 
 
 def test_signed_out_by_default(client: TestClient) -> None:
-    assert client.get("/api/auth/me").json() == {"signed_in": False, "csrf": None}
+    assert client.get("/api/auth/me").json() == {"signed_in": False, "csrf": None, "open_access": False}
 
 
 def test_wrong_password_is_refused(client: TestClient) -> None:
@@ -130,6 +131,7 @@ PROTECTED = [
     ("GET", "/api/fx/prospects/x1"),
     ("PATCH", "/api/fx/prospects/x1"),
     ("GET", "/api/export"),
+    ("POST", "/api/restore"),
 ]
 
 
@@ -154,3 +156,12 @@ def test_every_api_route_is_covered_above() -> None:
     ids = {"c1": "{company_id}", "p1": "{person_id}", "m1": "{move_id}", "x1": "{prospect_id}"}
     covered = {(m, "/".join(ids.get(part, part) for part in p.split("/"))) for m, p in PROTECTED}
     assert routes == covered
+
+
+def test_open_access_lets_everyone_in_but_only_when_turned_on(client: TestClient) -> None:
+    assert client.get("/api/companies").status_code == 401
+    open_settings = get_settings().model_copy(update={"open_access": True})
+    client.app.dependency_overrides[get_settings] = lambda: open_settings  # type: ignore[attr-defined]
+    assert client.get("/api/auth/me").json() == {"signed_in": True, "csrf": None, "open_access": True}
+    assert client.get("/api/companies").status_code == 200
+    assert client.post("/api/companies", json={"name": "Open Example"}).status_code == 201  # no CSRF needed
