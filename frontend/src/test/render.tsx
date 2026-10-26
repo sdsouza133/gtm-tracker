@@ -8,7 +8,8 @@ import { makeQueryClient } from "@/queryClient";
 
 type Route = { status?: number; body: unknown; headers?: Record<string, string> };
 
-/** Stubs fetch with a map of "METHOD /path" to responses, and records every request. */
+/** Stubs fetch with a map of "METHOD /path" to responses, and records every request. A body that's a function is
+ * called on each request, for a response that changes after some other call. */
 export function mockApi(routes: Record<string, Route>) {
   const calls: { method: string; path: string; search: URLSearchParams; body: unknown; headers: Headers }[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -25,7 +26,8 @@ export function mockApi(routes: Record<string, Route>) {
     });
     const route = routes[`${request.method} ${path}`];
     if (!route) return new Response(JSON.stringify({ detail: "Not found" }), { status: 404 });
-    return new Response(JSON.stringify(route.body), {
+    const body: unknown = typeof route.body === "function" ? (route.body as () => unknown)() : route.body;
+    return new Response(JSON.stringify(body), {
       status: route.status ?? 200,
       headers: { "Content-Type": "application/json", ...route.headers },
     });

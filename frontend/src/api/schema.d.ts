@@ -634,8 +634,8 @@ export interface paths {
         put?: never;
         /**
          * Enrich Today
-         * @description Get the companies on Today ready before they're opened. Each person is only looked up once, so calling this
-         *     again costs nothing.
+         * @description Get the companies on Today ready before they're opened. Only companies with someone not yet looked up count
+         *     toward the batch, so each call reaches further down the list, and calling it again costs nothing.
          */
         post: operations["enrich_today_api_enrich_today_post"];
         delete?: never;

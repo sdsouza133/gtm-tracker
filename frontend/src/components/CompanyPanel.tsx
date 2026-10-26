@@ -6,6 +6,7 @@ import {
   type Move,
   type Person,
   type Step,
+  lookupFailed,
   useCompany,
   useEnrichCompany,
   useReply,
@@ -77,7 +78,9 @@ function Channel({
 const linkClass =
   "inline-flex min-h-[34px] items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink";
 
-function PersonCard({ person, move, looking }: { person: Person; move: Move | undefined; looking: boolean }) {
+type Lookup = { looking: boolean; failed: boolean; retry: () => void };
+
+function PersonCard({ person, move, lookup }: { person: Person; move: Move | undefined; lookup: Lookup }) {
   const tick = useTickStep();
   const update = useUpdateMove();
   const reply = useReply();
@@ -119,9 +122,22 @@ function PersonCard({ person, move, looking }: { person: Person; move: Move | un
                 {person.email}
               </a>
             ) : (
-              <span className="px-2.5 text-sm text-muted">
-                {looking ? "Looking up the email…" : person.details["apollo_tried"] ? "No email found" : "No email yet"}
-              </span>
+              <>
+                <span aria-live="polite" className={`px-2.5 text-sm ${lookup.failed ? "text-bad" : "text-muted"}`}>
+                  {lookup.looking
+                    ? "Looking up the email…"
+                    : person.details["apollo_tried"]
+                      ? "No email found"
+                      : lookup.failed
+                        ? "Couldn't look up the email"
+                        : "No email yet"}
+                </span>
+                {lookup.failed && !person.details["apollo_tried"] && (
+                  <Button variant="quiet" disabled={lookup.looking} onClick={lookup.retry}>
+                    Try again
+                  </Button>
+                )}
+              </>
             )}
             {emailDraft && (
               <Button variant="quiet" onClick={() => void copy(emailDraft, "Email")}>
@@ -192,6 +208,7 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
       enrich.mutate(id);
     }
   }, [missing, id, enrich]);
+  const lookup = { looking: enrich.isPending, failed: lookupFailed(enrich.error), retry: () => enrich.mutate(id) };
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   useEffect(() => {
@@ -316,7 +333,7 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                 {people.length ? (
                   <div className="flex flex-col gap-3">
                     {people.map((p) => (
-                      <PersonCard key={p.id} person={p} move={reachFor(p.id)} looking={enrich.isPending} />
+                      <PersonCard key={p.id} person={p} move={reachFor(p.id)} lookup={lookup} />
                     ))}
                   </div>
                 ) : (

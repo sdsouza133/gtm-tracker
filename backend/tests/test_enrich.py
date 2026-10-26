@@ -5,12 +5,13 @@ from typing import Any
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.api.enrich import get_finder
 from app.config import get_settings
 from app.enrich.apollo import Apollo, ApolloError, work_email
-from app.models import MoveType
+from app.models import MoveType, Person
 from tests import factories as f
 from tests.conftest import TODAY
 
@@ -84,6 +85,35 @@ def test_today_gets_its_companies_ready(signed_in: TestClient, db: Session, apol
     assert signed_in.post("/api/enrich/today").json() == {"tried": 1, "found": 1, "companies": 1}
 
 
+def test_today_reaches_past_companies_already_looked_up(
+    signed_in: TestClient, db: Session, apollo: FakeApollo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.api.enrich.TODAY_COMPANIES", 1)
+    for name, who in (("Acme Example", "Ana Example"), ("Bolt Example", "Bo Example")):
+        c = f.company(db, name=name, domain=f"{name.split()[0].lower()}.example")
+        f.person(db, c, name=who, day0=TODAY)
+        f.move(db, c, type=MoveType.APPLY, due=TODAY)
+    assert signed_in.post("/api/enrich/today").json()["tried"] == 1
+    assert signed_in.post("/api/enrich/today").json()["tried"] == 1  # the next company, not the first one again
+    assert sorted(apollo.calls) == ["Ana Example", "Bo Example"]
+    assert signed_in.post("/api/enrich/today").json() == {"tried": 0, "found": 0, "companies": 0}
+
+
+def test_an_email_typed_in_during_the_lookup_wins(signed_in: TestClient, db: Session, apollo: FakeApollo) -> None:
+    c = f.company(db, domain="acme.example")
+    ana, _ = f.person(db, c, name="Ana Example")
+    db.flush()
+
+    def typed_meanwhile(**_: Any) -> dict[str, Any]:
+        db.execute(update(Person).where(Person.id == ana.id).values(email="typed@acme.example"))
+        return {"email": "ana@acme.example"}
+
+    apollo.match = typed_meanwhile  # type: ignore[method-assign]
+    assert signed_in.post(f"/api/companies/{c.id}/enrich").json()["found"] == 0
+    db.refresh(ana)
+    assert (ana.email, ana.details["apollo_tried"]) == ("typed@acme.example", TODAY.isoformat())
+
+
 def test_no_emails_while_the_tracker_is_open_or_apollo_isnt_set_up(signed_in: TestClient, db: Session) -> None:
     c = f.company(db)
     settings = get_settings()
@@ -112,4 +142,30 @@ def test_the_client_asks_for_work_emails_only() -> None:
     assert sent[0].headers["X-Api-Key"] == "test-key"
     assert "test-key" not in str(sent[0].url)
     with pytest.raises(ApolloError, match="429"):
+        client.organization("acme.example")
+
+
+def test_the_client_only_trusts_sure_matches() -> None:
+    sent: list[httpx2.Request] = []
+
+    def api(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        return httpx2.Response(200, json={"person": {"email": "x@acme.example", "match_confidence": "low"}})
+
+    client = Apollo("test-key", transport=httpx2.MockTransport(api))
+    assert client.match(name="Ana Example", domain=None, linkedin=None) is None  # a name alone isn't asked about
+    assert sent == []
+    assert client.match(name="Ana Example", domain="acme.example", linkedin=None) is None  # Apollo wasn't sure
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        lambda r: (_ for _ in ()).throw(httpx2.ReadTimeout("slow", request=r)),
+        lambda _: httpx2.Response(200, text="<html>oops</html>"),
+    ],
+)
+def test_the_client_turns_timeouts_and_garbage_into_apollo_errors(reply: Any) -> None:
+    client = Apollo("test-key", transport=httpx2.MockTransport(reply))
+    with pytest.raises(ApolloError):
         client.organization("acme.example")

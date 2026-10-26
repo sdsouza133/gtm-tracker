@@ -11,6 +11,7 @@ import httpx2
 API = "https://api.apollo.io/api/v1"
 TIMEOUT_S = 30
 LOCKED = "email_not_unlocked"  # Apollo's placeholder when the plan can't show an email
+WEAK = {"low", "none"}  # match_confidence values too unsure to put an email on someone
 
 
 class ApolloError(RuntimeError):
@@ -35,21 +36,33 @@ class Apollo:
         )
 
     def _call(self, method: str, path: str, **kw: Any) -> dict[str, Any]:
-        r = self.client.request(method, path, **kw)
+        try:
+            r = self.client.request(method, path, **kw)
+        except httpx2.RequestError as e:  # timeouts and dropped connections
+            raise ApolloError(f"Apollo unreachable: {type(e).__name__}") from e
         if r.status_code >= 400:  # noqa: PLR2004
             raise ApolloError(f"Apollo {r.status_code}: {r.text[:200]}")
-        body = r.json()
+        try:
+            body = r.json()
+        except ValueError as e:
+            raise ApolloError("Apollo sent back something that isn't JSON.") from e
         return body if isinstance(body, dict) else {}
 
     def match(self, *, name: str, domain: str | None, linkedin: str | None) -> dict[str, Any] | None:
-        """The person Apollo matches, or None. A LinkedIn profile matches best; name and domain are the fallback."""
+        """The person Apollo matches, or None. A LinkedIn profile matches best; name and domain are the fallback. A name
+        alone isn't asked about, and a match Apollo itself is unsure of is dropped, so a stranger's email never lands on
+        someone."""
+        if not domain and not linkedin:
+            return None
         body: dict[str, Any] = {"name": name, "reveal_personal_emails": False, "reveal_phone_number": False}
         if domain:
             body["domain"] = domain
         if linkedin:
             body["linkedin_url"] = linkedin
         person = self._call("POST", "/people/match", json=body).get("person")
-        return person if isinstance(person, dict) else None
+        if not isinstance(person, dict) or str(person.get("match_confidence") or "").lower() in WEAK:
+            return None
+        return person
 
     def organization(self, domain: str) -> dict[str, Any] | None:
         org = self._call("GET", "/organizations/enrich", params={"domain": domain}).get("organization")

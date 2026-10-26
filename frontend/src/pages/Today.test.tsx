@@ -97,11 +97,13 @@ describe("Today", () => {
 
   it("gets Today's companies ready, and looks up a missing email when a company opens", async () => {
     const noEmail = { ...detail, people: [person({ email: null })] };
+    const tried = { ...detail, people: [person({ email: null, details: { apollo_tried: "2026-10-26" } })] };
+    const looked = () => calls.some((c) => c.path === "/api/companies/c1/enrich");
     const calls = mockApi({
       ...SIGNED_IN,
       "GET /api/stats": { body: STATS },
       "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
-      "GET /api/companies/c1": { body: noEmail },
+      "GET /api/companies/c1": { body: () => (looked() ? tried : noEmail) },
       "POST /api/enrich/today": { body: { tried: 0, found: 0, companies: 1 } },
       "POST /api/companies/c1/enrich": { body: { tried: 1, found: 0, companies: 1 } },
     });
@@ -109,7 +111,25 @@ describe("Today", () => {
     await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/enrich/today")).toBe(true));
     await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
     await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/companies/c1/enrich")).toBe(true));
+    expect(await screen.findByText("No email found")).toBeInTheDocument();
     expect(calls.filter((c) => c.path === "/api/companies/c1/enrich")).toHaveLength(1);
+  });
+
+  it("says when an email lookup fails, and lets you try again", async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": { body: { ...detail, people: [person({ email: null })] } },
+      "POST /api/enrich/today": { status: 409, body: { detail: "Apollo isn't set up (APOLLO_API_KEY)." } },
+      "POST /api/companies/c1/enrich": { status: 502, body: { detail: "Apollo is down" } },
+    });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    expect(await screen.findByText("Couldn't look up the email")).toBeInTheDocument();
+    expect(screen.queryByText(/APOLLO_API_KEY/)).not.toBeInTheDocument(); // "not set up yet" stays quiet
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await vi.waitFor(() => expect(calls.filter((c) => c.path === "/api/companies/c1/enrich")).toHaveLength(2));
   });
 
   it("lists Loom requests until the Loom is sent", async () => {

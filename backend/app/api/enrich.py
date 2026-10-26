@@ -8,9 +8,10 @@ from app.api.companies import get_company
 from app.auth import AppSettings, DbSession, SignedIn
 from app.clock import Today
 from app.enrich.apollo import Apollo, Finder
+from app.models import Company
 from app.schemas import EnrichOut
 from app.services import today as today_service
-from app.services.enrich import enrich_company
+from app.services.enrich import enrich_company, needs_lookup
 
 router = APIRouter(prefix="/api", tags=["enrich"], dependencies=[SignedIn])
 
@@ -40,17 +41,18 @@ def enrich_one(company_id: str, session: DbSession, today: Today, apollo: Apollo
 
 @router.post("/enrich/today")
 def enrich_today(session: DbSession, settings: AppSettings, today: Today, apollo: ApolloFinder) -> EnrichOut:
-    """Get the companies on Today ready before they're opened. Each person is only looked up once, so calling this
-    again costs nothing."""
+    """Get the companies on Today ready before they're opened. Only companies with someone not yet looked up count
+    toward the batch, so each call reaches further down the list, and calling it again costs nothing."""
     built = today_service.build(session, settings, today)
-    seen: list[str] = []
+    todo: list[Company] = []
     for _, moves in built.groups:
         for m in moves:
-            if m.company is not None and m.company.id not in seen:
-                seen.append(m.company.id)
+            c = m.company
+            if c is not None and c not in todo and needs_lookup(c):
+                todo.append(c)
     tried = found = 0
-    for cid in seen[:TODAY_COMPANIES]:
-        done = enrich_company(session, get_company(session, cid), apollo, today)
+    for c in todo[:TODAY_COMPANIES]:
+        done = enrich_company(session, c, apollo, today)
         tried, found = tried + done.tried, found + done.found
         session.commit()
-    return EnrichOut(tried=tried, found=found, companies=min(len(seen), TODAY_COMPANIES))
+    return EnrichOut(tried=tried, found=found, companies=min(len(todo), TODAY_COMPANIES))

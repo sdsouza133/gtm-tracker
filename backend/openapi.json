@@ -1792,7 +1792,7 @@
      "enrich"
     ],
     "summary": "Enrich Today",
-    "description": "Get the companies on Today ready before they're opened. Each person is only looked up once, so calling this\nagain costs nothing.",
+    "description": "Get the companies on Today ready before they're opened. Only companies with someone not yet looked up count\ntoward the batch, so each call reaches further down the list, and calling it again costs nothing.",
     "operationId": "enrich_today_api_enrich_today_post",
     "responses": {
      "200": {

@@ -6,7 +6,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.enrich.apollo import ApolloError, Finder, work_email
-from app.models import Company
+from app.models import Company, Person
 from app.services.history import record
 
 
@@ -17,36 +17,54 @@ class Enriched:
     about: bool  # whether "what they do" was filled in
 
 
+def to_look_up(person: Person) -> bool:
+    return not (person.left or person.email or person.details.get("apollo_tried"))
+
+
+def about_missing(company: Company) -> bool:
+    research = company.research or {}
+    return bool(company.domain) and not research.get("pmf_reason") and not research.get("apollo_tried")
+
+
+def needs_lookup(company: Company) -> bool:
+    """Someone at the company still to look up, or "what they do" still to fill in."""
+    return about_missing(company) or any(to_look_up(p) for p in company.people)
+
+
 def enrich_company(session: Session, company: Company, apollo: Finder, today: date) -> Enriched:
     """Look each person up once (a miss isn't retried every time the company opens), and the company if research left
     "what they do" blank."""
     tried = found = 0
     for person in company.people:
-        if person.left or person.email or person.details.get("apollo_tried"):
+        if not to_look_up(person):
             continue
         try:
             hit = apollo.match(name=person.name, domain=company.domain, linkedin=person.linkedin)
         except ApolloError:
             break  # Apollo is down or out of credits: stop, and try the rest another time
         tried += 1
-        details = {**person.details, "apollo_tried": today.isoformat()}
         email = work_email(hit)
-        if email:
+        session.refresh(person, with_for_update=True)  # an email typed in during the lookup wins
+        details = {**person.details, "apollo_tried": today.isoformat()}
+        if email and not person.email:
             person.email = email
             details |= {"email_source": "apollo", "email_status": str((hit or {}).get("email_status") or "")}
             found += 1
         person.details = details
 
     about = False
-    research = company.research or {}
-    if company.domain and not research.get("pmf_reason") and not research.get("apollo_tried"):
+    if company.domain and about_missing(company):
         try:
             org = apollo.organization(company.domain) or {}
         except ApolloError:
             org = None
         if org is not None:
             text = str(org.get("short_description") or "").strip()
-            company.research = {**research, "apollo_tried": today.isoformat(), "apollo_about": text[:1500]}
+            company.research = {
+                **(company.research or {}),
+                "apollo_tried": today.isoformat(),
+                "apollo_about": text[:1500],
+            }
             about = bool(text)
 
     if found:

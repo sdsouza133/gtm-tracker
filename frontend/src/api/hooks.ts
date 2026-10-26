@@ -143,12 +143,20 @@ export function useReply() {
   );
 }
 
-/** Finding work emails with Apollo. Quiet: it runs on its own in the background, and a "not set up yet" isn't news. */
+/** Finding work emails with Apollo. It runs on its own in the background, so a 409 ("not set up yet") stays quiet;
+ * anything else says what went wrong. */
+export const NOT_SET_UP = 409;
+
+/** Whether a lookup failed for a reason worth showing (not just "Apollo isn't switched on yet"). */
+export function lookupFailed(error: Error | null): boolean {
+  return error !== null && !(error instanceof ApiError && error.status === NOT_SET_UP);
+}
+
 function useEnrich<TVars>(fn: (vars: TVars) => Promise<S["EnrichOut"]>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: fn,
-    meta: { quiet: true },
+    meta: { quiet: NOT_SET_UP },
     onSuccess: (r) =>
       r.tried ? Promise.all(AFFECTED.map((queryKey) => client.invalidateQueries({ queryKey }))) : undefined,
   });

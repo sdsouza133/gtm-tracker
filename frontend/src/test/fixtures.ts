@@ -78,7 +78,11 @@ export function summary(over: Partial<CompanySummary> = {}): CompanySummary {
   };
 }
 
-export const SIGNED_IN = { "GET /api/auth/me": { body: { signed_in: true, csrf: "token", password_login: true } } };
+export const SIGNED_IN = {
+  "GET /api/auth/me": { body: { signed_in: true, csrf: "token", password_login: true } },
+  // Today looks emails up in the background; by default Apollo isn't switched on, which stays quiet
+  "POST /api/enrich/today": { status: 409, body: { detail: "Turn on sign-in before finding emails." } },
+};
 
 export const STATS: S["StatsOut"] = {
   xp: 52,
