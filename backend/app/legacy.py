@@ -7,13 +7,14 @@ as columns go into each row's JSON (`research` for companies, `details` for peop
 
 import re
 from collections import Counter
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.backup import is_empty
+from app.config import get_settings
 from app.models import (
     Activity,
     Company,
@@ -181,9 +182,23 @@ def person(p: dict[str, Any]) -> Person:
     )
 
 
+def _today() -> date:
+    return datetime.now(get_settings().tz).date()
+
+
+def _finished_at(seq: dict[str, Any]) -> datetime | None:
+    """When a reach ended: the day they replied or it was closed, else its last tick. Noon local time, since the old
+    tracker kept only the day."""
+    days = [_day(seq.get("replied")), _day(seq.get("closed"))]
+    if not any(days):
+        days = [_day(v) for v in (seq.get("steps") or {}).values()]
+    last = max((d for d in days if d), default=None)
+    return datetime.combine(last, time(12), get_settings().tz) if last else None
+
+
 def move(a: dict[str, Any], people: set[str], companies: set[str]) -> Move:
     kind = _enum(MoveType, a.get("type"), MoveType.CUSTOM)
-    due = _day(a.get("due")) or _day(a.get("day0")) or _day(a.get("created_at")) or date.today()  # noqa: DTZ011
+    due = _day(a.get("due")) or _day(a.get("day0")) or _day(a.get("created_at")) or _today()
     m = Move(
         id=a["id"],
         company_id=a.get("company_id") if a.get("company_id") in companies else None,
@@ -202,6 +217,7 @@ def move(a: dict[str, Any], people: set[str], companies: set[str]) -> Move:
     if kind is MoveType.REACH:
         m.sequence.setdefault("day0", due.isoformat())
         m.sequence.setdefault("steps", {})
+        m.done_at = m.done_at or _finished_at(m.sequence)  # a finished reach keeps the day it finished, not today
         refresh(m)  # status, due and next from the ticks, by the new rules
     return m
 
@@ -262,8 +278,8 @@ def magnet(m: dict[str, Any], companies: set[str]) -> Magnet:
 
 def import_legacy(session: Session, export: dict[str, Any], fx: dict[str, Any] | None = None) -> dict[str, int]:
     """Load an old-tracker export into an empty database, in one transaction. Returns what was loaded."""
-    if session.scalar(select(func.count()).select_from(Company)):
-        raise ImportRefusedError("The database already has companies; import into an empty one.")
+    if not is_empty(session):
+        raise ImportRefusedError("The database already has data; import into an empty one.")
     companies = {c["id"]: company(c) for c in export.get("companies", [])}
     seen: set[str] = set()
     for c in sorted(companies.values(), key=lambda c: (c.rank is None, c.rank, c.id)):
@@ -314,13 +330,18 @@ def import_legacy(session: Session, export: dict[str, Any], fx: dict[str, Any] |
 
 def import_prospects(session: Session, fx: dict[str, Any]) -> int:
     """Prospects with their research, plus what was done on each (ticks, notes, drafts)."""
-    rows = []
+    rows, bad = [], []
     for raw in fx.get("prospects", []):
         try:
             item = ProspectIn.model_validate({k: v for k, v in raw.items() if k not in FX_MINE})
-        except ValidationError:
-            continue  # a malformed research row; it comes back with the next daily sync
+        except ValidationError as e:  # refuse rather than drop it: its ticks and notes exist nowhere else
+            bad.append(f"{raw.get('id', '?')}: {e.errors()[0]['loc']} {e.errors()[0]['msg']}")
+            continue
         rows.append((item, {k: raw[k] for k in FX_MINE if k in raw}))
+    if bad:
+        raise ImportRefusedError(
+            f"{len(bad)} prospect(s) can't be read; fix them and import again: " + "; ".join(bad[:5])
+        )
     fx_board.sync(session, [item for item, _ in rows])
     session.flush()
     for item, mine in rows:

@@ -9,10 +9,10 @@ from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import Date, DateTime, Table, func, insert, select, text
+from sqlalchemy import Date, DateTime, Engine, Table, exists, insert, select, text
 from sqlalchemy.orm import Session
 
-from app.models import Base, Company
+from app.models import Base
 
 VERSION = 1
 SKIP = frozenset({"login_sessions", "login_attempts"})
@@ -29,8 +29,23 @@ def _plain(value: Any) -> Any:
     return value
 
 
+def snapshot(session: Session) -> None:
+    """Read every table from one snapshot, so a row added mid-download can't appear without its parent. Ends the
+    request's read transaction and starts a repeatable-read one. A session bound to a connection that already has its
+    own transaction (the tests) keeps it."""
+    if isinstance(session.get_bind(), Engine):
+        session.commit()
+        session.connection(execution_options={"isolation_level": "REPEATABLE READ"})
+
+
+def is_empty(session: Session) -> bool:
+    """Nothing in any table a backup or import would fill."""
+    return not any(session.scalar(select(exists().select_from(t))) for t in tables())
+
+
 def stream(session: Session) -> Iterator[str]:
     """The backup, a piece at a time, so a large tracker never sits whole in memory."""
+    snapshot(session)
     yield json.dumps({"version": VERSION, "exported_at": datetime.now(UTC).isoformat()})[:-1]
     for table in tables():
         yield f', "{table.name}": ['
@@ -49,8 +64,8 @@ class RestoreRefusedError(RuntimeError):
 def restore(session: Session, backup: dict[str, Any]) -> dict[str, int]:
     if backup.get("version") != VERSION:
         raise RestoreRefusedError(f"This backup is version {backup.get('version')}; this app reads version {VERSION}.")
-    if session.scalar(select(func.count()).select_from(Company)):
-        raise RestoreRefusedError("The database already has companies; restore into an empty one.")
+    if not is_empty(session):
+        raise RestoreRefusedError("The database already has data; restore into an empty one.")
     counts = {}
     for table in tables():
         rows = [_typed(table, r) for r in backup.get(table.name, [])]

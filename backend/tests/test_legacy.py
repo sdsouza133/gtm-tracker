@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.backup import RestoreRefusedError, restore, stream, tables
+from app.config import get_settings
 from app.legacy import ImportRefusedError, import_legacy
 from app.models import Activity, Company, Move, MoveStatus, Person, Prospect, RadarItem, Setting, Stage
 from tests import factories as f
@@ -187,7 +188,6 @@ def legacy_fx() -> dict[str, Any]:
                 "status": "open",
                 "my_notes": "Warm",
             },
-            {"id": "bad id!", "day": "2026-10-26", "rank": 2, "name": "Broken"},
         ],
     }
 
@@ -216,6 +216,10 @@ def test_imports_the_first_tracker(db: Session) -> None:
     reach = db.get(Move, "rp1")
     assert reach is not None
     assert (reach.status, reach.sequence["next"]) == (MoveStatus.DONE, "replied")
+    assert reach.done_at is not None
+    assert (
+        reach.done_at.astimezone(get_settings().tz).isoformat() == "2026-10-22T12:00:00-04:00"
+    )  # the day they replied
     rp2 = db.get(Move, "rp2")
     assert rp2 is not None
     assert rp2.sequence["next"] == "email+request"
@@ -233,6 +237,17 @@ def test_imports_the_first_tracker(db: Session) -> None:
     assert p is not None
     assert (p.mine["touches"], p.mine["my_notes"]) == ({"ana": {"connect": "2026-10-26"}}, "Warm")
     with pytest.raises(ImportRefusedError):
+        import_legacy(db, legacy_export())
+
+
+def test_refuses_a_database_with_data_or_a_prospect_it_cant_read(db: Session) -> None:
+    broken = {"prospects": [{"id": "bad id!", "day": "2026-10-26", "rank": 2, "name": "Broken"}]}
+    with pytest.raises(ImportRefusedError, match="bad id!"):  # its ticks and notes would be lost, so nothing loads
+        import_legacy(db, legacy_export(), broken)
+    db.rollback()
+    db.add(Setting(key="videos", value=[]))
+    db.flush()
+    with pytest.raises(ImportRefusedError, match="already has data"):
         import_legacy(db, legacy_export())
 
 

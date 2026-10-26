@@ -1,9 +1,11 @@
 import { clsx } from "clsx";
 import { CalendarDays, Columns3, Download, LogOut, Radar, Sparkles, Sun, Users } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { useAuth } from "@/auth";
+import { notify } from "@/components/Toast";
 
 const NAV = [
   { to: "/", label: "Today", icon: Sun, end: true },
@@ -14,8 +16,38 @@ const NAV = [
   { to: "/fractional", label: "Fractional", icon: Sparkles },
 ];
 
+/** Fetch the backup first, so a lapsed session shows the sign-in page instead of saving an error as the "backup". */
+function useDownloadBackup() {
+  const client = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const download = async () => {
+    setBusy(true);
+    try {
+      const r = await fetch(new Request(`${window.location.origin}/api/export`, { credentials: "same-origin" }));
+      if (r.status === 401) {
+        client.setQueryData(["me"], { signed_in: false, csrf: null });
+        return;
+      }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const name = /filename="([^"]+)"/.exec(r.headers.get("content-disposition") ?? "")?.[1] ?? "gtm-tracker.json";
+      const url = URL.createObjectURL(await r.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      notify("Couldn't download the backup. Try again.", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return { download, busy };
+}
+
 export function Layout() {
   const { logout } = useAuth();
+  const backup = useDownloadBackup();
   const [signOutFailed, setSignOutFailed] = useState(false);
   const signOut = () => {
     setSignOutFailed(false);
@@ -54,14 +86,15 @@ export function Layout() {
             </NavLink>
           ))}
         </div>
-        <a
-          href="/api/export"
-          download
-          className="flex min-h-[40px] w-fit items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink md:mt-auto md:w-auto"
+        <button
+          type="button"
+          onClick={() => void backup.download()}
+          disabled={backup.busy}
+          className="flex min-h-[40px] w-fit items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink disabled:opacity-60 md:mt-auto md:w-auto"
         >
           <Download size={16} aria-hidden="true" />
-          Download backup
-        </a>
+          {backup.busy ? "Preparing backup…" : "Download backup"}
+        </button>
         <button
           type="button"
           onClick={signOut}
