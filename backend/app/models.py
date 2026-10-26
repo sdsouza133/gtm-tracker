@@ -268,7 +268,7 @@ class RadarItem(Timestamps, Base):
 
 
 class Prospect(Timestamps, Base):
-    """A funded startup to pitch for fractional GTM engineering: the research, plus what Sunny did about it."""
+    """A funded startup to pitch for fractional GTM engineering: the research, plus what you did about it."""
 
     __tablename__ = "prospects"
 

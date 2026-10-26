@@ -123,6 +123,12 @@ PROTECTED = [
     ("POST", "/api/activity"),
     ("GET", "/api/settings"),
     ("PATCH", "/api/settings"),
+    ("GET", "/api/fx/board"),
+    ("GET", "/api/fx/pipeline"),
+    ("GET", "/api/fx/prospects"),
+    ("PUT", "/api/fx/prospects"),
+    ("GET", "/api/fx/prospects/x1"),
+    ("PATCH", "/api/fx/prospects/x1"),
 ]
 
 
@@ -144,6 +150,6 @@ def test_every_api_route_is_covered_above() -> None:
     routes = {
         (method.upper(), path) for path, ops in paths.items() for method in ops if not path.startswith("/api/auth/")
     }
-    ids = {"c1": "{company_id}", "p1": "{person_id}", "m1": "{move_id}"}
+    ids = {"c1": "{company_id}", "p1": "{person_id}", "m1": "{move_id}", "x1": "{prospect_id}"}
     covered = {(m, "/".join(ids.get(part, part) for part in p.split("/"))) for m, p in PROTECTED}
     assert routes == covered

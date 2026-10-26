@@ -210,3 +210,57 @@ export function useUpdateSettings() {
     },
   });
 }
+
+// ----------------------------------------------------------------------------- fractional
+
+export type ProspectCard = S["ProspectCard"];
+export type ProspectDetail = S["ProspectDetail"];
+export type FxShow = "all" | "untouched" | "in_play" | "closed";
+
+export const fxKeys = {
+  all: ["fx"] as const,
+  board: ["fx", "board"] as const,
+  pipeline: ["fx", "pipeline"] as const,
+  list: (filters: object) => ["fx", "list", filters] as const,
+  one: (id: string) => ["fx", "one", id] as const,
+};
+
+export function useFxBoard() {
+  return useQuery({ queryKey: fxKeys.board, queryFn: async () => unwrap(await api.GET("/api/fx/board")) });
+}
+
+export function useFxPipeline() {
+  return useQuery({ queryKey: fxKeys.pipeline, queryFn: async () => unwrap(await api.GET("/api/fx/pipeline")) });
+}
+
+export function useFxProspects(filters: { q?: string; show: FxShow; offset: number }) {
+  return useQuery({
+    queryKey: fxKeys.list(filters),
+    queryFn: async () => unwrap(await api.GET("/api/fx/prospects", { params: { query: { ...filters, limit: 100 } } })),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useFxProspect(id: string | null) {
+  return useQuery({
+    queryKey: fxKeys.one(id ?? ""),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/fx/prospects/{prospect_id}", { params: { path: { prospect_id: id ?? "" } } })),
+    enabled: id !== null,
+  });
+}
+
+/** Changes to a prospect. Text fields (notes, draft) update the open prospect in place without refetching lists. */
+export function useUpdateProspect() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...body }: { id: string } & S["ProspectPatch"]) =>
+      unwrap(await api.PATCH("/api/fx/prospects/{prospect_id}", { params: { path: { prospect_id: id } }, body })),
+    onSuccess: (data, vars) => {
+      client.setQueryData(fxKeys.one(data.id), data);
+      const textOnly = Object.keys(vars).every((k) => k === "id" || k === "my_notes" || k === "draft");
+      if (!textOnly) return client.invalidateQueries({ queryKey: fxKeys.all, refetchType: "active" });
+      return undefined;
+    },
+  });
+}
