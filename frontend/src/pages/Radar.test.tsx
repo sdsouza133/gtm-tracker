@@ -97,6 +97,10 @@ describe("Radar", () => {
         keywords: ["GTM Engineer"],
       }),
     );
+    const usd = screen.getByLabelText(/Lowest pay, USD/);
+    await userEvent.clear(usd);
+    expect(usd).toHaveValue(null); // stays empty, so `required` blocks the save instead of sending 0
+    expect(usd).toBeInvalid();
     await userEvent.click(screen.getByRole("button", { name: /Add/ }));
     await waitFor(() => expect(calls.some((c) => c.path === "/api/radar/items/li-1/add")).toBe(true));
   });

@@ -53,7 +53,7 @@ NEEDS_US = re.compile(
     r"|\bmust (?:be )?(?:located|based|reside|live) in the (?:u\.?s\.?a?|united states)\b"
     r"|\b(?:u\.?s\.?|united states) residents? only\b"
     r"|currently (?:based|located|residing) in the (?:u\.?s\.?a?|united states)\b"
-    r"|\bremote\s*[(\-:,]\s*(?:u\.?s\.?a?|united states)\b(?!\s*(?:or|/|and|,)\s*canada)",
+    r"|\bremote\s*[(\-:,]?\s*(?:u\.?s\.?a?|united states)\b(?!\s*(?:or|/|and|,)\s*canada)",
     re.IGNORECASE,
 )
 CANADA = re.compile(
@@ -62,7 +62,8 @@ CANADA = re.compile(
 )
 REMOTE = re.compile(r"\bremote\b", re.IGNORECASE)
 SALARY = re.compile(
-    r"(?:US|CA)?\$\s?\d{2,3}(?:,\d{3}|[kK])(?:\.\d+)?\s*(?:-|–|to)\s*(?:US|CA)?\$?\s?\d{2,3}(?:,\d{3}|[kK])(?:\.\d+)?",
+    r"(?:US|CA)?\$\s?(?:\d{2,3}(?:,\d{3}|[kK])|\d{5,6})(?:\.\d+)?\s*(?:-|–|to)\s*(?:US|CA)?\$?\s?"
+    r"(?:\d{2,3}(?:,\d{3}|[kK])|\d{5,6})(?:\.\d+)?",
     re.IGNORECASE,
 )
 CORE = re.compile(
@@ -73,7 +74,7 @@ CORE = re.compile(
 NOT_CORE = re.compile(r"\b(analyst|administrator|admin|specialist|coordinator|intern)\b", re.IGNORECASE)
 COUNTRY_WIDE = re.compile(r"^\s*(united states|usa?|u\.s\.a?\.?|north america|americas|anywhere)\s*$", re.IGNORECASE)
 ONSITE = re.compile(r"\b(on-?sites?|in[- ]office|in person|hybrid|relocat\w*)\b", re.IGNORECASE)
-_AMOUNT = r"(\d{2,3}(?:,\d{3})?(?:\.\d+)?)\s*([kK])?"
+_AMOUNT = r"(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{2,7}(?:\.\d+)?)\s*([kK])?"  # "120,000", "120000", "120k", "62.50"
 # a money amount, and the other end of a range when it follows ("CA$120,000-150,000", "$90k to $140k")
 MONEY = re.compile(
     rf"(CA\$|C\$|CAD|US\$|USD|\$)\s?{_AMOUNT}(?:\s*(?:-|–|to)\s*(?:CA\$|C\$|CAD|US\$|USD|\$)?\s?{_AMOUNT})?"

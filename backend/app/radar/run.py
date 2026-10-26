@@ -15,13 +15,14 @@ A Postgres advisory lock makes sure only one pass runs at a time, across every c
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import Connection, Engine, func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -218,7 +219,8 @@ def check_board(web: boards.Http, c: dict[str, Any], today: date, min_fit: int, 
         res.board["ats"],  # type: ignore[index]
         res.board["slug"].lower(),  # type: ignore[index]
     )
-    closed = [p for p in prev_posts if same_board and p["url"] not in current]
+    # only the board's own postings can close; a LinkedIn posting added from the radar was never on it
+    closed = [p for p in prev_posts if same_board and p["url"] not in current and "linkedin.com/" not in p["url"]]
     return BoardCheck(res.as_jobs(seen, first_seen, today), new, closed)
 
 
@@ -493,18 +495,33 @@ class Tools:
     apify: sources.Runner | None
 
 
+@contextmanager
+def pass_lock(factory: sessionmaker[Session]) -> Iterator[bool]:
+    """Take the advisory lock for one pass; yields whether it was free. The lock belongs to a database connection, so
+    one connection holds it for the whole pass and unlocks it: a session would hand its connection back to the pool
+    at each commit. That connection autocommits, so no transaction stays open while the pass runs."""
+    bind = factory.kw.get("bind")
+    if isinstance(bind, Connection):  # tests: every session shares one connection already
+        held: AbstractContextManager[Connection] = nullcontext(bind)
+    elif isinstance(bind, Engine):
+        held = bind.connect().execution_options(isolation_level="AUTOCOMMIT")
+    else:
+        raise TypeError("the radar needs a session factory bound to an engine")
+    with held as conn:
+        got = bool(conn.scalar(text("SELECT pg_try_advisory_lock(:k)"), {"k": LOCK_KEY}))
+        try:
+            yield got
+        finally:
+            if got:
+                conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": LOCK_KEY})
+
+
 def run_once(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigger: str) -> bool:
     """One full pass. Returns False when another pass holds the lock."""
-    with factory() as lock_session:
-        if not lock_session.scalar(text("SELECT pg_try_advisory_lock(:k)"), {"k": LOCK_KEY}):
-            return False
-        lock_session.commit()  # the lock belongs to the connection; no transaction stays open during the pass
-        try:
+    with pass_lock(factory) as got:
+        if got:
             _run(factory, settings, tools, trigger)
-        finally:
-            lock_session.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": LOCK_KEY})
-            lock_session.commit()
-    return True
+    return got
 
 
 def _run(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigger: str) -> None:

@@ -8,6 +8,7 @@ from app.radar.fit import (
     fits,
     flags_for,
     pay_ok,
+    salary_in,
     title_score,
     web_url,
     workable_from_toronto,
@@ -42,6 +43,7 @@ def test_core_roles() -> None:
     [
         ("Remote", "", True),
         ("Remote - US", "", False),  # US-only remote: needs US residency
+        ("Remote US", "", False),
         ("Remote - US or Canada", "", True),
         ("Toronto, ON", "", True),
         ("New York, NY (On-site)", "", False),
@@ -62,6 +64,8 @@ def test_workable_from_toronto(location: str, text: str, ok: bool) -> None:
         ("CA$110,000-130,000", False, False),
         ("CA$120,000-150,000", False, True),  # the top of the range counts even without its own sign
         ("$90,000 - 140,000", False, True),
+        ("$85000 - $95000", False, False),  # no thousands separator: still 95,000, not 950,000
+        ("$120000-$140000", False, True),
         ("$140,000 - $150,000", True, True),  # a plain "$" in Canada is CAD: 150K CAD clears the CAD floor
         ("$120,000 - $130,000", True, False),
         ("$60/hr", False, True),
@@ -93,6 +97,11 @@ def test_config_from_setting_ignores_unknown_and_empty_values() -> None:
 def test_flags() -> None:
     assert flags_for("Toronto, ON", "") == ["canada"]
     assert flags_for("New York", "We're a remote-first team. Must be a US citizen.") == ["remote", "us_only"]
+
+
+def test_salary_in_text() -> None:
+    assert salary_in("Base pay: $85000 - $95000 a year") == "$85000 - $95000"
+    assert salary_in("Pay is $120K to $140K plus equity") == "$120K to $140K"
 
 
 def test_web_url_keeps_only_http_links() -> None:

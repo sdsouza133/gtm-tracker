@@ -49,6 +49,9 @@ def tracked(db: Session, today: date, **kw: Any) -> Company:
 
 def test_a_new_board_posting_becomes_an_apply_move(db: Session, factory: sessionmaker[Session], today: date) -> None:
     c = tracked(db, today)
+    linkedin = {"title": "GTM Engineer", "url": "https://www.linkedin.com/jobs/view/123", "fit": 3, "posted": ""}
+    jobs = c.research["jobs"]
+    c.research = {**c.research, "jobs": {**jobs, "postings": [*jobs["postings"], linkedin]}}  # added from the radar
     f.move(
         db,
         c,
@@ -71,7 +74,7 @@ def test_a_new_board_posting_becomes_an_apply_move(db: Session, factory: session
     assert (status.value["running"], status.value["summary"]["tracked_new"], status.value["summary"]["closed"]) == (
         False,
         1,
-        1,
+        1,  # the LinkedIn posting was never on the board, so it didn't close
     )
     assert status.value["last_run_date"] == today.isoformat()
     lines = db.scalars(select(Activity.text).where(Activity.kind == "radar")).all()
@@ -160,6 +163,31 @@ def test_only_one_pass_at_a_time(db: Session, factory: sessionmaker[Session], co
     finally:
         connection.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": radar.LOCK_KEY})
     assert db.get(Setting, "radar_status") is None
+
+
+def test_the_lock_stays_on_one_connection_for_the_whole_pass(connection: Connection) -> None:
+    engine = connection.engine
+    factory = sessionmaker(bind=engine)
+
+    def held() -> bool:  # asked from a connection of its own
+        with engine.connect() as c:
+            return bool(
+                c.scalar(
+                    text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND objid = :k AND granted"),
+                    {"k": radar.LOCK_KEY},
+                )
+            )
+
+    with radar.pass_lock(factory) as got:
+        assert got
+        for _ in range(3):  # the pass's sessions check connections out of the pool and back in
+            with factory() as s:
+                s.execute(text("SELECT 1"))
+                s.commit()
+        assert held()
+        with radar.pass_lock(factory) as again:
+            assert again is False
+    assert not held()
 
 
 def test_due_after_the_hour_once_a_day(db: Session) -> None:

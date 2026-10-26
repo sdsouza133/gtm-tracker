@@ -139,9 +139,9 @@ function Settings({ data }: { data: RadarState }) {
   const c = data.config;
   const [keywords, setKeywords] = useState(c.keywords.join(", "));
   const [locations, setLocations] = useState(c.locations.join(", "));
-  const [hour, setHour] = useState(c.hour);
-  const [minUsd, setMinUsd] = useState(c.min_usd);
-  const [minCad, setMinCad] = useState(c.min_cad);
+  const [hour, setHour] = useState(String(c.hour)); // strings, so a cleared field stays empty and `required` stops the save
+  const [minUsd, setMinUsd] = useState(String(c.min_usd));
+  const [minCad, setMinCad] = useState(String(c.min_cad));
   const [flags, setFlags] = useState({
     core_only: c.core_only,
     toronto_ok: c.toronto_ok,
@@ -156,7 +156,14 @@ function Settings({ data }: { data: RadarState }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     save.mutate(
-      { keywords: list(keywords), locations: list(locations), hour, min_usd: minUsd, min_cad: minCad, ...flags },
+      {
+        keywords: list(keywords),
+        locations: list(locations),
+        hour: Number(hour),
+        min_usd: Number(minUsd),
+        min_cad: Number(minCad),
+        ...flags,
+      },
       { onSuccess: () => notify("Radar settings saved") },
     );
   };
@@ -185,7 +192,7 @@ function Settings({ data }: { data: RadarState }) {
           min={0}
           max={23}
           value={hour}
-          onChange={(e) => setHour(Number(e.target.value))}
+          onChange={(e) => setHour(e.target.value)}
         />
       </label>
       <label className="flex flex-col gap-1 text-[13px] font-medium text-muted">
@@ -197,7 +204,7 @@ function Settings({ data }: { data: RadarState }) {
           min={0}
           step={1000}
           value={minUsd}
-          onChange={(e) => setMinUsd(Number(e.target.value))}
+          onChange={(e) => setMinUsd(e.target.value)}
         />
       </label>
       <label className="flex flex-col gap-1 text-[13px] font-medium text-muted">
@@ -209,7 +216,7 @@ function Settings({ data }: { data: RadarState }) {
           min={0}
           step={1000}
           value={minCad}
-          onChange={(e) => setMinCad(Number(e.target.value))}
+          onChange={(e) => setMinCad(e.target.value)}
         />
       </label>
       {toggles.map(([key, label]) => (
