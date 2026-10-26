@@ -123,6 +123,12 @@ def domain_of(url: str) -> str:
     return u.split("/")[0].split("?")[0]
 
 
+def web_url(url: str | None) -> str:
+    """The link if it's http(s), else "": job data comes from outside and ends up in an href."""
+    u = (url or "").strip()
+    return u[:1000] if re.match(r"https?://", u, re.IGNORECASE) else ""
+
+
 def linkedin_slug(url: str) -> str:
     m = re.search(r"linkedin\.com/company/([^/?#]+)", url or "")
     return urllib.parse.unquote(m.group(1)).lower() if m else ""

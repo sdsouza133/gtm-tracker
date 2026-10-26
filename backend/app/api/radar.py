@@ -17,7 +17,7 @@ from app.db import session_factory
 from app.models import Company, Move, MoveType, RadarItem, Stage
 from app.radar import run as radar
 from app.radar.boards import BOARD_URL
-from app.radar.fit import RadarConfig, domain_of
+from app.radar.fit import RadarConfig, domain_of, web_url
 from app.schemas import HiringPost, RadarAdded, RadarConfigOut, RadarConfigPatch, RadarItemOut, RadarOut
 from app.services.history import record
 
@@ -161,11 +161,11 @@ def add(item_id: str, session: DbSession, today: Today, runtime: RadarRuntime) -
             domain=domain
             if domain and not radar.Index(list(session.scalars(select(Company)))).keys.get(("d", domain))
             else None,
-            website=(j.get("website") or None),
-            linkedin=(j.get("company_linkedin") or None),
+            website=web_url(j.get("website")) or None,
+            linkedin=web_url(j.get("company_linkedin")) or None,
             employees=str(j.get("employees") or "") or None,
             open_role=item.title[:300],
-            job_url=item.url[:1000],
+            job_url=web_url(item.url) or None,
             posted=item.posted,
             wave="radar",
             stage=Stage.NOT_STARTED,

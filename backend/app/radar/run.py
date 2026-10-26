@@ -28,7 +28,7 @@ from app.config import Settings
 from app.models import Company, Move, MoveStatus, MoveType, ParkedWhy, RadarItem, Setting, Stage
 from app.radar import boards, sources
 from app.radar.apify import Apify
-from app.radar.fit import RadarConfig, domain_of, fits, is_overseas, linkedin_slug, norm
+from app.radar.fit import RadarConfig, domain_of, fits, is_overseas, linkedin_slug, norm, web_url
 from app.services.history import record
 
 log = logging.getLogger("gtm_tracker.radar")
@@ -146,12 +146,12 @@ def _unpark(session: Session, c: Company, why: str) -> None:
 def apply_if_new(session: Session, c: Company, title: str, url: str, today: date, why: str) -> bool:
     """An Apply move for today, unless one is open for the company or this role was handled before (same link, or the
     same title: reposts get new links)."""
-    t = norm(title)
+    t, url = norm(title), web_url(url)
     for m in session.scalars(select(Move).where(Move.company_id == c.id, Move.type == MoveType.APPLY)):
         if m.status is MoveStatus.OPEN or m.url == url or norm(m.title.removeprefix("Apply: ")) == t:
             return False
     session.add(
-        Move(company_id=c.id, type=MoveType.APPLY, title=f"Apply: {title}"[:500], due=today, notes=why, url=url[:1000])
+        Move(company_id=c.id, type=MoveType.APPLY, title=f"Apply: {title}"[:500], due=today, notes=why, url=url or None)
     )
     return True
 
@@ -343,7 +343,7 @@ def _apply_found_jobs(session: Session, found: Searches, today: date, summary: d
                 id=item_id,
                 company=(j["company"] or "")[:200],
                 title=(j["title"] or "")[:300],
-                url=(j["url"] or "")[:1000],
+                url=web_url(j["url"]),
                 posted=date.fromisoformat(j["posted"]) if j.get("posted") else None,
                 fit=j["fit"],
                 state="new",
@@ -560,7 +560,7 @@ def find_board_for(factory: sessionmaker[Session], web: boards.Http, company_id:
         )
         move = session.get(Move, move_id)
         if direct and move is not None and move.status is MoveStatus.OPEN:
-            move.url = direct["url"]
+            move.url = web_url(direct["url"]) or move.url
             move.notes = f"Direct link on their {found.board['ats'].title()} board. {move.notes}".strip()
         record(session, "research", f"{c.name}: job board found ({found.board['ats']})", company_id=c.id)
         session.commit()

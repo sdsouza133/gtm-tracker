@@ -15,6 +15,7 @@ import {
 import { notify } from "@/components/Toast";
 import { Button, Card, Chip, EmptyState, PageHeader } from "@/components/ui";
 import { formatDateTimeDay, formatDay, formatTime } from "@/lib/format";
+import { safeUrl } from "@/lib/safe";
 
 const FIT_LABEL: Record<number, string> = { 3: "The role", 2: "Next door", 1: "Worth a look" };
 const field = "min-h-[38px] rounded-lg border border-line bg-surface px-3 text-sm";
@@ -78,9 +79,18 @@ function InboxRow({ item }: { item: RadarItem }) {
     <article className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-start">
       <div className="min-w-0 flex-1">
         <p className="text-[15px]">
-          <a href={item.url} target="_blank" rel="noreferrer" className="font-semibold text-ink hover:underline">
-            {item.title}
-          </a>
+          {safeUrl(item.url) ? (
+            <a
+              href={safeUrl(item.url)}
+              target="_blank"
+              rel="noreferrer"
+              className="font-semibold text-ink hover:underline"
+            >
+              {item.title}
+            </a>
+          ) : (
+            <span className="font-semibold text-ink">{item.title}</span>
+          )}
           <span className="text-muted"> · {item.company}</span>
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-muted">
@@ -272,7 +282,7 @@ export function RadarPage() {
               <article key={p.id} className="flex flex-col gap-1 px-4 py-3">
                 <p className="text-sm">
                   <a
-                    href={p.author_url || p.url}
+                    href={safeUrl(p.author_url) ?? safeUrl(p.url)}
                     target="_blank"
                     rel="noreferrer"
                     className="font-semibold hover:underline"
@@ -287,9 +297,9 @@ export function RadarPage() {
                   )}
                 </p>
                 <p className="line-clamp-3 text-[13px] text-body">{p.text}</p>
-                {p.url && (
+                {safeUrl(p.url) && (
                   <a
-                    href={p.url}
+                    href={safeUrl(p.url)}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex w-fit items-center gap-1 text-[13px] text-accent hover:underline"

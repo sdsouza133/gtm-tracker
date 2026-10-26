@@ -2,7 +2,16 @@
 
 import pytest
 
-from app.radar.fit import RadarConfig, core_role, fits, flags_for, pay_ok, title_score, workable_from_toronto
+from app.radar.fit import (
+    RadarConfig,
+    core_role,
+    fits,
+    flags_for,
+    pay_ok,
+    title_score,
+    web_url,
+    workable_from_toronto,
+)
 
 CFG = RadarConfig()
 
@@ -82,3 +91,10 @@ def test_config_from_setting_ignores_unknown_and_empty_values() -> None:
 def test_flags() -> None:
     assert flags_for("Toronto, ON", "") == ["canada"]
     assert flags_for("New York", "We're a remote-first team. Must be a US citizen.") == ["remote", "us_only"]
+
+
+def test_web_url_keeps_only_http_links() -> None:
+    assert web_url(" https://jobs.example/1 ") == "https://jobs.example/1"
+    assert web_url("HTTP://jobs.example") == "HTTP://jobs.example"
+    assert web_url("javascript:alert(1)") == ""
+    assert web_url(None) == ""
