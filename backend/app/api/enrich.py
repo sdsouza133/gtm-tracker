@@ -3,6 +3,8 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.api.companies import get_company
 from app.auth import AppSettings, DbSession, SignedIn
@@ -41,15 +43,15 @@ def enrich_one(company_id: str, session: DbSession, today: Today, apollo: Apollo
 
 @router.post("/enrich/today")
 def enrich_today(session: DbSession, settings: AppSettings, today: Today, apollo: ApolloFinder) -> EnrichOut:
-    """Get the companies on Today ready before they're opened. Only companies with someone not yet looked up count
-    toward the batch, so each call reaches further down the list, and calling it again costs nothing."""
+    """Get the companies on Today ready before they're opened. A company counts toward the batch while someone there is
+    still to look up, or while "what they do" is blank and Apollo hasn't been asked about the company yet. So each call
+    reaches further down the list, and once everything has been tried it costs nothing."""
     built = today_service.build(session, settings, today)
-    todo: list[Company] = []
-    for _, moves in built.groups:
-        for m in moves:
-            c = m.company
-            if c is not None and c not in todo and needs_lookup(c):
-                todo.append(c)
+    ids = list(dict.fromkeys(m.company_id for _, moves in built.groups for m in moves if m.company_id))
+    # everyone at those companies in one query, not one per company
+    loaded = session.scalars(select(Company).where(Company.id.in_(ids)).options(selectinload(Company.people))).all()
+    by_id = {c.id: c for c in loaded}
+    todo = [by_id[i] for i in ids if i in by_id and needs_lookup(by_id[i])]
     tried = found = 0
     for c in todo[:TODAY_COMPANIES]:
         done = enrich_company(session, c, apollo, today)

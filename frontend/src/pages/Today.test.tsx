@@ -124,10 +124,17 @@ describe("Today", () => {
       "POST /api/enrich/today": { status: 409, body: { detail: "Apollo isn't set up (APOLLO_API_KEY)." } },
       "POST /api/companies/c1/enrich": { status: 502, body: { detail: "Apollo is down" } },
     });
-    renderApp(<App />);
+    renderApp(
+      <>
+        <App />
+        <ToastHost />
+      </>,
+    );
+    await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/enrich/today")).toBe(true));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(); // Today's 409, "not set up yet", stays quiet
     await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
     expect(await screen.findByText("Couldn't look up the email")).toBeInTheDocument();
-    expect(screen.queryByText(/APOLLO_API_KEY/)).not.toBeInTheDocument(); // "not set up yet" stays quiet
+    expect(await screen.findByRole("alert")).toHaveTextContent("Apollo is down"); // anything else says so
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
     await vi.waitFor(() => expect(calls.filter((c) => c.path === "/api/companies/c1/enrich")).toHaveLength(2));
   });

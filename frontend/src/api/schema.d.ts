@@ -634,8 +634,9 @@ export interface paths {
         put?: never;
         /**
          * Enrich Today
-         * @description Get the companies on Today ready before they're opened. Only companies with someone not yet looked up count
-         *     toward the batch, so each call reaches further down the list, and calling it again costs nothing.
+         * @description Get the companies on Today ready before they're opened. A company counts toward the batch while someone there is
+         *     still to look up, or while "what they do" is blank and Apollo hasn't been asked about the company yet. So each call
+         *     reaches further down the list, and once everything has been tried it costs nothing.
          */
         post: operations["enrich_today_api_enrich_today_post"];
         delete?: never;

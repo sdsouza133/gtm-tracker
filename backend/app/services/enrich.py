@@ -18,7 +18,10 @@ class Enriched:
 
 
 def to_look_up(person: Person) -> bool:
-    return not (person.left or person.email or person.details.get("apollo_tried"))
+    """Still in play, no email yet, not tried yet, and something to find them by: a LinkedIn profile or the company's
+    domain. A name alone isn't sent to Apollo or marked tried, so adding either later lets them be looked up."""
+    findable = bool(person.linkedin or person.company.domain)
+    return findable and not (person.left or person.email or person.details.get("apollo_tried"))
 
 
 def about_missing(company: Company) -> bool:
@@ -58,7 +61,8 @@ def enrich_company(session: Session, company: Company, apollo: Finder, today: da
             org = apollo.organization(company.domain) or {}
         except ApolloError:
             org = None
-        if org is not None:
+        session.refresh(company, ["research"], with_for_update=True)  # research edited during the lookup wins
+        if org is not None and about_missing(company):
             text = str(org.get("short_description") or "").strip()
             company.research = {
                 **(company.research or {}),

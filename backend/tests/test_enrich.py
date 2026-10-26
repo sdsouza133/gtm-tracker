@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.enrich import get_finder
 from app.config import get_settings
 from app.enrich.apollo import Apollo, ApolloError, work_email
-from app.models import MoveType, Person
+from app.models import Company, MoveType, Person
 from tests import factories as f
 from tests.conftest import TODAY
 
@@ -105,13 +105,48 @@ def test_an_email_typed_in_during_the_lookup_wins(signed_in: TestClient, db: Ses
     db.flush()
 
     def typed_meanwhile(**_: Any) -> dict[str, Any]:
-        db.execute(update(Person).where(Person.id == ana.id).values(email="typed@acme.example"))
+        # behind the session's back, as another request would: only a re-read sees it
+        db.execute(
+            update(Person).where(Person.id == ana.id).values(email="typed@acme.example"),
+            execution_options={"synchronize_session": False},
+        )
         return {"email": "ana@acme.example"}
 
     apollo.match = typed_meanwhile  # type: ignore[method-assign]
     assert signed_in.post(f"/api/companies/{c.id}/enrich").json()["found"] == 0
     db.refresh(ana)
     assert (ana.email, ana.details["apollo_tried"]) == ("typed@acme.example", TODAY.isoformat())
+
+
+def test_someone_with_nothing_to_find_them_by_waits_until_there_is(
+    signed_in: TestClient, db: Session, apollo: FakeApollo
+) -> None:
+    c = f.company(db, domain=None)
+    ana, _ = f.person(db, c, name="Ana Example")
+    db.flush()
+    assert signed_in.post(f"/api/companies/{c.id}/enrich").json()["tried"] == 0
+    db.refresh(ana)
+    assert "apollo_tried" not in ana.details
+    ana.linkedin = "https://www.linkedin.com/in/ana-example"
+    db.flush()
+    assert signed_in.post(f"/api/companies/{c.id}/enrich").json() == {"tried": 1, "found": 1, "companies": 1}
+
+
+def test_research_edited_during_the_company_lookup_wins(signed_in: TestClient, db: Session, apollo: FakeApollo) -> None:
+    c = f.company(db, domain="acme.example")
+    db.flush()
+
+    def edited_meanwhile(domain: str) -> dict[str, Any]:
+        db.execute(
+            update(Company).where(Company.id == c.id).values(research={"pmf_reason": "Typed by hand."}),
+            execution_options={"synchronize_session": False},
+        )
+        return {"short_description": "From Apollo."}
+
+    apollo.organization = edited_meanwhile  # type: ignore[method-assign]
+    signed_in.post(f"/api/companies/{c.id}/enrich")
+    db.refresh(c)
+    assert c.research == {"pmf_reason": "Typed by hand."}
 
 
 def test_no_emails_while_the_tracker_is_open_or_apollo_isnt_set_up(signed_in: TestClient, db: Session) -> None:
