@@ -2,6 +2,9 @@
 
 from datetime import date
 
+import httpx2
+import pytest
+
 from app.radar import boards
 from tests.radar_fakes import FakeWeb, ashby, ashby_job
 
@@ -110,3 +113,17 @@ def test_slug_guesses() -> None:
     guesses = boards.slug_guesses("Acme Labs Inc", "getacme.io")
     assert guesses[:3] == ["acme", "getacme", "acmelabsinc"]
     assert "acmehq" in guesses
+
+
+def test_the_real_network_reaches_only_public_addresses() -> None:
+    def site(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/careers":  # a public page that redirects inward
+            return httpx2.Response(302, headers={"Location": "http://169.254.169.254/latest/meta-data/"})
+        return httpx2.Response(200, text="ok")
+
+    web = boards.Web(transport=httpx2.MockTransport(site))
+    assert web.text("https://93.184.216.34/") == "ok"
+    for url in ("https://93.184.216.34/careers", "http://127.0.0.1/", "http://10.0.0.5/", "http://localhost/"):
+        with pytest.raises(boards.BlockedURLError):
+            web.text(url)
+    assert boards.boards_on_careers_page(web, "127.0.0.1") == []  # a crafted domain finds nothing, quietly

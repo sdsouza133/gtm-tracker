@@ -6,7 +6,9 @@ company's domain or the board carries the company's name). No API key needed.
 """
 
 import html
+import ipaddress
 import re
+import socket
 import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -46,11 +48,37 @@ class Http(Protocol):
     def text(self, url: str) -> str: ...
 
 
-class Web:
-    """The real network, with a timeout and a size cap on every response."""
+class BlockedURLError(ValueError):
+    """A request to somewhere that isn't the public web."""
 
-    def __init__(self) -> None:
-        self.client = httpx2.Client(timeout=TIMEOUT_S, follow_redirects=True, headers={"User-Agent": USER_AGENT})
+
+def public_only(request: httpx2.Request) -> None:
+    """Refuse a request, or a redirect, to anything but http(s) on a public address. Company domains are typed in by
+    whoever uses the tracker, so a crafted one mustn't reach the server's own network."""
+    url = request.url
+    if url.scheme not in {"http", "https"} or not url.host:
+        raise BlockedURLError(f"blocked: {url}")
+    try:
+        port = url.port or (443 if url.scheme == "https" else 80)
+        infos = socket.getaddrinfo(url.host, port, type=socket.SOCK_STREAM)
+        addresses = {ipaddress.ip_address(str(info[4][0]).split("%")[0]) for info in infos}
+    except (OSError, ValueError):
+        raise BlockedURLError(f"blocked: {url}") from None
+    if not addresses or not all(a.is_global for a in addresses):
+        raise BlockedURLError(f"blocked: {url}")
+
+
+class Web:
+    """The real network, with a timeout and a size cap on every response, and only to public addresses."""
+
+    def __init__(self, transport: httpx2.BaseTransport | None = None) -> None:
+        self.client = httpx2.Client(
+            timeout=TIMEOUT_S,
+            follow_redirects=True,
+            headers={"User-Agent": USER_AGENT},
+            event_hooks={"request": [public_only]},  # runs for every redirect too
+            transport=transport,
+        )
 
     def _get(self, url: str, accept: str) -> bytes:
         with self.client.stream("GET", url, headers={"Accept": accept}) as r:
