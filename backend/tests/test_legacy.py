@@ -5,10 +5,10 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy import Connection, delete, select, text
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.backup import RestoreRefusedError, restore, stream, tables
+from app.backup import FILL_LOCK, RestoreRefusedError, is_empty, restore, stream, tables
 from app.config import get_settings
 from app.legacy import ImportRefusedError, import_legacy
 from app.models import Activity, Company, Move, MoveStatus, Person, Prospect, RadarItem, Setting, Stage
@@ -270,6 +270,15 @@ def test_a_backup_restores_into_an_empty_database(db: Session) -> None:
         restore(db, {**backup, "version": 99})
     with pytest.raises(RestoreRefusedError, match="missing activity"):
         restore(db, {k: v for k, v in backup.items() if k != "activity"})
+
+
+def test_only_one_restore_at_a_time(connection: Connection) -> None:
+    engine = connection.engine
+    with sessionmaker(bind=engine)() as first, engine.connect() as other:
+        is_empty(first)  # a restore has checked and is filling
+        assert other.scalar(text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": FILL_LOCK}) is False
+        first.rollback()  # done: the next restore may check
+        assert other.scalar(text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": FILL_LOCK}) is True
 
 
 def test_backup_download(signed_in: TestClient, db: Session) -> None:
