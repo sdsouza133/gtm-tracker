@@ -20,7 +20,7 @@ def test_health_endpoints(client: TestClient) -> None:
 def test_security_headers_on_every_response(client: TestClient) -> None:
     r = client.get("/healthz")
     assert "default-src 'self'" in r.headers["content-security-policy"]
-    assert "frame-src https://accounts.google.com;" in r.headers["content-security-policy"]  # the sign-in button
+    assert "frame-src https://accounts.google.com/gsi/;" in r.headers["content-security-policy"]  # the sign-in button
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["x-request-id"]
 
@@ -281,3 +281,8 @@ def test_allowed_emails_are_read_as_a_comma_separated_list(monkeypatch: pytest.M
     assert settings.allowed_emails == ["owner@example.com", "second@example.com"]
     assert settings.google_client_id is None
     assert settings.session_days == 180
+
+
+def test_a_blank_password_hash_means_no_password(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PASSWORD_HASH", "  ")
+    assert Settings().password_hash is None

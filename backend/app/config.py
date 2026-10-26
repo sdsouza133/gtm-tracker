@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     def _blank_is_none(cls, value: str | None) -> str | None:
         return (value or "").strip() or None  # GOOGLE_CLIENT_ID= in .env means "not set up"
 
+    @field_validator("password_hash", mode="before")
+    @classmethod
+    def _no_blank_password(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value  # PASSWORD_HASH= means "no password"
+
     @property
     def tz(self) -> ZoneInfo:
         return ZoneInfo(self.timezone)
