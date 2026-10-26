@@ -350,6 +350,86 @@ export interface paths {
         patch: operations["update_settings_api_settings_patch"];
         trace?: never;
     };
+    "/api/fx/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Board
+         * @description Today: follow-ups due, carried over, today's list, reached today, coming up, and progress.
+         */
+        get: operations["board_api_fx_board_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fx/pipeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pipeline */
+        get: operations["pipeline_api_fx_pipeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fx/prospects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Prospects */
+        get: operations["prospects_api_fx_prospects_get"];
+        /**
+         * Sync
+         * @description For the daily research: add new prospects and refresh the research of known ones.
+         */
+        put: operations["sync_api_fx_prospects_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/fx/prospects/{prospect_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One */
+        get: operations["one_api_fx_prospects__prospect_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update
+         * @description Tick a message or a step, close or reopen, move it to another day, or save notes and the draft. Several can go
+         *     in one change (marking it lost with the reason, for example).
+         */
+        patch: operations["update_api_fx_prospects__prospect_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -375,6 +455,17 @@ export interface components {
             move_id: string | null;
             /** Xp */
             xp: number;
+        };
+        /** BadgeOut */
+        BadgeOut: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Earned */
+            earned: boolean;
         };
         /** CompanyBrief */
         CompanyBrief: {
@@ -585,10 +676,111 @@ export interface components {
             /** Body */
             body: string;
         };
+        /** FollowUpOut */
+        FollowUpOut: {
+            /** Step */
+            step: string;
+            /**
+             * Due
+             * Format: date
+             */
+            due: string;
+        };
+        /** FxBoard */
+        FxBoard: {
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /** Goal */
+            goal: number;
+            /** Hits Today */
+            hits_today: number;
+            /** Follow Ups Due */
+            follow_ups_due: components["schemas"]["ProspectCard"][];
+            /** Follow Ups Due Total */
+            follow_ups_due_total: number;
+            /** Follow Ups Later */
+            follow_ups_later: number;
+            /** Carried Over */
+            carried_over: components["schemas"]["ProspectCard"][];
+            /** Carried Over Total */
+            carried_over_total: number;
+            /** Todays List */
+            todays_list: components["schemas"]["ProspectCard"][];
+            /** Reached Today */
+            reached_today: components["schemas"]["ProspectCard"][];
+            /** Coming Up */
+            coming_up: components["schemas"]["ProspectCard"][];
+            /** Coming Up Total */
+            coming_up_total: number;
+            stats: components["schemas"]["FxStats"];
+        };
+        /** FxColumn */
+        FxColumn: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["ProspectCard"][];
+        };
+        /** FxStats */
+        FxStats: {
+            /** Xp */
+            xp: number;
+            level: components["schemas"]["LevelOut"];
+            /** Streak */
+            streak: number;
+            /** Best Streak */
+            best_streak: number;
+            /** Heat */
+            heat: components["schemas"]["HeatDay"][];
+            /** Clients */
+            clients: number;
+            /** Monthly Revenue */
+            monthly_revenue: number;
+            /** Revenue Goal */
+            revenue_goal: number;
+            /** Funnel */
+            funnel: {
+                [key: string]: number;
+            };
+            /** Badges */
+            badges: components["schemas"]["BadgeOut"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** HeatDay */
+        HeatDay: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Hits */
+            hits: number;
+            /** Goal */
+            goal: number;
+        };
+        /** LevelOut */
+        LevelOut: {
+            /** Number */
+            number: number;
+            /** Name */
+            name: string;
+            /** Floor Xp */
+            floor_xp: number;
+            /** Next Xp */
+            next_xp: number | null;
+            /** Next Name */
+            next_name: string | null;
         };
         /** LoginBody */
         LoginBody: {
@@ -735,6 +927,13 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Page[ProspectCard] */
+        Page_ProspectCard_: {
+            /** Items */
+            items: components["schemas"]["ProspectCard"][];
+            /** Total */
+            total: number;
+        };
         /**
          * ParkedWhy
          * @enum {string}
@@ -850,6 +1049,280 @@ export interface components {
              */
             wave?: string;
         };
+        /** ProspectCard */
+        ProspectCard: {
+            /** Id */
+            id: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /**
+             * Effective Day
+             * Format: date
+             */
+            effective_day: string;
+            /** Rank */
+            rank: number;
+            /** Name */
+            name: string;
+            /** Domain */
+            domain: string | null;
+            /** Website */
+            website: string | null;
+            /** Round */
+            round: string;
+            /** Hq */
+            hq: string;
+            /** Employees */
+            employees: string;
+            /** Dmarc */
+            dmarc: string;
+            /** One Liner */
+            one_liner: string;
+            /** Why Now */
+            why_now: string;
+            /** People */
+            people: components["schemas"]["ProspectPerson"][];
+            /** Touched */
+            touched: string[];
+            /** Status */
+            status: string;
+            /** Stage */
+            stage: string;
+            /** Next Step */
+            next_step: string;
+            follow_up: components["schemas"]["FollowUpOut"] | null;
+            /** First Touch */
+            first_touch: string | null;
+            /** Xp */
+            xp: number;
+        };
+        /** ProspectDetail */
+        ProspectDetail: {
+            /** Id */
+            id: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /**
+             * Effective Day
+             * Format: date
+             */
+            effective_day: string;
+            /** Rank */
+            rank: number;
+            /** Name */
+            name: string;
+            /** Domain */
+            domain: string | null;
+            /** Website */
+            website: string | null;
+            /** Round */
+            round: string;
+            /** Hq */
+            hq: string;
+            /** Employees */
+            employees: string;
+            /** Dmarc */
+            dmarc: string;
+            /** One Liner */
+            one_liner: string;
+            /** Why Now */
+            why_now: string;
+            /** People */
+            people: components["schemas"]["ProspectPerson"][];
+            /** Touched */
+            touched: string[];
+            /** Status */
+            status: string;
+            /** Stage */
+            stage: string;
+            /** Next Step */
+            next_step: string;
+            follow_up: components["schemas"]["FollowUpOut"] | null;
+            /** First Touch */
+            first_touch: string | null;
+            /** Xp */
+            xp: number;
+            /** Linkedin */
+            linkedin: string | null;
+            /** Spf */
+            spf: string;
+            /** Fit */
+            fit: string;
+            /** Fit Reason */
+            fit_reason: string;
+            /** Offer */
+            offer: string;
+            /** Pvp */
+            pvp: string;
+            /** Research */
+            research: {
+                [key: string]: unknown;
+            };
+            /** Touches */
+            touches: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            /** Steps */
+            steps: {
+                [key: string]: string;
+            };
+            /** Lost Reason */
+            lost_reason: string;
+            /** My Notes */
+            my_notes: string;
+            /** Draft */
+            draft: string;
+            /** Day Override */
+            day_override: string | null;
+        };
+        /**
+         * ProspectIn
+         * @description One prospect from the daily research. Replaces the research on every sync; never touches what you did.
+         */
+        ProspectIn: {
+            /** Id */
+            id: string;
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Rank */
+            rank: number;
+            /** Name */
+            name: string;
+            /** Domain */
+            domain?: string | null;
+            /** Website */
+            website?: string | null;
+            /** Linkedin */
+            linkedin?: string | null;
+            /**
+             * Hq
+             * @default
+             */
+            hq?: string;
+            /**
+             * Employees
+             * @default
+             */
+            employees?: string;
+            /**
+             * Stage
+             * @default
+             */
+            stage?: string;
+            /**
+             * Round
+             * @default
+             */
+            round?: string;
+            /**
+             * Raised Total
+             * @default
+             */
+            raised_total?: string;
+            /**
+             * Investors
+             * @default
+             */
+            investors?: string;
+            /**
+             * Dmarc
+             * @default
+             */
+            dmarc?: string;
+            /**
+             * Spf
+             * @default
+             */
+            spf?: string;
+            /**
+             * Fit
+             * @default good
+             */
+            fit?: string;
+            /**
+             * Fit Reason
+             * @default
+             */
+            fit_reason?: string;
+            /**
+             * Offer
+             * @default
+             */
+            offer?: string;
+            /**
+             * Pvp
+             * @default
+             */
+            pvp?: string;
+            /**
+             * Why Now
+             * @default
+             */
+            why_now?: string;
+            /** Research */
+            research?: {
+                [key: string]: unknown;
+            };
+            /** People */
+            people?: components["schemas"]["ProspectPerson"][];
+        };
+        /** ProspectPatch */
+        ProspectPatch: {
+            touch?: components["schemas"]["TouchChange"] | null;
+            step?: components["schemas"]["StepChange"] | null;
+            /** Status */
+            status?: ("open" | "won" | "lost" | "skipped") | null;
+            /** Lost Reason */
+            lost_reason?: string | null;
+            /** My Notes */
+            my_notes?: string | null;
+            /** Draft */
+            draft?: string | null;
+            /** Day Override */
+            day_override?: string | null;
+            /** When */
+            when?: string | null;
+        };
+        /** ProspectPerson */
+        ProspectPerson: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Title
+             * @default
+             */
+            title?: string;
+            /** Linkedin */
+            linkedin?: string | null;
+            /**
+             * Location
+             * @default
+             */
+            location?: string;
+            /**
+             * Since
+             * @default
+             */
+            since?: string;
+        };
+        /** ProspectSync */
+        ProspectSync: {
+            /** Prospects */
+            prospects: components["schemas"]["ProspectIn"][];
+        };
         /** Pull */
         Pull: {
             /**
@@ -913,6 +1386,10 @@ export interface components {
             days?: {
                 [key: string]: components["schemas"]["DayBlocks"];
             } | null;
+            /** Fx Goals */
+            fx_goals?: {
+                [key: string]: number;
+            } | null;
         };
         /** Snippets */
         Snippets: {
@@ -973,6 +1450,19 @@ export interface components {
          * @enum {string}
          */
         Step: "email" | "request" | "accepted" | "dm" | "bump";
+        /** StepChange */
+        StepChange: {
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "researched" | "fu1" | "fu2" | "replied" | "call" | "proposal" | "won";
+            /**
+             * On
+             * @default true
+             */
+            on?: boolean;
+        };
         /** StepTick */
         StepTick: {
             step: components["schemas"]["Step"];
@@ -987,6 +1477,13 @@ export interface components {
          * @enum {string}
          */
         Sureness: "confirmed" | "likely" | "guess";
+        /** Synced */
+        Synced: {
+            /** Added */
+            added: number;
+            /** Updated */
+            updated: number;
+        };
         /** TodayGroup */
         TodayGroup: {
             /** Key */
@@ -1013,6 +1510,21 @@ export interface components {
             waiting: components["schemas"]["MoveCard"][];
             /** Waiting Total */
             waiting_total: number;
+        };
+        /** TouchChange */
+        TouchChange: {
+            /** Person */
+            person: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "connect" | "dm" | "email";
+            /**
+             * On
+             * @default true
+             */
+            on?: boolean;
         };
         /** ValidationError */
         ValidationError: {
@@ -1761,6 +2273,179 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    board_api_fx_board_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FxBoard"];
+                };
+            };
+        };
+    };
+    pipeline_api_fx_pipeline_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FxColumn"][];
+                };
+            };
+        };
+    };
+    prospects_api_fx_prospects_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                show?: "all" | "untouched" | "in_play" | "closed";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ProspectCard_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_api_fx_prospects_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProspectSync"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Synced"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    one_api_fx_prospects__prospect_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                prospect_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProspectDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_api_fx_prospects__prospect_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                prospect_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProspectPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProspectDetail"];
                 };
             };
             /** @description Validation Error */

@@ -44,6 +44,7 @@ ignore = [
 "tests/**" = ["S101", "S105", "S106", "PLR2004", "ARG001"]
 "migrations/**" = ["N999"]
 "app/cli.py" = ["PLC0415"]  # each command imports only what it needs, so hash-password runs without a database
+"app/services/fractional.py" = ["PLR2004"]  # the badge thresholds are the rules themselves
 
 [tool.mypy]
 python_version = "3.12"

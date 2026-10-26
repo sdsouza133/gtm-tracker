@@ -1166,6 +1166,275 @@
      }
     }
    }
+  },
+  "/api/fx/board": {
+   "get": {
+    "tags": [
+     "fractional"
+    ],
+    "summary": "Board",
+    "description": "Today: follow-ups due, carried over, today's list, reached today, coming up, and progress.",
+    "operationId": "board_api_fx_board_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/FxBoard"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/fx/pipeline": {
+   "get": {
+    "tags": [
+     "fractional"
+    ],
+    "summary": "Pipeline",
+    "operationId": "pipeline_api_fx_pipeline_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/FxColumn"
+         },
+         "type": "array",
+         "title": "Response Pipeline Api Fx Pipeline Get"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/fx/prospects": {
+   "get": {
+    "tags": [
+     "fractional"
+    ],
+    "summary": "Prospects",
+    "operationId": "prospects_api_fx_prospects_get",
+    "parameters": [
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "name": "show",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "enum": [
+        "all",
+        "untouched",
+        "in_play",
+        "closed"
+       ],
+       "type": "string",
+       "default": "all",
+       "title": "Show"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 200,
+       "minimum": 1,
+       "default": 100,
+       "title": "Limit"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_ProspectCard_"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "put": {
+    "tags": [
+     "fractional"
+    ],
+    "summary": "Sync",
+    "description": "For the daily research: add new prospects and refresh the research of known ones.",
+    "operationId": "sync_api_fx_prospects_put",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProspectSync"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Synced"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/fx/prospects/{prospect_id}": {
+   "get": {
+    "tags": [
+     "fractional"
+    ],
+    "summary": "One",
+    "operationId": "one_api_fx_prospects__prospect_id__get",
+    "parameters": [
+     {
+      "name": "prospect_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Prospect Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProspectDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "tags": [
+     "fractional"
+    ],
+    "summary": "Update",
+    "description": "Tick a message or a step, close or reopen, move it to another day, or save notes and the draft. Several can go\nin one change (marking it lost with the reason, for example).",
+    "operationId": "update_api_fx_prospects__prospect_id__patch",
+    "parameters": [
+     {
+      "name": "prospect_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Prospect Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ProspectPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProspectDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -1239,6 +1508,34 @@
      "xp"
     ],
     "title": "ActivityOut"
+   },
+   "BadgeOut": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "description": {
+      "type": "string",
+      "title": "Description"
+     },
+     "earned": {
+      "type": "boolean",
+      "title": "Earned"
+     }
+    },
+    "type": "object",
+    "required": [
+     "key",
+     "name",
+     "description",
+     "earned"
+    ],
+    "title": "BadgeOut"
    },
    "CompanyBrief": {
     "properties": {
@@ -2093,6 +2390,210 @@
     ],
     "title": "Draft"
    },
+   "FollowUpOut": {
+    "properties": {
+     "step": {
+      "type": "string",
+      "title": "Step"
+     },
+     "due": {
+      "type": "string",
+      "format": "date",
+      "title": "Due"
+     }
+    },
+    "type": "object",
+    "required": [
+     "step",
+     "due"
+    ],
+    "title": "FollowUpOut"
+   },
+   "FxBoard": {
+    "properties": {
+     "today": {
+      "type": "string",
+      "format": "date",
+      "title": "Today"
+     },
+     "goal": {
+      "type": "integer",
+      "title": "Goal"
+     },
+     "hits_today": {
+      "type": "integer",
+      "title": "Hits Today"
+     },
+     "follow_ups_due": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectCard"
+      },
+      "type": "array",
+      "title": "Follow Ups Due"
+     },
+     "follow_ups_due_total": {
+      "type": "integer",
+      "title": "Follow Ups Due Total"
+     },
+     "follow_ups_later": {
+      "type": "integer",
+      "title": "Follow Ups Later"
+     },
+     "carried_over": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectCard"
+      },
+      "type": "array",
+      "title": "Carried Over"
+     },
+     "carried_over_total": {
+      "type": "integer",
+      "title": "Carried Over Total"
+     },
+     "todays_list": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectCard"
+      },
+      "type": "array",
+      "title": "Todays List"
+     },
+     "reached_today": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectCard"
+      },
+      "type": "array",
+      "title": "Reached Today"
+     },
+     "coming_up": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectCard"
+      },
+      "type": "array",
+      "title": "Coming Up"
+     },
+     "coming_up_total": {
+      "type": "integer",
+      "title": "Coming Up Total"
+     },
+     "stats": {
+      "$ref": "#/components/schemas/FxStats"
+     }
+    },
+    "type": "object",
+    "required": [
+     "today",
+     "goal",
+     "hits_today",
+     "follow_ups_due",
+     "follow_ups_due_total",
+     "follow_ups_later",
+     "carried_over",
+     "carried_over_total",
+     "todays_list",
+     "reached_today",
+     "coming_up",
+     "coming_up_total",
+     "stats"
+    ],
+    "title": "FxBoard"
+   },
+   "FxColumn": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectCard"
+      },
+      "type": "array",
+      "title": "Items"
+     }
+    },
+    "type": "object",
+    "required": [
+     "key",
+     "label",
+     "total",
+     "items"
+    ],
+    "title": "FxColumn"
+   },
+   "FxStats": {
+    "properties": {
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "level": {
+      "$ref": "#/components/schemas/LevelOut"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     },
+     "best_streak": {
+      "type": "integer",
+      "title": "Best Streak"
+     },
+     "heat": {
+      "items": {
+       "$ref": "#/components/schemas/HeatDay"
+      },
+      "type": "array",
+      "title": "Heat"
+     },
+     "clients": {
+      "type": "integer",
+      "title": "Clients"
+     },
+     "monthly_revenue": {
+      "type": "integer",
+      "title": "Monthly Revenue"
+     },
+     "revenue_goal": {
+      "type": "integer",
+      "title": "Revenue Goal"
+     },
+     "funnel": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Funnel"
+     },
+     "badges": {
+      "items": {
+       "$ref": "#/components/schemas/BadgeOut"
+      },
+      "type": "array",
+      "title": "Badges"
+     }
+    },
+    "type": "object",
+    "required": [
+     "xp",
+     "level",
+     "streak",
+     "best_streak",
+     "heat",
+     "clients",
+     "monthly_revenue",
+     "revenue_goal",
+     "funnel",
+     "badges"
+    ],
+    "title": "FxStats"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -2105,6 +2606,77 @@
     },
     "type": "object",
     "title": "HTTPValidationError"
+   },
+   "HeatDay": {
+    "properties": {
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day"
+     },
+     "hits": {
+      "type": "integer",
+      "title": "Hits"
+     },
+     "goal": {
+      "type": "integer",
+      "title": "Goal"
+     }
+    },
+    "type": "object",
+    "required": [
+     "day",
+     "hits",
+     "goal"
+    ],
+    "title": "HeatDay"
+   },
+   "LevelOut": {
+    "properties": {
+     "number": {
+      "type": "integer",
+      "title": "Number"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "floor_xp": {
+      "type": "integer",
+      "title": "Floor Xp"
+     },
+     "next_xp": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Xp"
+     },
+     "next_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Name"
+     }
+    },
+    "type": "object",
+    "required": [
+     "number",
+     "name",
+     "floor_xp",
+     "next_xp",
+     "next_name"
+    ],
+    "title": "LevelOut"
    },
    "LoginBody": {
     "properties": {
@@ -2671,6 +3243,27 @@
     ],
     "title": "Page[PersonOut]"
    },
+   "Page_ProspectCard_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectCard"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     }
+    },
+    "type": "object",
+    "required": [
+     "items",
+     "total"
+    ],
+    "title": "Page[ProspectCard]"
+   },
    "ParkedWhy": {
     "type": "string",
     "enum": [
@@ -3073,6 +3666,727 @@
     "type": "object",
     "title": "Promote"
    },
+   "ProspectCard": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day"
+     },
+     "effective_day": {
+      "type": "string",
+      "format": "date",
+      "title": "Effective Day"
+     },
+     "rank": {
+      "type": "integer",
+      "title": "Rank"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain"
+     },
+     "website": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Website"
+     },
+     "round": {
+      "type": "string",
+      "title": "Round"
+     },
+     "hq": {
+      "type": "string",
+      "title": "Hq"
+     },
+     "employees": {
+      "type": "string",
+      "title": "Employees"
+     },
+     "dmarc": {
+      "type": "string",
+      "title": "Dmarc"
+     },
+     "one_liner": {
+      "type": "string",
+      "title": "One Liner"
+     },
+     "why_now": {
+      "type": "string",
+      "title": "Why Now"
+     },
+     "people": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectPerson"
+      },
+      "type": "array",
+      "title": "People"
+     },
+     "touched": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Touched"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "stage": {
+      "type": "string",
+      "title": "Stage"
+     },
+     "next_step": {
+      "type": "string",
+      "title": "Next Step"
+     },
+     "follow_up": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/FollowUpOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "first_touch": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First Touch"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "day",
+     "effective_day",
+     "rank",
+     "name",
+     "domain",
+     "website",
+     "round",
+     "hq",
+     "employees",
+     "dmarc",
+     "one_liner",
+     "why_now",
+     "people",
+     "touched",
+     "status",
+     "stage",
+     "next_step",
+     "follow_up",
+     "first_touch",
+     "xp"
+    ],
+    "title": "ProspectCard"
+   },
+   "ProspectDetail": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day"
+     },
+     "effective_day": {
+      "type": "string",
+      "format": "date",
+      "title": "Effective Day"
+     },
+     "rank": {
+      "type": "integer",
+      "title": "Rank"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain"
+     },
+     "website": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Website"
+     },
+     "round": {
+      "type": "string",
+      "title": "Round"
+     },
+     "hq": {
+      "type": "string",
+      "title": "Hq"
+     },
+     "employees": {
+      "type": "string",
+      "title": "Employees"
+     },
+     "dmarc": {
+      "type": "string",
+      "title": "Dmarc"
+     },
+     "one_liner": {
+      "type": "string",
+      "title": "One Liner"
+     },
+     "why_now": {
+      "type": "string",
+      "title": "Why Now"
+     },
+     "people": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectPerson"
+      },
+      "type": "array",
+      "title": "People"
+     },
+     "touched": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Touched"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "stage": {
+      "type": "string",
+      "title": "Stage"
+     },
+     "next_step": {
+      "type": "string",
+      "title": "Next Step"
+     },
+     "follow_up": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/FollowUpOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "first_touch": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First Touch"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "linkedin": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin"
+     },
+     "spf": {
+      "type": "string",
+      "title": "Spf"
+     },
+     "fit": {
+      "type": "string",
+      "title": "Fit"
+     },
+     "fit_reason": {
+      "type": "string",
+      "title": "Fit Reason"
+     },
+     "offer": {
+      "type": "string",
+      "title": "Offer"
+     },
+     "pvp": {
+      "type": "string",
+      "title": "Pvp"
+     },
+     "research": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Research"
+     },
+     "touches": {
+      "additionalProperties": {
+       "additionalProperties": {
+        "type": "string"
+       },
+       "type": "object"
+      },
+      "type": "object",
+      "title": "Touches"
+     },
+     "steps": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "type": "object",
+      "title": "Steps"
+     },
+     "lost_reason": {
+      "type": "string",
+      "title": "Lost Reason"
+     },
+     "my_notes": {
+      "type": "string",
+      "title": "My Notes"
+     },
+     "draft": {
+      "type": "string",
+      "title": "Draft"
+     },
+     "day_override": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day Override"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "day",
+     "effective_day",
+     "rank",
+     "name",
+     "domain",
+     "website",
+     "round",
+     "hq",
+     "employees",
+     "dmarc",
+     "one_liner",
+     "why_now",
+     "people",
+     "touched",
+     "status",
+     "stage",
+     "next_step",
+     "follow_up",
+     "first_touch",
+     "xp",
+     "linkedin",
+     "spf",
+     "fit",
+     "fit_reason",
+     "offer",
+     "pvp",
+     "research",
+     "touches",
+     "steps",
+     "lost_reason",
+     "my_notes",
+     "draft",
+     "day_override"
+    ],
+    "title": "ProspectDetail"
+   },
+   "ProspectIn": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "maxLength": 80,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.-]+$",
+      "title": "Id"
+     },
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day"
+     },
+     "rank": {
+      "type": "integer",
+      "maximum": 1000.0,
+      "minimum": 1.0,
+      "title": "Rank"
+     },
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 253
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain"
+     },
+     "website": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Website"
+     },
+     "linkedin": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin"
+     },
+     "hq": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Hq",
+      "default": ""
+     },
+     "employees": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Employees",
+      "default": ""
+     },
+     "stage": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Stage",
+      "default": ""
+     },
+     "round": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Round",
+      "default": ""
+     },
+     "raised_total": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Raised Total",
+      "default": ""
+     },
+     "investors": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Investors",
+      "default": ""
+     },
+     "dmarc": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Dmarc",
+      "default": ""
+     },
+     "spf": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Spf",
+      "default": ""
+     },
+     "fit": {
+      "type": "string",
+      "maxLength": 12,
+      "title": "Fit",
+      "default": "good"
+     },
+     "fit_reason": {
+      "type": "string",
+      "maxLength": 5000,
+      "title": "Fit Reason",
+      "default": ""
+     },
+     "offer": {
+      "type": "string",
+      "maxLength": 5000,
+      "title": "Offer",
+      "default": ""
+     },
+     "pvp": {
+      "type": "string",
+      "maxLength": 5000,
+      "title": "Pvp",
+      "default": ""
+     },
+     "why_now": {
+      "type": "string",
+      "maxLength": 5000,
+      "title": "Why Now",
+      "default": ""
+     },
+     "research": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Research"
+     },
+     "people": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectPerson"
+      },
+      "type": "array",
+      "maxItems": 20,
+      "title": "People"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "day",
+     "rank",
+     "name"
+    ],
+    "title": "ProspectIn",
+    "description": "One prospect from the daily research. Replaces the research on every sync; never touches what you did."
+   },
+   "ProspectPatch": {
+    "properties": {
+     "touch": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TouchChange"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "step": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/StepChange"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "status": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "open",
+         "won",
+         "lost",
+         "skipped"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Status"
+     },
+     "lost_reason": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lost Reason"
+     },
+     "my_notes": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "My Notes"
+     },
+     "draft": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Draft"
+     },
+     "day_override": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day Override"
+     },
+     "when": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "When"
+     }
+    },
+    "type": "object",
+    "title": "ProspectPatch"
+   },
+   "ProspectPerson": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Key"
+     },
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Title",
+      "default": ""
+     },
+     "linkedin": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin"
+     },
+     "location": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Location",
+      "default": ""
+     },
+     "since": {
+      "type": "string",
+      "maxLength": 1000,
+      "title": "Since",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "required": [
+     "key",
+     "name"
+    ],
+    "title": "ProspectPerson"
+   },
+   "ProspectSync": {
+    "properties": {
+     "prospects": {
+      "items": {
+       "$ref": "#/components/schemas/ProspectIn"
+      },
+      "type": "array",
+      "maxItems": 500,
+      "title": "Prospects"
+     }
+    },
+    "type": "object",
+    "required": [
+     "prospects"
+    ],
+    "title": "ProspectSync"
+   },
    "Pull": {
     "properties": {
      "n": {
@@ -3293,6 +4607,22 @@
        }
       ],
       "title": "Days"
+     },
+     "fx_goals": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "type": "integer",
+         "maximum": 30.0,
+         "minimum": 0.0
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fx Goals"
      }
     },
     "additionalProperties": false,
@@ -3438,6 +4768,33 @@
     ],
     "title": "Step"
    },
+   "StepChange": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "enum": [
+       "researched",
+       "fu1",
+       "fu2",
+       "replied",
+       "call",
+       "proposal",
+       "won"
+      ],
+      "title": "Name"
+     },
+     "on": {
+      "type": "boolean",
+      "title": "On",
+      "default": true
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "StepChange"
+   },
    "StepTick": {
     "properties": {
      "step": {
@@ -3478,6 +4835,24 @@
      "guess"
     ],
     "title": "Sureness"
+   },
+   "Synced": {
+    "properties": {
+     "added": {
+      "type": "integer",
+      "title": "Added"
+     },
+     "updated": {
+      "type": "integer",
+      "title": "Updated"
+     }
+    },
+    "type": "object",
+    "required": [
+     "added",
+     "updated"
+    ],
+    "title": "Synced"
    },
    "TodayGroup": {
     "properties": {
@@ -3552,6 +4927,35 @@
      "waiting_total"
     ],
     "title": "TodayOut"
+   },
+   "TouchChange": {
+    "properties": {
+     "person": {
+      "type": "string",
+      "maxLength": 80,
+      "title": "Person"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "connect",
+       "dm",
+       "email"
+      ],
+      "title": "Kind"
+     },
+     "on": {
+      "type": "boolean",
+      "title": "On",
+      "default": true
+     }
+    },
+    "type": "object",
+    "required": [
+     "person",
+     "kind"
+    ],
+    "title": "TouchChange"
    },
    "ValidationError": {
     "properties": {

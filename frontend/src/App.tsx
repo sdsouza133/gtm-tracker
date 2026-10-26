@@ -5,6 +5,7 @@ import { useAuth } from "@/auth";
 import { Layout } from "@/components/Layout";
 import { Button, EmptyState, PageHeader } from "@/components/ui";
 import { CompanyPage } from "@/pages/Company";
+import { FractionalPage } from "@/pages/Fractional";
 import { LoginPage } from "@/pages/Login";
 import { PeoplePage } from "@/pages/People";
 import { PipelinePage } from "@/pages/Pipeline";
@@ -55,7 +56,7 @@ export function App() {
         <Route path="people" element={<PeoplePage />} />
         <Route path="plan" element={<PlanPage />} />
         <Route path="radar" element={<Placeholder title="Radar" />} />
-        <Route path="fractional" element={<Placeholder title="Fractional" />} />
+        <Route path="fractional" element={<FractionalPage />} />
         <Route path="*" element={<Placeholder title="Not found" />} />
       </Route>
     </Routes>

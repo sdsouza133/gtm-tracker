@@ -3,7 +3,16 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl, TypeAdapter, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    HttpUrl,
+    TypeAdapter,
+    field_validator,
+)
 
 from app.models import MoveStatus, MoveType, ParkedWhy, PersonStatus, RoleInHire, Stage, Sureness
 from app.services.reach import Step
@@ -12,6 +21,7 @@ EMAIL_PATTERN = r"^[^@\s<>]+@[^@\s<>]+\.[A-Za-z]{2,}$"
 
 
 _HTTP_URL = TypeAdapter(HttpUrl)
+MAX_LINK = 1000
 
 
 def _url(value: str) -> str:
@@ -23,7 +33,19 @@ def _clean(value: str) -> str:
     return " ".join(value.split())
 
 
+def _link(value: object) -> str | None:
+    """Research links are best effort: anything that isn't an http(s) URL ("Not found", javascript:...) is dropped
+    rather than failing the whole daily batch."""
+    if not isinstance(value, str) or not (text := value.strip()) or len(text) > MAX_LINK:
+        return None
+    try:
+        return _url(text)
+    except ValueError:
+        return None
+
+
 Url = Annotated[str, Field(min_length=1, max_length=1000), AfterValidator(_url)]
+Link = Annotated[str | None, BeforeValidator(_link)]
 Name = Annotated[str, Field(min_length=1, max_length=200), AfterValidator(_clean)]
 Email = Annotated[str, Field(max_length=320, pattern=EMAIL_PATTERN), AfterValidator(str.lower)]
 Notes = Annotated[str, Field(max_length=20_000)]
@@ -331,3 +353,192 @@ class SettingsOut(BaseModel):
     loom_url: Url | None = None
     snippets: Snippets | None = None
     days: dict[date, DayBlocks] | None = None
+    fx_goals: dict[str, Annotated[int, Field(ge=0, le=30)]] | None = None  # "default" and per-day overrides
+
+    @field_validator("fx_goals")
+    @classmethod
+    def _goal_keys(cls, value: dict[str, int] | None) -> dict[str, int] | None:
+        for key in value or {}:
+            if key != "default" and date.fromisoformat(key).isoformat() != key:
+                raise ValueError("Goal keys are 'default' or a day as YYYY-MM-DD.")
+        return value
+
+
+# ----------------------------------------------------------------------------- fractional
+
+
+class ProspectPerson(BaseModel):
+    key: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=200)
+    title: str = Field(default="", max_length=1000)
+    linkedin: Link = None
+    location: str = Field(default="", max_length=1000)
+    since: str = Field(default="", max_length=1000)
+
+
+class ProspectIn(BaseModel):
+    """One prospect from the daily research. Replaces the research on every sync; never touches what you did."""
+
+    id: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    day: date
+    rank: int = Field(ge=1, le=1000)
+    name: Name
+    domain: str | None = Field(default=None, max_length=253)
+    website: Link = None
+    linkedin: Link = None
+    hq: str = Field(default="", max_length=1000)
+    employees: str = Field(default="", max_length=1000)
+    stage: str = Field(default="", max_length=1000)  # funding stage: Seed, Series A
+    round: str = Field(default="", max_length=1000)
+    raised_total: str = Field(default="", max_length=1000)
+    investors: str = Field(default="", max_length=1000)
+    dmarc: str = Field(default="", max_length=1000)
+    spf: str = Field(default="", max_length=1000)
+    fit: str = Field(default="good", max_length=12)
+    fit_reason: str = Field(default="", max_length=5000)
+    offer: str = Field(default="", max_length=5000)
+    pvp: str = Field(default="", max_length=5000)  # the free first thing to build for them
+    why_now: str = Field(default="", max_length=5000)
+    research: dict[str, Any] = Field(default_factory=dict)
+    people: list[ProspectPerson] = Field(default_factory=list, max_length=20)
+
+
+class ProspectSync(BaseModel):
+    prospects: list[ProspectIn] = Field(max_length=500)
+
+    @field_validator("prospects")
+    @classmethod
+    def _unique_ids(cls, value: list[ProspectIn]) -> list[ProspectIn]:
+        ids = [p.id for p in value]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Each prospect id may appear only once.")
+        return value
+
+
+class Synced(BaseModel):
+    added: int
+    updated: int
+
+
+class FollowUpOut(BaseModel):
+    step: str
+    due: date
+
+
+class ProspectCard(BaseModel):
+    id: str
+    day: date
+    effective_day: date
+    rank: int
+    name: str
+    domain: str | None
+    website: str | None
+    round: str
+    hq: str
+    employees: str
+    dmarc: str
+    one_liner: str
+    why_now: str
+    people: list[ProspectPerson]
+    touched: list[str]  # keys of the people reached
+    status: str
+    stage: str
+    next_step: str
+    follow_up: FollowUpOut | None
+    first_touch: date | None
+    xp: int
+
+
+class ProspectDetail(ProspectCard):
+    linkedin: str | None
+    spf: str
+    fit: str
+    fit_reason: str
+    offer: str
+    pvp: str
+    research: dict[str, Any]
+    touches: dict[str, dict[str, str]]
+    steps: dict[str, str]
+    lost_reason: str
+    my_notes: str
+    draft: str
+    day_override: date | None
+
+
+class TouchChange(BaseModel):
+    person: str = Field(max_length=80)
+    kind: Literal["connect", "dm", "email"]
+    on: bool = True
+
+
+class StepChange(BaseModel):
+    name: Literal["researched", "fu1", "fu2", "replied", "call", "proposal", "won"]
+    on: bool = True
+
+
+class ProspectPatch(BaseModel):
+    touch: TouchChange | None = None
+    step: StepChange | None = None
+    status: Literal["open", "won", "lost", "skipped"] | None = None
+    lost_reason: str | None = Field(default=None, max_length=20_000)
+    my_notes: str | None = Field(default=None, max_length=20_000)
+    draft: str | None = Field(default=None, max_length=20_000)
+    day_override: date | None = None
+    when: date | None = None  # back-date a tick (never in the future); today by default
+
+
+class LevelOut(BaseModel):
+    number: int
+    name: str
+    floor_xp: int
+    next_xp: int | None
+    next_name: str | None
+
+
+class BadgeOut(BaseModel):
+    key: str
+    name: str
+    description: str
+    earned: bool
+
+
+class HeatDay(BaseModel):
+    day: date
+    hits: int
+    goal: int
+
+
+class FxStats(BaseModel):
+    xp: int
+    level: LevelOut
+    streak: int
+    best_streak: int
+    heat: list[HeatDay]
+    clients: int
+    monthly_revenue: int
+    revenue_goal: int
+    funnel: dict[str, int]
+    badges: list[BadgeOut]
+
+
+class FxBoard(BaseModel):
+    today: date
+    goal: int
+    hits_today: int
+    follow_ups_due: list[ProspectCard]
+    follow_ups_due_total: int
+    follow_ups_later: int
+    carried_over: list[ProspectCard]
+    carried_over_total: int
+    todays_list: list[ProspectCard]
+    reached_today: list[ProspectCard]
+    coming_up: list[ProspectCard]
+    coming_up_total: int
+    stats: FxStats
+
+
+class FxColumn(BaseModel):
+    key: str
+    label: str
+    total: int
+    items: list[ProspectCard]
