@@ -54,6 +54,7 @@ def test_the_board(signed_in: TestClient) -> None:
         prospect("now", rank=2),
         prospect("next", day=TODAY + timedelta(days=1)),
         prospect("past", day=TODAY - timedelta(days=7)),
+        prospect("cold", day=TODAY - timedelta(days=8)),  # untouched for over a week: off the board
     )
     signed_in.patch("/api/settings", json={"fx_goals": {"default": 2}})
     signed_in.patch("/api/fx/prospects/past", json={"touch": {"person": "ana", "kind": "email"}, "when": "2026-10-19"})

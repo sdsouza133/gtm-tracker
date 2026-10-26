@@ -57,6 +57,42 @@ def test_done_today_and_waiting(signed_in: TestClient, db: Session) -> None:
     assert body["groups"] == []
 
 
+def test_today_keeps_to_the_last_week_and_a_days_worth(signed_in: TestClient, db: Session) -> None:
+    c = f.company(db)
+    f.move(db, c, type=MoveType.PREP, due=TODAY - timedelta(days=8), title="Stale")
+    f.move(db, c, type=MoveType.PREP, due=TODAY - timedelta(days=7), title="A week old")
+    f.move(db, c, type=MoveType.APPLY, due=TODAY - timedelta(days=2), title="Apply first")
+    for i in range(20):
+        f.move(db, c, type=MoveType.PREP, due=TODAY, title=f"Prep {i:02}")
+    done = f.move(db, c, type=MoveType.PREP, due=TODAY, title="Already done")
+    signed_in.patch(f"/api/moves/{done.id}", json={"status": "done"})
+
+    body = signed_in.get("/api/today").json()
+    titles = [m["title"] for g in body["groups"] for m in g["moves"]]
+    assert len(titles) == 14  # 15 a day, one already done
+    assert titles[0] == "Apply first"
+    assert "A week old" in titles
+    assert "Stale" not in titles
+    assert body["more"] == 22 - 14
+
+
+def test_clearing_the_backlog_skips_only_moves_over_a_week_old(signed_in: TestClient, db: Session) -> None:
+    c = f.company(db)
+    stale = [f.move(db, c, type=MoveType.APPLY, due=TODAY - timedelta(days=d)) for d in (8, 30)]
+    recent = f.move(db, c, type=MoveType.APPLY, due=TODAY - timedelta(days=7))
+    finished = f.move(db, c, type=MoveType.APPLY, due=TODAY - timedelta(days=30), status=MoveStatus.DONE)
+
+    assert signed_in.post("/api/moves/clear-backlog").json() == {"cleared": 2}
+    for m in (*stale, recent, finished):
+        db.refresh(m)
+    assert [m.status for m in stale] == [MoveStatus.SKIPPED, MoveStatus.SKIPPED]
+    assert stale[0].skip_reason == "Old backlog, cleared"
+    assert (recent.status, finished.status) == (MoveStatus.OPEN, MoveStatus.DONE)
+    assert c.stage is not Stage.PARKED  # clearing old moves doesn't pass on the company
+    assert db.query(Activity).filter(Activity.text.like("Cleared 2 old moves%")).count() == 1
+    assert signed_in.post("/api/moves/clear-backlog").json() == {"cleared": 0}
+
+
 def test_stats_count_moves_wins_and_day_blocks(signed_in: TestClient, db: Session) -> None:
     c = f.company(db)
     _, m = f.person(db, c, day0=TODAY)

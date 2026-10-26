@@ -65,6 +65,7 @@ class Light:
 
 
 ORDER = (Prospect.effective_day, Prospect.rank, Prospect.id)
+CARRY_DAYS = 7
 UNTOUCHED = Prospect.stage == fx.Stage.UNTOUCHED.value
 
 
@@ -177,7 +178,8 @@ def stats(session: Session, goal_map: dict[str, int], today: date) -> FxStats:
 def board(session: Session, today: date) -> FxBoard:
     goal_map = goals(session)
     due = (Prospect.follow_up_due <= today,)
-    carried = (UNTOUCHED, Prospect.effective_day < today)
+    # only last week's: an older untouched prospect has gone cold and stays out of the way
+    carried = (UNTOUCHED, Prospect.effective_day < today, Prospect.effective_day >= today - timedelta(days=CARRY_DAYS))
     upcoming = (UNTOUCHED, Prospect.effective_day > today)
     return FxBoard(
         today=today,

@@ -1,19 +1,23 @@
-"""The Today list: what's due or overdue at companies still in play, grouped the way the day is worked, plus what's
-already been done today and who you're waiting on."""
+"""The Today list: what's due at companies still in play, grouped the way the day is worked, plus what's already
+been done today and who you're waiting on. It stays small on purpose: only the last week's moves, and no more than a
+day's worth."""
 
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from enum import StrEnum
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import Settings
 from app.models import Company, Move, MoveStatus, MoveType, Sureness
 from app.services import reach
+from app.services.history import record
 from app.services.stages import OUT_OF_PLAY
 
 WAITING_LIMIT = 50
+FRESH_DAYS = 7  # a move overdue by more than this has gone stale and drops off
+DAILY_LIMIT = 15  # moves a day, counting the ones already done today
 
 
 class Group(StrEnum):
@@ -76,6 +80,7 @@ def _in_play(company: Company | None) -> bool:
 class TodayList:
     groups: list[tuple[Group, list[Move]]]
     overdue: int
+    more: int  # fresh moves held back for another day by the daily limit
     done_today: list[Move]
     waiting: list[Move]
     waiting_total: int
@@ -90,15 +95,18 @@ def build(session: Session, settings: Settings, today: date) -> TodayList:
         .where(
             Move.status == MoveStatus.OPEN,
             Move.due <= today,
+            Move.due >= today - timedelta(days=FRESH_DAYS),
             (Company.id.is_(None)) | (Company.stage.not_in(OUT_OF_PLAY)),
         )
     ).all()
-    due = sorted(due, key=_priority)
-    groups = [(g, [m for m in due if group_of(m) is g]) for g in Group]
 
     start = datetime.combine(today, time.min, tzinfo=settings.tz)
     touched = session.scalars(select(Move).options(*load).where(Move.updated_at >= start)).all()
     done_today = [m for m in touched if _done_on(m, today, settings)]
+
+    fresh = sorted(due, key=_priority)
+    due = fresh[: max(0, DAILY_LIMIT - len(done_today))]  # the most important first: calls, then applying
+    groups = [(g, [m for m in due if group_of(m) is g]) for g in Group]
 
     waiting_all = [
         m
@@ -113,6 +121,7 @@ def build(session: Session, settings: Settings, today: date) -> TodayList:
     return TodayList(
         groups=[(g, ms) for g, ms in groups if ms],
         overdue=sum(1 for m in due if m.due < today),
+        more=len(fresh) - len(due),
         done_today=done_today,
         waiting=waiting_all[:WAITING_LIMIT],
         waiting_total=len(waiting_all),
@@ -141,3 +150,18 @@ def _waiting(move: Move, today: date) -> bool:
     if _first_touch(move) is None:
         return False
     return move.status is MoveStatus.DONE or move.due > today
+
+
+def clear_stale(session: Session, today: date) -> int:
+    """Skip every open move overdue by more than FRESH_DAYS: the backlog that would only weigh on the list. One history
+    line for the lot, not one per move. Returns how many were cleared."""
+    cutoff = today - timedelta(days=FRESH_DAYS)
+    stale = select(Move.id).where(Move.status == MoveStatus.OPEN, Move.due < cutoff)
+    ids = list(session.scalars(stale))
+    if ids:
+        session.execute(
+            update(Move).where(Move.id.in_(ids)).values(status=MoveStatus.SKIPPED, skip_reason="Old backlog, cleared"),
+            execution_options={"synchronize_session": False},
+        )
+        record(session, "skipped", f"Cleared {len(ids)} old moves due before {cutoff:%b %-d}")
+    return len(ids)

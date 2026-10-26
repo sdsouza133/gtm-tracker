@@ -46,6 +46,7 @@ def today_list(session: DbSession, settings: AppSettings, today: Today) -> Today
             for g, moves in built.groups
         ],
         overdue=built.overdue,
+        more=built.more,
         done_today=cards(built.done_today),
         waiting=cards(built.waiting),
         waiting_total=built.waiting_total,

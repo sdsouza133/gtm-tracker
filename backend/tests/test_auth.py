@@ -117,6 +117,7 @@ PROTECTED = [
     ("POST", "/api/moves/m1/steps"),
     ("DELETE", "/api/moves/m1"),
     ("POST", "/api/moves/pull"),
+    ("POST", "/api/moves/clear-backlog"),
     ("GET", "/api/today"),
     ("GET", "/api/stats"),
     ("GET", "/api/plan"),

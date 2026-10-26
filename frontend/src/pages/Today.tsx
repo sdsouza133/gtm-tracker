@@ -94,13 +94,15 @@ export function TodayPage() {
       <PageHeader
         eyebrow={formatLongDay(data.today)}
         title={due ? `${greeting()}. ${due} ${due === 1 ? "move" : "moves"} today.` : `${greeting()}. You're clear.`}
-      >
-        {data.overdue > 0 && <span className="text-sm font-medium text-bad">{data.overdue} overdue</span>}
-      </PageHeader>
+      />
 
       <StatsRow dueCount={due} />
 
-      {data.groups.length === 0 ? (
+      {data.groups.length === 0 && data.more > 0 ? (
+        <EmptyState title="Done for today. Nice work.">
+          <p>That's enough for one day. The rest will be here tomorrow.</p>
+        </EmptyState>
+      ) : data.groups.length === 0 ? (
         <EmptyState title="Nothing left for today">
           <p>Get ahead on tomorrow, or plan the week.</p>
           <div className="mt-4 flex justify-center gap-2">

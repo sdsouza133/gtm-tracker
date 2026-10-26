@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from app.auth import DbSession, SignedIn
 from app.clock import Today
 from app.models import Move
-from app.schemas import MoveCard, MoveCreate, MoveOut, MovePatch, Pull, Pulled, StepTick
+from app.schemas import Cleared, MoveCard, MoveCreate, MoveOut, MovePatch, Pull, Pulled, StepTick
+from app.services import today as today_service
 from app.services.outreach import MoveChange, NewMove, add_move, change_move, delete_move, pull_forward, tick_step
 
 router = APIRouter(prefix="/api/moves", tags=["moves"], dependencies=[SignedIn])
@@ -62,3 +63,11 @@ def pull(body: Pull, session: DbSession, today: Today) -> Pulled:
     pulled = pull_forward(session, body.n, today)
     session.commit()
     return Pulled(pulled=[MoveOut.model_validate(m) for m in pulled])
+
+
+@router.post("/clear-backlog")
+def clear_backlog(session: DbSession, today: Today) -> Cleared:
+    """Skip every open move overdue by more than a week, so Today starts fresh."""
+    cleared = today_service.clear_stale(session, today)
+    session.commit()
+    return Cleared(cleared=cleared)

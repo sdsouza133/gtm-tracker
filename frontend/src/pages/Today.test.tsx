@@ -7,7 +7,7 @@ import { SIGNED_IN, STATS, TODAY, move } from "@/test/fixtures";
 import { mockApi, renderApp } from "@/test/render";
 
 const today = (groups: unknown[], extra: object = {}) => ({
-  body: { today: TODAY, groups, overdue: 0, done_today: [], waiting: [], waiting_total: 0, ...extra },
+  body: { today: TODAY, groups, overdue: 0, more: 0, done_today: [], waiting: [], waiting_total: 0, ...extra },
 });
 
 describe("Today", () => {
@@ -98,5 +98,12 @@ describe("Today", () => {
     renderApp(<App />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your progress");
     expect(screen.getByText("Email and connect with Priya Example")).toBeInTheDocument();
+  });
+
+  it("says the day is done when the daily limit is reached", async () => {
+    mockApi({ ...SIGNED_IN, "GET /api/stats": { body: STATS }, "GET /api/today": today([], { more: 8 }) });
+    renderApp(<App />);
+    expect(await screen.findByText("Done for today. Nice work.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Pull 3 moves/ })).not.toBeInTheDocument();
   });
 });
