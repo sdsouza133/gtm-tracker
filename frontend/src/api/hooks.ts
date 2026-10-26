@@ -1,5 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 
+import { isoDay } from "@/lib/format";
+
 import { ApiError, api, unwrap } from "./client";
 import type { components } from "./schema";
 
@@ -42,6 +44,11 @@ function useChange<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
 
 export function useToday() {
   return useQuery({ queryKey: keys.today, queryFn: async () => unwrap(await api.GET("/api/today")) });
+}
+
+/** The server's "today" (the configured time zone's calendar day), or the browser's until the server answers. */
+export function useServerToday(): string {
+  return useToday().data?.today ?? isoDay(new Date());
 }
 
 export function useStats() {

@@ -115,10 +115,12 @@ def test_history_pages_back_and_takes_notes(signed_in: TestClient, db: Session) 
         signed_in.post("/api/activity", json={"text": f"note {i}", "company_id": c.id})
     first = signed_in.get("/api/activity", params={"company_id": c.id, "limit": 2}).json()
     assert [a["text"] for a in first["items"]] == ["note 2", "note 1"]
-    assert first["total"] == 3  # more to come
+    assert first["total"] == 3  # all the lines that match, not just this page
     rest = signed_in.get("/api/activity", params={"before": first["items"][-1]["id"], "company_id": c.id}).json()
-    assert [a["text"] for a in rest["items"]] == ["note 0"]
+    assert ([a["text"] for a in rest["items"]], rest["total"]) == (["note 0"], 1)
     assert signed_in.post("/api/activity", json={"text": ""}).status_code == 422
+    assert signed_in.post("/api/activity", json={"text": "x", "company_id": "nope"}).status_code == 404
+    assert signed_in.post("/api/activity", json={"text": "x", "person_id": "nope"}).status_code == 404
 
 
 def test_settings_only_take_known_keys(signed_in: TestClient) -> None:
@@ -133,6 +135,11 @@ def test_settings_only_take_known_keys(signed_in: TestClient) -> None:
     assert body["days"]["2026-10-26"] == {"outreach": True, "content": False, "course": False}
     assert signed_in.patch("/api/settings", json={"candidate": "Again"}).json()["deadline"] == "2026-12-31"
     assert signed_in.patch("/api/settings", json={"migrations_done": []}).status_code == 422
+    # day marks merge day by day: another day keeps its marks, and a mark can be turned off
+    signed_in.patch("/api/settings", json={"days": {"2026-10-27": {"content": True}}})
+    days = signed_in.patch("/api/settings", json={"days": {"2026-10-26": {"outreach": False}}}).json()["days"]
+    assert days["2026-10-27"]["content"] is True
+    assert days["2026-10-26"]["outreach"] is False
     assert signed_in.patch("/api/settings", json={"loom_url": "ftp://x"}).status_code == 422
 
 

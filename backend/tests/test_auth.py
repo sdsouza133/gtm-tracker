@@ -1,7 +1,9 @@
+import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from app.auth import SignedIn
+from app.main import create_app
 from tests.conftest import PASSWORD
 
 
@@ -97,3 +99,51 @@ def test_non_ascii_tokens_are_refused_not_crashed(signed_in: TestClient) -> None
 def test_no_public_api_docs(client: TestClient) -> None:
     assert client.get("/api/docs").status_code == 404
     assert client.get("/api/openapi.json").status_code == 404
+
+
+PROTECTED = [
+    ("GET", "/api/companies"),
+    ("POST", "/api/companies"),
+    ("GET", "/api/companies/c1"),
+    ("PATCH", "/api/companies/c1"),
+    ("POST", "/api/companies/c1/promote"),
+    ("GET", "/api/people"),
+    ("POST", "/api/people"),
+    ("PATCH", "/api/people/p1"),
+    ("POST", "/api/people/p1/reply"),
+    ("POST", "/api/moves"),
+    ("PATCH", "/api/moves/m1"),
+    ("POST", "/api/moves/m1/steps"),
+    ("DELETE", "/api/moves/m1"),
+    ("POST", "/api/moves/pull"),
+    ("GET", "/api/today"),
+    ("GET", "/api/stats"),
+    ("GET", "/api/plan"),
+    ("GET", "/api/activity"),
+    ("POST", "/api/activity"),
+    ("GET", "/api/settings"),
+    ("PATCH", "/api/settings"),
+]
+
+
+@pytest.mark.parametrize(("method", "path"), PROTECTED)
+def test_every_tracker_route_needs_a_session(client: TestClient, method: str, path: str) -> None:
+    assert client.request(method, path, json={}).status_code == 401
+
+
+@pytest.mark.parametrize(("method", "path"), [(m, p) for m, p in PROTECTED if m != "GET"])
+def test_every_tracker_change_needs_the_csrf_token(signed_in: TestClient, method: str, path: str) -> None:
+    assert signed_in.request(method, path, json={}, headers={"X-CSRF-Token": "wrong"}).status_code == 403
+    del signed_in.headers["X-CSRF-Token"]
+    assert signed_in.request(method, path, json={}).status_code == 403
+
+
+def test_every_api_route_is_covered_above() -> None:
+    """A new /api route has to be added to PROTECTED, so it can't ship without the guard being tested."""
+    paths = create_app().openapi()["paths"]
+    routes = {
+        (method.upper(), path) for path, ops in paths.items() for method in ops if not path.startswith("/api/auth/")
+    }
+    ids = {"c1": "{company_id}", "p1": "{person_id}", "m1": "{move_id}"}
+    covered = {(m, "/".join(ids.get(part, part) for part in p.split("/"))) for m, p in PROTECTED}
+    assert routes == covered

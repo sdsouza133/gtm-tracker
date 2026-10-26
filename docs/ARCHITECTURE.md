@@ -41,8 +41,8 @@ Research written by automation never overwrites what the user changed: stage, no
 - **Stages move forward on their own** (an email sent: Contacted; a reply: Replied; a call done: Call booked), and
   backwards only by hand. Parked, rejected and bench companies keep their moves but leave Today.
 - **XP and streaks are computed on the server from the whole history.** Moves earn XP while they're done (untick a
-  step and it's taken back); one-off wins (a reply, a call booked, an offer) are written to the history once per
-  company, so dragging a company back and forth earns nothing.
+  step and it's taken back); one-off wins are written to the history once: a call booked or an offer once per company
+  (dragging a company back and forth earns nothing), a reply once per person.
 - **Business rules raise `RuleError`** with a message the user can act on; the API turns it into a 409 (404 when the
   thing isn't there), and the front end shows the message.
 

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.api import patching
 from app.auth import DbSession, SignedIn
 from app.clock import Today
 from app.models import Person, PersonStatus, RoleInHire, Sureness
@@ -65,8 +66,7 @@ def update(person_id: str, body: PersonPatch, session: DbSession, today: Today) 
     fields = body.model_dump(exclude_unset=True)
     new_status = fields.pop("status", None)
     left = fields.pop("left", None)
-    for key, value in fields.items():
-        setattr(person, key, value)
+    patching.apply(person, fields)
     if left is True and not person.left:
         mark_left(session, person, today)
     elif left is False:

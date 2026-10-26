@@ -88,4 +88,15 @@ describe("Today", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Emailed" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("A step can't be done in the future.");
   });
+
+  it("says when progress can't load, without hiding the day's moves", async () => {
+    mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { status: 500, body: { detail: "boom" } },
+      "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+    });
+    renderApp(<App />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load your progress");
+    expect(screen.getByText("Email and connect with Priya Example")).toBeInTheDocument();
+  });
 });

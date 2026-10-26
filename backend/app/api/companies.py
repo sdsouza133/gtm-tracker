@@ -4,8 +4,10 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import Select, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.api import patching
 from app.auth import DbSession, SignedIn
 from app.clock import Today
 from app.models import Activity, Company, Move, MoveStatus, Person, Stage
@@ -129,11 +131,16 @@ def get_one(company_id: str, session: DbSession) -> CompanyDetail:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create(body: CompanyCreate, session: DbSession) -> CompanyDetail:
+    taken = f"A company at {body.domain} is already in the tracker."
     if body.domain and session.scalar(select(Company.id).where(func.lower(Company.domain) == body.domain.lower())):
-        raise HTTPException(status.HTTP_409_CONFLICT, f"A company at {body.domain} is already in the tracker.")
+        raise HTTPException(status.HTTP_409_CONFLICT, taken)
     company = Company(**body.model_dump())
     session.add(company)
-    session.flush()
+    try:
+        session.flush()
+    except IntegrityError:  # the same domain added at the same moment (a double click)
+        session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, taken) from None
     record(session, "system", f"{company.name}: added to the tracker", company_id=company.id)
     session.commit()
     return _detail(session, company)
@@ -155,10 +162,7 @@ def update(company_id: str, body: CompanyPatch, session: DbSession) -> CompanyDe
         company.research = research
     if (wave := fields.get("wave")) is not None and wave != company.wave:
         record(session, "wave", f"{company.name}: moved to wave {wave}", company_id=company.id)
-    for key, value in fields.items():
-        if key == "name" and value is None:
-            continue
-        setattr(company, key, value)
+    patching.apply(company, fields)
     session.commit()
     return _detail(session, company)
 

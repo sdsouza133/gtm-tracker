@@ -19,13 +19,19 @@ const SHOW_MS = 5000;
 export function ToastHost() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   useEffect(() => {
+    const timers = new Set<number>();
     const listen: Listener = (toast) => {
       setToasts((all) => [...all.slice(-2), toast]);
-      window.setTimeout(() => setToasts((all) => all.filter((t) => t.id !== toast.id)), SHOW_MS);
+      const timer = window.setTimeout(() => {
+        timers.delete(timer);
+        setToasts((all) => all.filter((t) => t.id !== toast.id));
+      }, SHOW_MS);
+      timers.add(timer);
     };
     listeners.add(listen);
     return () => {
       listeners.delete(listen);
+      timers.forEach((timer) => window.clearTimeout(timer));
     };
   }, []);
   return (

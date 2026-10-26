@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl, TypeAdapter, field_validator
 
 from app.models import MoveStatus, MoveType, ParkedWhy, PersonStatus, RoleInHire, Stage, Sureness
 from app.services.reach import Step
@@ -11,8 +11,11 @@ from app.services.reach import Step
 EMAIL_PATTERN = r"^[^@\s<>]+@[^@\s<>]+\.[A-Za-z]{2,}$"
 
 
+_HTTP_URL = TypeAdapter(HttpUrl)
+
+
 def _url(value: str) -> str:
-    HttpUrl(value)  # raises on anything that isn't an http(s) URL
+    _HTTP_URL.validate_python(value)  # raises on anything that isn't an http(s) URL; the text is kept as given
     return value
 
 

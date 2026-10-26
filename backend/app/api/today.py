@@ -4,12 +4,12 @@ from datetime import date, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
 from app.auth import AppSettings, DbSession, SignedIn
 from app.clock import Today
-from app.models import Activity, Company, Move, MoveStatus, Setting
+from app.models import Activity, Company, Move, MoveStatus, Person, Setting
 from app.schemas import (
     ActivityOut,
     DayCount,
@@ -115,12 +115,17 @@ def activity(
         query = query.where(Activity.company_id == company_id)
     if before:
         query = query.where(Activity.id < before)
-    rows = session.scalars(query.order_by(Activity.id.desc()).limit(limit + 1)).all()
-    return Page(items=[ActivityOut.model_validate(a) for a in rows[:limit]], total=len(rows))
+    total = session.scalar(select(func.count()).select_from(query.subquery())) or 0
+    rows = session.scalars(query.order_by(Activity.id.desc()).limit(limit)).all()
+    return Page(items=[ActivityOut.model_validate(a) for a in rows], total=total)
 
 
 @router.post("/activity", status_code=status.HTTP_201_CREATED)
 def add_note(body: NoteCreate, session: DbSession) -> ActivityOut:
+    if body.company_id and session.get(Company, body.company_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That company isn't in the tracker.")
+    if body.person_id and session.get(Person, body.person_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That person isn't in the tracker.")
     row = record(session, "note", body.text.strip(), company_id=body.company_id, person_id=body.person_id)
     session.commit()
     return ActivityOut.model_validate(row)
@@ -139,6 +144,14 @@ def get_settings_route(session: DbSession) -> SettingsOut:
     return _read_settings(session)
 
 
+def _merge_days(stored: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Day marks merge one day at a time: a day the change doesn't name keeps its marks."""
+    merged = dict(stored)
+    for day, marks in patch.items():
+        merged[day] = {**merged[day], **marks} if isinstance(merged.get(day), dict) else marks
+    return merged
+
+
 @router.patch("/settings")
 def update_settings(body: SettingsOut, session: DbSession) -> SettingsOut:
     """Change the named settings; the rest stay as they are."""
@@ -146,6 +159,8 @@ def update_settings(body: SettingsOut, session: DbSession) -> SettingsOut:
         row = session.get(Setting, key)
         if row is None:
             session.add(Setting(key=key, value=value))
+        elif key == "days" and isinstance(value, dict) and isinstance(row.value, dict):
+            row.value = _merge_days(row.value, value)
         else:
             row.value = value
     session.commit()

@@ -1,7 +1,9 @@
 from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Activity, Move, MoveType, PersonStatus, Stage
@@ -110,3 +112,21 @@ def test_promoting_a_company_with_nobody_yet(signed_in: TestClient, db: Session)
     signed_in.post(f"/api/companies/{c.id}/promote", json={})
     types = set(db.scalars(select(Move.type).where(Move.company_id == c.id)))
     assert types == {MoveType.RESEARCH, MoveType.EMAIL}
+
+
+def test_nulls_for_required_fields_are_ignored(signed_in: TestClient, db: Session) -> None:
+    c = f.company(db, name="Kept Example")
+    r = signed_in.patch(f"/api/companies/{c.id}", json={"name": None, "notes": None, "cant_apply": None, "wave": None})
+    assert r.status_code == 200
+    assert (r.json()["name"], r.json()["notes"], r.json()["cant_apply"], r.json()["wave"]) == (
+        "Kept Example",
+        "",
+        False,
+        None,
+    )
+
+
+def test_the_database_holds_one_company_per_domain(db: Session) -> None:
+    f.company(db, domain="dup.example")
+    with pytest.raises(IntegrityError), db.begin_nested():
+        f.company(db, domain="DUP.example")

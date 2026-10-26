@@ -143,6 +143,10 @@ class Timestamps:
 
 class Company(Timestamps, Base):
     __tablename__ = "companies"
+    # one company per domain, whatever the case ("Acme.com" and "acme.com" are the same company)
+    __table_args__ = (
+        Index("uq_companies_domain", text("lower(domain)"), unique=True, postgresql_where=text("domain IS NOT NULL")),
+    )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("c"))
     name: Mapped[str] = mapped_column(String(200))
@@ -236,7 +240,7 @@ class Activity(Base):
     person_id: Mapped[str | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"))
     move_id: Mapped[str | None] = mapped_column(ForeignKey("moves.id", ondelete="SET NULL"))
     xp: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    tag: Mapped[str | None] = mapped_column(String(40))
+    tag: Mapped[str | None] = mapped_column(String(64))
 
 
 class Setting(Base):

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.clock import next_weekday, now, weekday_on_or_after
 from app.models import Company, Move, MoveStatus, MoveType, Person, PersonStatus, RoleInHire, Stage, Sureness
 from app.services import reach
-from app.services.history import record
+from app.services.history import already_won, record
 from app.services.stages import OUT_OF_PLAY, advance, park_skipped, unpark_skipped
 
 EMAIL_TYPES = frozenset({MoveType.EMAIL, MoveType.APPROVER_EMAIL, MoveType.BUMP})
@@ -321,9 +321,12 @@ def add_person(session: Session, new: NewPerson, today: date) -> Person:
 
 def record_reply(session: Session, person: Person, text: str, today: date) -> bool:
     """They replied. Their reach-out ends, any queued nudges to them are skipped, and the company moves to Replied.
-    Counts (and earns XP) once; logging it again only adds the note."""
+    The first reply from each person earns XP once (a status set back and forth earns nothing more); logging it again
+    still closes anything reopened since. Returns whether this is the first time they're marked replied."""
     first = person.status is not PersonStatus.REPLIED
     person.status = PersonStatus.REPLIED
+    tag = f"reply:{person.id}"
+    win = not already_won(session, person.company_id, tag)
     words = f"{person.name} replied" + (f": {text}" if text else "")
     record(
         session,
@@ -331,10 +334,9 @@ def record_reply(session: Session, person: Person, text: str, today: date) -> bo
         words,
         company_id=person.company_id,
         person_id=person.id,
-        xp=REPLY_XP if first else 0,
+        xp=REPLY_XP if win else 0,
+        tag=tag if win else None,
     )
-    if not first:
-        return False
     advance(session, person.company, Stage.REPLIED)
     for move in session.scalars(select(Move).where(Move.person_id == person.id)):
         if move.type is MoveType.REACH:
@@ -344,7 +346,7 @@ def record_reply(session: Session, person: Person, text: str, today: date) -> bo
             move.status = MoveStatus.SKIPPED
             move.done_at = now()
             move.notes = f"{move.notes} [skipped: they replied]".strip()
-    return True
+    return first
 
 
 def mark_left(session: Session, person: Person, today: date) -> None:

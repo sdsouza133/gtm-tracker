@@ -28,7 +28,13 @@ function Stat({ label, value, sub, icon }: { label: string; value: string; sub?:
 }
 
 function StatsRow({ dueCount }: { dueCount: number }) {
-  const { data: s } = useStats();
+  const { data: s, isError } = useStats();
+  if (isError)
+    return (
+      <p role="alert" className="rounded-card border border-line bg-surface px-4 py-3 text-sm text-muted">
+        Couldn't load your progress. It'll show again when the page refreshes.
+      </p>
+    );
   if (!s) return <div className="h-[92px]" aria-hidden="true" />;
   const toNext = s.next_level_xp - s.xp;
   const progress = Math.round(((s.xp - s.level_floor_xp) / (s.next_level_xp - s.level_floor_xp)) * 100);

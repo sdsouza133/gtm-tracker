@@ -1,9 +1,9 @@
 import { useState } from "react";
 
-import { useActivity, usePlan } from "@/api/hooks";
+import { useActivity, usePlan, useServerToday } from "@/api/hooks";
 import { MoveRow } from "@/components/MoveRow";
 import { Button, Card, EmptyState, PageHeader } from "@/components/ui";
-import { formatDay, formatLongDay, formatTime, isoDay } from "@/lib/format";
+import { formatDateTimeDay, formatLongDay, formatTime } from "@/lib/format";
 
 function History() {
   const [pages, setPages] = useState<(number | undefined)[]>([undefined]);
@@ -39,7 +39,7 @@ function HistoryPage({ before, last, onMore }: { before?: number; last: boolean;
           <span className="text-body">{a.text}</span>
           <span className="shrink-0 text-[13px] text-muted">
             {a.xp > 0 && <span className="mr-2 font-semibold text-good">+{a.xp} XP</span>}
-            {formatDay(a.at.slice(0, 10))} · {formatTime(a.at)}
+            {formatDateTimeDay(a.at)} · {formatTime(a.at)}
           </span>
         </div>
       ))}
@@ -56,7 +56,7 @@ function HistoryPage({ before, last, onMore }: { before?: number; last: boolean;
 
 export function PlanPage() {
   const { data, isPending, isError } = usePlan();
-  const today = isoDay(new Date());
+  const today = useServerToday();
   return (
     <div className="flex max-w-6xl flex-col gap-6">
       <PageHeader title="Plan" eyebrow="The next two weeks" />

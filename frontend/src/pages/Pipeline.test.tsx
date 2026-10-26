@@ -43,6 +43,8 @@ describe("Pipeline", () => {
     const calls = mockApi({ ...SIGNED_IN, "GET /api/companies": board });
     renderApp(<App />, { path: "/pipeline" });
     await userEvent.type(await screen.findByRole("searchbox", { name: "Search companies" }), "gtm");
-    await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/companies" && c.method === "GET")).toBe(true));
+    await vi.waitFor(() =>
+      expect(calls.some((c) => c.path === "/api/companies" && c.search.get("q") === "gtm")).toBe(true),
+    );
   });
 });

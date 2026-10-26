@@ -17,6 +17,7 @@ import {
   usePromote,
   useReply,
   useUpdateCompany,
+  useServerToday,
   useUpdatePerson,
 } from "@/api/hooks";
 import { MoveRow } from "@/components/MoveRow";
@@ -28,10 +29,10 @@ import {
   STAGES,
   STATUS_LABEL,
   SURE_LABEL,
+  formatDateTimeDay,
   formatDay,
   formatTime,
   initials,
-  isoDay,
 } from "@/lib/format";
 
 const field = "min-h-[38px] rounded-lg border border-line bg-surface px-3 text-sm";
@@ -315,7 +316,7 @@ export function CompanyPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const [adding, setAdding] = useState(false);
   const [noteText, setNoteText] = useState("");
-  const today = isoDay(new Date());
+  const today = useServerToday();
 
   if (isPending) return <p className="text-sm text-muted">Loading…</p>;
   if (isError || !c) return <EmptyState title="That company isn't in the tracker">Go back to the pipeline.</EmptyState>;
@@ -514,7 +515,7 @@ export function CompanyPage() {
                 <li key={a.id} className="text-[13px]">
                   <p className="text-body">{a.text}</p>
                   <p className="text-muted">
-                    {formatDay(a.at.slice(0, 10))} · {formatTime(a.at)}
+                    {formatDateTimeDay(a.at)} · {formatTime(a.at)}
                     {a.xp > 0 && ` · +${a.xp} XP`}
                   </p>
                 </li>

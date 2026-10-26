@@ -1,4 +1,4 @@
-import { daysBetween, formatDay, initials, nextWorkday, relativeDay } from "@/lib/format";
+import { daysBetween, formatDateTimeDay, formatDay, initials, nextWorkday, relativeDay } from "@/lib/format";
 
 describe("dates", () => {
   it("reads API days as calendar days", () => {
@@ -21,5 +21,12 @@ describe("dates", () => {
 
   it("makes initials", () => {
     expect(initials("Priya  Raman Example")).toBe("PR");
+  });
+});
+
+describe("timestamps", () => {
+  it("uses the local day of a timestamp, not its UTC date", () => {
+    const evening = new Date(2026, 9, 26, 21, 30); // 9:30 PM local, Oct 26
+    expect(formatDateTimeDay(evening.toISOString())).toBe("Mon, Oct 26");
   });
 });

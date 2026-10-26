@@ -108,3 +108,29 @@ def test_listing_people(signed_in: TestClient, db: Session) -> None:
     assert [x["name"] for x in connected["items"]] == ["Bo Example"]
     assert signed_in.get("/api/people", params={"role": "recruiter", "sureness": "confirmed"}).json()["total"] == 0
     assert db.scalar(select(func.count()).select_from(Person)) == 2
+
+
+def test_a_reply_earns_xp_once_per_person_and_always_closes_the_outreach(signed_in: TestClient, db: Session) -> None:
+    c = f.company(db)
+    p, m = f.person(db, c, day0=TODAY)
+    other, _ = f.person(db, c, name="Second Example")
+    assert m is not None
+    signed_in.post(f"/api/people/{p.id}/reply", json={})
+    signed_in.patch(f"/api/people/{p.id}", json={"status": "none"})
+    signed_in.patch(f"/api/moves/{m.id}", json={"status": "open"})
+    signed_in.post(f"/api/people/{p.id}/reply", json={"text": "again"})
+    db.refresh(m)
+    assert (m.status, m.sequence["next"]) == (MoveStatus.DONE, "replied")
+    signed_in.post(f"/api/people/{other.id}/reply", json={})
+    xp = db.scalars(select(Activity.xp).where(Activity.kind == "reply", Activity.company_id == c.id)).all()
+    assert sorted(xp) == [0, 10, 10]  # one win for each person, none for the repeat
+
+
+def test_nulls_for_required_person_fields_are_ignored(signed_in: TestClient, db: Session) -> None:
+    c = f.company(db)
+    p, _ = f.person(db, c)
+    r = signed_in.patch(
+        f"/api/people/{p.id}", json={"title": None, "notes": None, "role_in_hire": None, "linkedin": None}
+    )
+    assert r.status_code == 200
+    assert (r.json()["title"], r.json()["role_in_hire"], r.json()["linkedin"]) == ("VP Sales", "hiring manager", None)

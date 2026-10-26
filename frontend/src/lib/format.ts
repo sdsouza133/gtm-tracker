@@ -18,6 +18,8 @@ const TIME = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digi
 export const formatDay = (iso: string) => DAY.format(parseDay(iso));
 export const formatLongDay = (iso: string) => LONG.format(parseDay(iso));
 export const formatTime = (iso: string) => TIME.format(new Date(iso));
+/** The local calendar day of a timestamp (not its UTC date, which is tomorrow for an evening in Toronto). */
+export const formatDateTimeDay = (iso: string) => DAY.format(new Date(iso));
 
 export function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((parseDay(toIso).getTime() - parseDay(fromIso).getTime()) / 86_400_000);
