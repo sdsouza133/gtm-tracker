@@ -111,8 +111,9 @@ def _bearer_ok(request: Request, settings: Settings) -> bool:
 
 
 def require_user(request: Request, session: DbSession, settings: AppSettings) -> None:
-    """Signed in (or the automation token), and for changes, the CSRF header matches."""
-    if _bearer_ok(request, settings):
+    """Signed in (or the automation token), and for changes, the CSRF header matches. With OPEN_ACCESS on, everyone
+    is let in: there is no session to protect."""
+    if settings.open_access or _bearer_ok(request, settings):
         return
     row = current_session(request, session, settings)
     if row is None:

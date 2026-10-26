@@ -1,4 +1,5 @@
-# One image: the built front end served by the API. Railway runs migrations as a pre-deploy step (see railway.json).
+# One image: the built front end served by the API. Railway runs `alembic upgrade head` as the service's pre-deploy
+# command and checks /readyz; both are set on the service (Railway retired railway.json).
 
 FROM node:22.11-alpine AS web
 WORKDIR /web

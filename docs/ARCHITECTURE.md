@@ -53,6 +53,10 @@ Research written by automation never overwrites what the user changed: stage, no
   copy of the database can't be used to sign in.
 - Every change needs the session's CSRF token in `X-CSRF-Token`. Automation uses `Authorization: Bearer <API_TOKEN>`.
 - Eight failed sign-ins in 15 minutes lock the form.
+- `OPEN_ACCESS=true` turns the login off: anyone with the address can use the tracker. It is off unless set; a
+  missing `PASSWORD_HASH` never opens the app, it just means nobody can sign in.
+- `POST /api/restore` loads a backup into an empty tracker (for a server whose database is reachable only through the
+  app). A tracker with any data refuses it.
 - Strict Content Security Policy (`default-src 'self'`), no third-party scripts, fonts or styles at runtime.
 - Logs record method, path, status and timing, never query strings or bodies.
 

@@ -46,7 +46,7 @@ function useDownloadBackup() {
 }
 
 export function Layout() {
-  const { logout } = useAuth();
+  const { logout, openAccess } = useAuth();
   const backup = useDownloadBackup();
   const [signOutFailed, setSignOutFailed] = useState(false);
   const signOut = () => {
@@ -95,14 +95,16 @@ export function Layout() {
           <Download size={16} aria-hidden="true" />
           {backup.busy ? "Preparing backup…" : "Download backup"}
         </button>
-        <button
-          type="button"
-          onClick={signOut}
-          className="flex min-h-[40px] w-fit items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink md:w-auto"
-        >
-          <LogOut size={16} aria-hidden="true" />
-          Sign out
-        </button>
+        {!openAccess && (
+          <button
+            type="button"
+            onClick={signOut}
+            className="flex min-h-[40px] w-fit items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink md:w-auto"
+          >
+            <LogOut size={16} aria-hidden="true" />
+            Sign out
+          </button>
+        )}
         {signOutFailed && (
           <p role="alert" className="px-2.5 text-[13px] text-bad">
             Couldn't sign out. Check your connection and try again.

@@ -5,10 +5,10 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy import Connection, delete, select, text
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.backup import RestoreRefusedError, restore, stream, tables
+from app.backup import FILL_LOCK, RestoreRefusedError, is_empty, restore, stream, tables
 from app.config import get_settings
 from app.legacy import ImportRefusedError, import_legacy
 from app.models import Activity, Company, Move, MoveStatus, Person, Prospect, RadarItem, Setting, Stage
@@ -272,9 +272,29 @@ def test_a_backup_restores_into_an_empty_database(db: Session) -> None:
         restore(db, {k: v for k, v in backup.items() if k != "activity"})
 
 
+def test_only_one_restore_at_a_time(connection: Connection) -> None:
+    engine = connection.engine
+    with sessionmaker(bind=engine)() as first, engine.connect() as other:
+        is_empty(first)  # a restore has checked and is filling
+        assert other.scalar(text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": FILL_LOCK}) is False
+        first.rollback()  # done: the next restore may check
+        assert other.scalar(text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": FILL_LOCK}) is True
+
+
 def test_backup_download(signed_in: TestClient, db: Session) -> None:
     f.company(db, name="Downloaded Example")
     r = signed_in.get("/api/export")
     assert r.status_code == 200
     assert r.headers["content-disposition"] == 'attachment; filename="gtm-tracker-2026-10-26.json"'
     assert [c["name"] for c in r.json()["companies"]] == ["Downloaded Example"]
+
+
+def test_restore_over_the_api_only_into_an_empty_tracker(signed_in: TestClient, db: Session) -> None:
+    import_legacy(db, legacy_export(), legacy_fx())
+    backup = json.loads("".join(stream(db)))
+    assert signed_in.post("/api/restore", json=backup).status_code == 409  # it already has data
+    for table in reversed(tables()):
+        db.execute(delete(table))
+    r = signed_in.post("/api/restore", json=backup)
+    assert r.status_code == 200, r.text
+    assert (r.json()["companies"], r.json()["prospects"]) == (3, 1)
