@@ -87,10 +87,2012 @@
      }
     }
    }
+  },
+  "/api/companies": {
+   "get": {
+    "tags": [
+     "companies"
+    ],
+    "summary": "List Companies",
+    "description": "The board. Best-ranked first; filter by stage or search the name, domain and role.",
+    "operationId": "list_companies_api_companies_get",
+    "parameters": [
+     {
+      "name": "stage",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/Stage"
+         }
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Stage"
+      }
+     },
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 500,
+       "minimum": 1,
+       "default": 200,
+       "title": "Limit"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_CompanySummary_"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "companies"
+    ],
+    "summary": "Create",
+    "operationId": "create_api_companies_post",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CompanyCreate"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CompanyDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/companies/{company_id}": {
+   "get": {
+    "tags": [
+     "companies"
+    ],
+    "summary": "Get One",
+    "description": "One company: the role, everyone around the hire (warmest first), its moves and its history.",
+    "operationId": "get_one_api_companies__company_id__get",
+    "parameters": [
+     {
+      "name": "company_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Company Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CompanyDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "tags": [
+     "companies"
+    ],
+    "summary": "Update",
+    "operationId": "update_api_companies__company_id__patch",
+    "parameters": [
+     {
+      "name": "company_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Company Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CompanyPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CompanyDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/companies/{company_id}/promote": {
+   "post": {
+    "tags": [
+     "companies"
+    ],
+    "summary": "Promote Company",
+    "description": "Off the bench and into the campaign.",
+    "operationId": "promote_company_api_companies__company_id__promote_post",
+    "parameters": [
+     {
+      "name": "company_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Company Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Promote"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CompanyDetail"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/people": {
+   "get": {
+    "tags": [
+     "people"
+    ],
+    "summary": "List People",
+    "operationId": "list_people_api_people_get",
+    "parameters": [
+     {
+      "name": "q",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 100
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Q"
+      }
+     },
+     {
+      "name": "company_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 40
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Company Id"
+      }
+     },
+     {
+      "name": "status",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/PersonStatus"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      }
+     },
+     {
+      "name": "role",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/RoleInHire"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Role"
+      }
+     },
+     {
+      "name": "sureness",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/Sureness"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Sureness"
+      }
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 500,
+       "minimum": 1,
+       "default": 100,
+       "title": "Limit"
+      }
+     },
+     {
+      "name": "offset",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "minimum": 0,
+       "default": 0,
+       "title": "Offset"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_PersonOut_"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "people"
+    ],
+    "summary": "Create",
+    "description": "Add someone at a company. They get a reach-out of their own.",
+    "operationId": "create_api_people_post",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PersonCreate"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PersonOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/people/{person_id}": {
+   "patch": {
+    "tags": [
+     "people"
+    ],
+    "summary": "Update",
+    "operationId": "update_api_people__person_id__patch",
+    "parameters": [
+     {
+      "name": "person_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Person Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PersonPatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PersonOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/people/{person_id}/reply": {
+   "post": {
+    "tags": [
+     "people"
+    ],
+    "summary": "Reply",
+    "description": "They replied: their reach-out ends and the company moves to Replied.",
+    "operationId": "reply_api_people__person_id__reply_post",
+    "parameters": [
+     {
+      "name": "person_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Person Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Reply"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PersonOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/moves": {
+   "post": {
+    "tags": [
+     "moves"
+    ],
+    "summary": "Create",
+    "operationId": "create_api_moves_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MoveCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MoveCard"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/moves/{move_id}": {
+   "patch": {
+    "tags": [
+     "moves"
+    ],
+    "summary": "Update",
+    "description": "Change the title, notes or link; finish, skip or reopen it; or move it to another day. On a reach-out, a new\nday before the first touches moves Day 0, and after them holds the follow-up until then.",
+    "operationId": "update_api_moves__move_id__patch",
+    "parameters": [
+     {
+      "name": "move_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Move Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MovePatch"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MoveCard"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "moves"
+    ],
+    "summary": "Remove",
+    "operationId": "remove_api_moves__move_id__delete",
+    "parameters": [
+     {
+      "name": "move_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Move Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/moves/{move_id}/steps": {
+   "post": {
+    "tags": [
+     "moves"
+    ],
+    "summary": "Step",
+    "description": "Tick one step of a reach-out: done today (or on a day), n/a, or not done.",
+    "operationId": "step_api_moves__move_id__steps_post",
+    "parameters": [
+     {
+      "name": "move_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Move Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/StepTick"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MoveCard"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/moves/pull": {
+   "post": {
+    "tags": [
+     "moves"
+    ],
+    "summary": "Pull",
+    "description": "Bring the next few moves to today, when today's list is done.",
+    "operationId": "pull_api_moves_pull_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Pull"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Pulled"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/today": {
+   "get": {
+    "tags": [
+     "today"
+    ],
+    "summary": "Today List",
+    "operationId": "today_list_api_today_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TodayOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/stats": {
+   "get": {
+    "tags": [
+     "today"
+    ],
+    "summary": "Stats",
+    "operationId": "stats_api_stats_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StatsOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/plan": {
+   "get": {
+    "tags": [
+     "today"
+    ],
+    "summary": "Plan",
+    "description": "Open moves by day, from `from` (today) to `to` (two weeks on), at companies still in play.",
+    "operationId": "plan_api_plan_get",
+    "parameters": [
+     {
+      "name": "from",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "From"
+      }
+     },
+     {
+      "name": "to",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "format": "date"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "To"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/PlanDay"
+         },
+         "title": "Response Plan Api Plan Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/activity": {
+   "get": {
+    "tags": [
+     "today"
+    ],
+    "summary": "Activity",
+    "description": "The history, newest first. Page back with `before` = the last id you have.",
+    "operationId": "activity_api_activity_get",
+    "parameters": [
+     {
+      "name": "company_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string",
+         "maxLength": 40
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Company Id"
+      }
+     },
+     {
+      "name": "before",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer",
+         "minimum": 1
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Return lines older than this id",
+       "title": "Before"
+      },
+      "description": "Return lines older than this id"
+     },
+     {
+      "name": "limit",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "integer",
+       "maximum": 200,
+       "minimum": 1,
+       "default": 50,
+       "title": "Limit"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Page_ActivityOut_"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "today"
+    ],
+    "summary": "Add Note",
+    "operationId": "add_note_api_activity_post",
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/NoteCreate"
+       }
+      }
+     }
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ActivityOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/settings": {
+   "get": {
+    "tags": [
+     "today"
+    ],
+    "summary": "Get Settings Route",
+    "operationId": "get_settings_route_api_settings_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SettingsOut"
+        }
+       }
+      }
+     }
+    }
+   },
+   "patch": {
+    "tags": [
+     "today"
+    ],
+    "summary": "Update Settings",
+    "description": "Change the named settings; the rest stay as they are.",
+    "operationId": "update_settings_api_settings_patch",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SettingsOut"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/SettingsOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
   "schemas": {
+   "ActivityOut": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "at": {
+      "type": "string",
+      "format": "date-time",
+      "title": "At"
+     },
+     "kind": {
+      "type": "string",
+      "title": "Kind"
+     },
+     "text": {
+      "type": "string",
+      "title": "Text"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     },
+     "move_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Move Id"
+     },
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "at",
+     "kind",
+     "text",
+     "company_id",
+     "person_id",
+     "move_id",
+     "xp"
+    ],
+    "title": "ActivityOut"
+   },
+   "CompanyBrief": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain"
+     },
+     "stage": {
+      "$ref": "#/components/schemas/Stage"
+     },
+     "open_role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Open Role"
+     },
+     "job_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Url"
+     },
+     "posted": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Posted"
+     },
+     "region": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Region"
+     },
+     "cant_apply": {
+      "type": "boolean",
+      "title": "Cant Apply"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "domain",
+     "stage",
+     "open_role",
+     "job_url",
+     "posted",
+     "region",
+     "cant_apply"
+    ],
+    "title": "CompanyBrief"
+   },
+   "CompanyCreate": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 253
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain"
+     },
+     "website": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Website"
+     },
+     "linkedin": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin"
+     },
+     "hq": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 300
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Hq"
+     },
+     "region": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Region"
+     },
+     "employees": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Employees"
+     },
+     "stage": {
+      "$ref": "#/components/schemas/Stage",
+      "default": "not_started"
+     },
+     "wave": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 16
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Wave"
+     },
+     "open_role": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 300
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Open Role"
+     },
+     "job_url": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Url"
+     },
+     "posted": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Posted"
+     },
+     "research": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Research"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "CompanyCreate"
+   },
+   "CompanyDetail": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain"
+     },
+     "stage": {
+      "$ref": "#/components/schemas/Stage"
+     },
+     "open_role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Open Role"
+     },
+     "job_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Url"
+     },
+     "posted": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Posted"
+     },
+     "region": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Region"
+     },
+     "cant_apply": {
+      "type": "boolean",
+      "title": "Cant Apply"
+     },
+     "wave": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Wave"
+     },
+     "rank": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rank"
+     },
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     },
+     "hq": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Hq"
+     },
+     "employees": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Employees"
+     },
+     "parked_why": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ParkedWhy"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "parked_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parked Reason"
+     },
+     "people_count": {
+      "type": "integer",
+      "title": "People Count",
+      "default": 0
+     },
+     "next_move": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MoveOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "website": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Website"
+     },
+     "linkedin": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin"
+     },
+     "notes": {
+      "type": "string",
+      "title": "Notes"
+     },
+     "research": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Research"
+     },
+     "people": {
+      "items": {
+       "$ref": "#/components/schemas/PersonOut"
+      },
+      "type": "array",
+      "title": "People"
+     },
+     "moves": {
+      "items": {
+       "$ref": "#/components/schemas/MoveOut"
+      },
+      "type": "array",
+      "title": "Moves"
+     },
+     "activity": {
+      "items": {
+       "$ref": "#/components/schemas/ActivityOut"
+      },
+      "type": "array",
+      "title": "Activity"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "domain",
+     "stage",
+     "open_role",
+     "job_url",
+     "posted",
+     "region",
+     "cant_apply",
+     "wave",
+     "rank",
+     "score",
+     "hq",
+     "employees",
+     "parked_why",
+     "parked_reason",
+     "website",
+     "linkedin",
+     "notes",
+     "research",
+     "people",
+     "moves",
+     "activity"
+    ],
+    "title": "CompanyDetail"
+   },
+   "CompanyPatch": {
+    "properties": {
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Stage"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "wave": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 16
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Wave"
+     },
+     "rank": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rank"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     },
+     "open_role": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 300
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Open Role"
+     },
+     "job_url": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Url"
+     },
+     "posted": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Posted"
+     },
+     "cant_apply": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cant Apply"
+     },
+     "research": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Research"
+     }
+    },
+    "type": "object",
+    "title": "CompanyPatch"
+   },
+   "CompanySummary": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "domain": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Domain"
+     },
+     "stage": {
+      "$ref": "#/components/schemas/Stage"
+     },
+     "open_role": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Open Role"
+     },
+     "job_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Job Url"
+     },
+     "posted": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Posted"
+     },
+     "region": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Region"
+     },
+     "cant_apply": {
+      "type": "boolean",
+      "title": "Cant Apply"
+     },
+     "wave": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Wave"
+     },
+     "rank": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Rank"
+     },
+     "score": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Score"
+     },
+     "hq": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Hq"
+     },
+     "employees": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Employees"
+     },
+     "parked_why": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ParkedWhy"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "parked_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parked Reason"
+     },
+     "people_count": {
+      "type": "integer",
+      "title": "People Count",
+      "default": 0
+     },
+     "next_move": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MoveOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "domain",
+     "stage",
+     "open_role",
+     "job_url",
+     "posted",
+     "region",
+     "cant_apply",
+     "wave",
+     "rank",
+     "score",
+     "hq",
+     "employees",
+     "parked_why",
+     "parked_reason"
+    ],
+    "title": "CompanySummary"
+   },
+   "DayBlocks": {
+    "properties": {
+     "outreach": {
+      "type": "boolean",
+      "title": "Outreach",
+      "default": false
+     },
+     "content": {
+      "type": "boolean",
+      "title": "Content",
+      "default": false
+     },
+     "course": {
+      "type": "boolean",
+      "title": "Course",
+      "default": false
+     }
+    },
+    "type": "object",
+    "title": "DayBlocks"
+   },
+   "DayCount": {
+    "properties": {
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day"
+     },
+     "moves": {
+      "type": "integer",
+      "title": "Moves"
+     }
+    },
+    "type": "object",
+    "required": [
+     "day",
+     "moves"
+    ],
+    "title": "DayCount"
+   },
+   "Draft": {
+    "properties": {
+     "type": {
+      "type": "string",
+      "title": "Type"
+     },
+     "subject": {
+      "type": "string",
+      "title": "Subject",
+      "default": ""
+     },
+     "body": {
+      "type": "string",
+      "title": "Body"
+     }
+    },
+    "type": "object",
+    "required": [
+     "type",
+     "body"
+    ],
+    "title": "Draft"
+   },
    "HTTPValidationError": {
     "properties": {
      "detail": {
@@ -142,6 +2144,1414 @@
      "signed_in"
     ],
     "title": "Me"
+   },
+   "MoveCard": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     },
+     "type": {
+      "$ref": "#/components/schemas/MoveType"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "due": {
+      "type": "string",
+      "format": "date",
+      "title": "Due"
+     },
+     "status": {
+      "$ref": "#/components/schemas/MoveStatus"
+     },
+     "notes": {
+      "type": "string",
+      "title": "Notes"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     },
+     "skip_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Skip Reason"
+     },
+     "done_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Done At"
+     },
+     "sequence": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Sequence"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "company": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/CompanyBrief"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "person": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PersonOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "company_id",
+     "person_id",
+     "type",
+     "title",
+     "due",
+     "status",
+     "notes",
+     "url",
+     "skip_reason",
+     "done_at",
+     "company",
+     "person"
+    ],
+    "title": "MoveCard",
+    "description": "A move with what it takes to do it right there: the company and the person, drafts included."
+   },
+   "MoveCreate": {
+    "properties": {
+     "type": {
+      "$ref": "#/components/schemas/MoveType",
+      "default": "custom"
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Title"
+     },
+     "due": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Due"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     },
+     "notes": {
+      "type": "string",
+      "maxLength": 20000,
+      "title": "Notes",
+      "default": ""
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title"
+    ],
+    "title": "MoveCreate"
+   },
+   "MoveOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     },
+     "type": {
+      "$ref": "#/components/schemas/MoveType"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "due": {
+      "type": "string",
+      "format": "date",
+      "title": "Due"
+     },
+     "status": {
+      "$ref": "#/components/schemas/MoveStatus"
+     },
+     "notes": {
+      "type": "string",
+      "title": "Notes"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     },
+     "skip_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Skip Reason"
+     },
+     "done_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Done At"
+     },
+     "sequence": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Sequence"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "company_id",
+     "person_id",
+     "type",
+     "title",
+     "due",
+     "status",
+     "notes",
+     "url",
+     "skip_reason",
+     "done_at"
+    ],
+    "title": "MoveOut"
+   },
+   "MovePatch": {
+    "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 500,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     },
+     "due": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Due"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MoveStatus"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "skip_reason": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Skip Reason"
+     }
+    },
+    "type": "object",
+    "title": "MovePatch"
+   },
+   "MoveStatus": {
+    "type": "string",
+    "enum": [
+     "open",
+     "done",
+     "skipped"
+    ],
+    "title": "MoveStatus"
+   },
+   "MoveType": {
+    "type": "string",
+    "enum": [
+     "reach",
+     "apply",
+     "email",
+     "approver_email",
+     "connect",
+     "comment",
+     "bump",
+     "linkedin_dm",
+     "call",
+     "interview",
+     "take_home",
+     "follow_up",
+     "research",
+     "prep",
+     "build",
+     "post",
+     "review",
+     "custom"
+    ],
+    "title": "MoveType"
+   },
+   "NoteCreate": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "maxLength": 5000,
+      "minLength": 1,
+      "title": "Text"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     },
+     "person_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Person Id"
+     }
+    },
+    "type": "object",
+    "required": [
+     "text"
+    ],
+    "title": "NoteCreate"
+   },
+   "Page_ActivityOut_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/ActivityOut"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     }
+    },
+    "type": "object",
+    "required": [
+     "items",
+     "total"
+    ],
+    "title": "Page[ActivityOut]"
+   },
+   "Page_CompanySummary_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/CompanySummary"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     }
+    },
+    "type": "object",
+    "required": [
+     "items",
+     "total"
+    ],
+    "title": "Page[CompanySummary]"
+   },
+   "Page_PersonOut_": {
+    "properties": {
+     "items": {
+      "items": {
+       "$ref": "#/components/schemas/PersonOut"
+      },
+      "type": "array",
+      "title": "Items"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     }
+    },
+    "type": "object",
+    "required": [
+     "items",
+     "total"
+    ],
+    "title": "Page[PersonOut]"
+   },
+   "ParkedWhy": {
+    "type": "string",
+    "enum": [
+     "stale_role",
+     "not_a_fit",
+     "skipped_apply",
+     "manual"
+    ],
+    "title": "ParkedWhy"
+   },
+   "PersonCreate": {
+    "properties": {
+     "company_id": {
+      "type": "string",
+      "maxLength": 40,
+      "title": "Company Id"
+     },
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "title": {
+      "type": "string",
+      "maxLength": 300,
+      "title": "Title",
+      "default": ""
+     },
+     "linkedin": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin"
+     },
+     "location": {
+      "type": "string",
+      "maxLength": 200,
+      "title": "Location",
+      "default": ""
+     },
+     "email": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 320,
+        "pattern": "^[^@\\s<>]+@[^@\\s<>]+\\.[A-Za-z]{2,}$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     },
+     "role_in_hire": {
+      "$ref": "#/components/schemas/RoleInHire",
+      "default": "hiring manager"
+     },
+     "sureness": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Sureness"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "why": {
+      "type": "string",
+      "maxLength": 20000,
+      "title": "Why",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "required": [
+     "company_id",
+     "name"
+    ],
+    "title": "PersonCreate"
+   },
+   "PersonOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "linkedin": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin"
+     },
+     "email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     },
+     "location": {
+      "type": "string",
+      "title": "Location"
+     },
+     "status": {
+      "$ref": "#/components/schemas/PersonStatus"
+     },
+     "role_in_hire": {
+      "$ref": "#/components/schemas/RoleInHire"
+     },
+     "sureness": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Sureness"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "left": {
+      "type": "boolean",
+      "title": "Left"
+     },
+     "company_id": {
+      "type": "string",
+      "title": "Company Id"
+     },
+     "why": {
+      "type": "string",
+      "title": "Why"
+     },
+     "notes": {
+      "type": "string",
+      "title": "Notes"
+     },
+     "emailed_at": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Emailed At"
+     },
+     "ab_variant": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ab Variant"
+     },
+     "drafts": {
+      "items": {
+       "$ref": "#/components/schemas/Draft"
+      },
+      "type": "array",
+      "title": "Drafts"
+     },
+     "details": {
+      "additionalProperties": true,
+      "type": "object",
+      "title": "Details"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "title",
+     "linkedin",
+     "email",
+     "location",
+     "status",
+     "role_in_hire",
+     "sureness",
+     "left",
+     "company_id",
+     "why",
+     "notes",
+     "emailed_at",
+     "ab_variant",
+     "drafts",
+     "details"
+    ],
+    "title": "PersonOut"
+   },
+   "PersonPatch": {
+    "properties": {
+     "title": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 300
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "linkedin": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Location"
+     },
+     "email": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 320,
+        "pattern": "^[^@\\s<>]+@[^@\\s<>]+\\.[A-Za-z]{2,}$"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     },
+     "status": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PersonStatus"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "role_in_hire": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/RoleInHire"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "sureness": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Sureness"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "why": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Why"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 20000
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     },
+     "left": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Left"
+     },
+     "ab_variant": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "A",
+         "B"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ab Variant"
+     }
+    },
+    "type": "object",
+    "title": "PersonPatch"
+   },
+   "PersonStatus": {
+    "type": "string",
+    "enum": [
+     "none",
+     "requested",
+     "connected",
+     "replied",
+     "no_response",
+     "declined"
+    ],
+    "title": "PersonStatus"
+   },
+   "PlanDay": {
+    "properties": {
+     "day": {
+      "type": "string",
+      "format": "date",
+      "title": "Day"
+     },
+     "moves": {
+      "items": {
+       "$ref": "#/components/schemas/MoveCard"
+      },
+      "type": "array",
+      "title": "Moves"
+     }
+    },
+    "type": "object",
+    "required": [
+     "day",
+     "moves"
+    ],
+    "title": "PlanDay"
+   },
+   "Promote": {
+    "properties": {
+     "wave": {
+      "type": "string",
+      "maxLength": 16,
+      "minLength": 1,
+      "title": "Wave",
+      "default": "2"
+     }
+    },
+    "type": "object",
+    "title": "Promote"
+   },
+   "Pull": {
+    "properties": {
+     "n": {
+      "type": "integer",
+      "maximum": 20.0,
+      "minimum": 1.0,
+      "title": "N",
+      "default": 3
+     }
+    },
+    "type": "object",
+    "title": "Pull"
+   },
+   "Pulled": {
+    "properties": {
+     "pulled": {
+      "items": {
+       "$ref": "#/components/schemas/MoveOut"
+      },
+      "type": "array",
+      "title": "Pulled"
+     }
+    },
+    "type": "object",
+    "required": [
+     "pulled"
+    ],
+    "title": "Pulled"
+   },
+   "Reply": {
+    "properties": {
+     "text": {
+      "type": "string",
+      "maxLength": 2000,
+      "title": "Text",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "title": "Reply"
+   },
+   "RoleInHire": {
+    "type": "string",
+    "enum": [
+     "hiring manager",
+     "approver",
+     "manager's boss",
+     "boss",
+     "both",
+     "founder",
+     "recruiter",
+     "poster",
+     "peer or stakeholder"
+    ],
+    "title": "RoleInHire"
+   },
+   "Sequence": {
+    "properties": {
+     "day0": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day0"
+     },
+     "steps": {
+      "additionalProperties": {
+       "type": "string"
+      },
+      "propertyNames": {
+       "$ref": "#/components/schemas/Step"
+      },
+      "type": "object",
+      "title": "Steps"
+     },
+     "next": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next"
+     },
+     "snooze": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Snooze"
+     },
+     "closed": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Closed"
+     },
+     "replied": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Replied"
+     }
+    },
+    "type": "object",
+    "title": "Sequence"
+   },
+   "SettingsOut": {
+    "properties": {
+     "candidate": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Candidate"
+     },
+     "pay_ask": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 200
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pay Ask"
+     },
+     "campaign_start": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Campaign Start"
+     },
+     "deadline": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Deadline"
+     },
+     "loom_url": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 1000,
+        "minLength": 1
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loom Url"
+     },
+     "snippets": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Snippets"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "days": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "$ref": "#/components/schemas/DayBlocks"
+        },
+        "propertyNames": {
+         "format": "date"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Days"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "SettingsOut",
+    "description": "The settings the app uses. Only these can be written."
+   },
+   "Snippets": {
+    "properties": {
+     "location_answer": {
+      "type": "string",
+      "maxLength": 5000,
+      "title": "Location Answer",
+      "default": ""
+     },
+     "dm_on_accept": {
+      "type": "string",
+      "maxLength": 5000,
+      "title": "Dm On Accept",
+      "default": ""
+     },
+     "bump_template": {
+      "type": "string",
+      "maxLength": 5000,
+      "title": "Bump Template",
+      "default": ""
+     }
+    },
+    "type": "object",
+    "title": "Snippets"
+   },
+   "Stage": {
+    "type": "string",
+    "enum": [
+     "not_started",
+     "researching",
+     "contacted",
+     "replied",
+     "call_booked",
+     "interviewing",
+     "take_home",
+     "offer",
+     "rejected",
+     "parked",
+     "bench"
+    ],
+    "title": "Stage"
+   },
+   "StatsOut": {
+    "properties": {
+     "xp": {
+      "type": "integer",
+      "title": "Xp"
+     },
+     "level": {
+      "type": "integer",
+      "title": "Level"
+     },
+     "level_title": {
+      "type": "string",
+      "title": "Level Title"
+     },
+     "level_floor_xp": {
+      "type": "integer",
+      "title": "Level Floor Xp"
+     },
+     "next_level_xp": {
+      "type": "integer",
+      "title": "Next Level Xp"
+     },
+     "streak": {
+      "type": "integer",
+      "title": "Streak"
+     },
+     "best_streak": {
+      "type": "integer",
+      "title": "Best Streak"
+     },
+     "streak_min": {
+      "type": "integer",
+      "title": "Streak Min"
+     },
+     "today_moves": {
+      "type": "integer",
+      "title": "Today Moves"
+     },
+     "recent": {
+      "items": {
+       "$ref": "#/components/schemas/DayCount"
+      },
+      "type": "array",
+      "title": "Recent"
+     },
+     "funnel": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Funnel"
+     },
+     "in_play": {
+      "type": "integer",
+      "title": "In Play"
+     },
+     "days_left": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Days Left"
+     }
+    },
+    "type": "object",
+    "required": [
+     "xp",
+     "level",
+     "level_title",
+     "level_floor_xp",
+     "next_level_xp",
+     "streak",
+     "best_streak",
+     "streak_min",
+     "today_moves",
+     "recent",
+     "funnel",
+     "in_play",
+     "days_left"
+    ],
+    "title": "StatsOut"
+   },
+   "Step": {
+    "type": "string",
+    "enum": [
+     "email",
+     "request",
+     "accepted",
+     "dm",
+     "bump"
+    ],
+    "title": "Step"
+   },
+   "StepTick": {
+    "properties": {
+     "step": {
+      "$ref": "#/components/schemas/Step"
+     },
+     "value": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "today",
+         "na"
+        ]
+       },
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Value",
+      "default": "today"
+     }
+    },
+    "type": "object",
+    "required": [
+     "step"
+    ],
+    "title": "StepTick"
+   },
+   "Sureness": {
+    "type": "string",
+    "enum": [
+     "confirmed",
+     "likely",
+     "guess"
+    ],
+    "title": "Sureness"
+   },
+   "TodayGroup": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "moves": {
+      "items": {
+       "$ref": "#/components/schemas/MoveCard"
+      },
+      "type": "array",
+      "title": "Moves"
+     }
+    },
+    "type": "object",
+    "required": [
+     "key",
+     "label",
+     "moves"
+    ],
+    "title": "TodayGroup"
+   },
+   "TodayOut": {
+    "properties": {
+     "today": {
+      "type": "string",
+      "format": "date",
+      "title": "Today"
+     },
+     "groups": {
+      "items": {
+       "$ref": "#/components/schemas/TodayGroup"
+      },
+      "type": "array",
+      "title": "Groups"
+     },
+     "overdue": {
+      "type": "integer",
+      "title": "Overdue"
+     },
+     "done_today": {
+      "items": {
+       "$ref": "#/components/schemas/MoveCard"
+      },
+      "type": "array",
+      "title": "Done Today"
+     },
+     "waiting": {
+      "items": {
+       "$ref": "#/components/schemas/MoveCard"
+      },
+      "type": "array",
+      "title": "Waiting"
+     },
+     "waiting_total": {
+      "type": "integer",
+      "title": "Waiting Total"
+     }
+    },
+    "type": "object",
+    "required": [
+     "today",
+     "groups",
+     "overdue",
+     "done_today",
+     "waiting",
+     "waiting_total"
+    ],
+    "title": "TodayOut"
    },
    "ValidationError": {
     "properties": {

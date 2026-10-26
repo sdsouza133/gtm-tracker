@@ -31,6 +31,21 @@ sits in one JSONB column per table, so research can grow without migrations and 
 
 Research written by automation never overwrites what the user changed: stage, notes, ticks and emails stay the user's.
 
+## Rules worth knowing
+
+- **One clock.** "Today" is the calendar day in `TIMEZONE` (America/Toronto). Every date the app writes or compares
+  comes from `app/clock.py`, so a tick at 9 PM lands on that day, not on UTC's tomorrow.
+- **One reach-out per person** (`app/services/reach.py`): email and connection request on Day 0; the LinkedIn message
+  when they accept; one email bump 4 working days after the later first touch if they don't. A reply or closing it by
+  hand ends it. Pure functions, tested against a table of worked examples.
+- **Stages move forward on their own** (an email sent: Contacted; a reply: Replied; a call done: Call booked), and
+  backwards only by hand. Parked, rejected and bench companies keep their moves but leave Today.
+- **XP and streaks are computed on the server from the whole history.** Moves earn XP while they're done (untick a
+  step and it's taken back); one-off wins (a reply, a call booked, an offer) are written to the history once per
+  company, so dragging a company back and forth earns nothing.
+- **Business rules raise `RuleError`** with a message the user can act on; the API turns it into a 409 (404 when the
+  thing isn't there), and the front end shows the message.
+
 ## Security
 
 - One user. The password is stored only as an argon2 hash in `PASSWORD_HASH`.

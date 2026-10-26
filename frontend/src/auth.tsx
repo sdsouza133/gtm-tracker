@@ -24,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: Infinity,
   });
   const loginMutation = useMutation({
+    meta: { quiet: true },
     mutationFn: async (password: string) => unwrap(await api.POST("/api/auth/login", { body: { password } })),
     onSuccess: (data) => {
       setCsrfToken(data.csrf ?? null);

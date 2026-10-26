@@ -55,10 +55,536 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Companies
+         * @description The board. Best-ranked first; filter by stage or search the name, domain and role.
+         */
+        get: operations["list_companies_api_companies_get"];
+        put?: never;
+        /** Create */
+        post: operations["create_api_companies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/companies/{company_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get One
+         * @description One company: the role, everyone around the hire (warmest first), its moves and its history.
+         */
+        get: operations["get_one_api_companies__company_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update */
+        patch: operations["update_api_companies__company_id__patch"];
+        trace?: never;
+    };
+    "/api/companies/{company_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Promote Company
+         * @description Off the bench and into the campaign.
+         */
+        post: operations["promote_company_api_companies__company_id__promote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List People */
+        get: operations["list_people_api_people_get"];
+        put?: never;
+        /**
+         * Create
+         * @description Add someone at a company. They get a reach-out of their own.
+         */
+        post: operations["create_api_people_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{person_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update */
+        patch: operations["update_api_people__person_id__patch"];
+        trace?: never;
+    };
+    "/api/people/{person_id}/reply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply
+         * @description They replied: their reach-out ends and the company moves to Replied.
+         */
+        post: operations["reply_api_people__person_id__reply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/moves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create */
+        post: operations["create_api_moves_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/moves/{move_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove */
+        delete: operations["remove_api_moves__move_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update
+         * @description Change the title, notes or link; finish, skip or reopen it; or move it to another day. On a reach-out, a new
+         *     day before the first touches moves Day 0, and after them holds the follow-up until then.
+         */
+        patch: operations["update_api_moves__move_id__patch"];
+        trace?: never;
+    };
+    "/api/moves/{move_id}/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Step
+         * @description Tick one step of a reach-out: done today (or on a day), n/a, or not done.
+         */
+        post: operations["step_api_moves__move_id__steps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/moves/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pull
+         * @description Bring the next few moves to today, when today's list is done.
+         */
+        post: operations["pull_api_moves_pull_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Today List */
+        get: operations["today_list_api_today_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stats */
+        get: operations["stats_api_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plan
+         * @description Open moves by day, from `from` (today) to `to` (two weeks on), at companies still in play.
+         */
+        get: operations["plan_api_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activity
+         * @description The history, newest first. Page back with `before` = the last id you have.
+         */
+        get: operations["activity_api_activity_get"];
+        put?: never;
+        /** Add Note */
+        post: operations["add_note_api_activity_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings Route */
+        get: operations["get_settings_route_api_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Settings
+         * @description Change the named settings; the rest stay as they are.
+         */
+        patch: operations["update_settings_api_settings_patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivityOut */
+        ActivityOut: {
+            /** Id */
+            id: number;
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Kind */
+            kind: string;
+            /** Text */
+            text: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Person Id */
+            person_id: string | null;
+            /** Move Id */
+            move_id: string | null;
+            /** Xp */
+            xp: number;
+        };
+        /** CompanyBrief */
+        CompanyBrief: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Domain */
+            domain: string | null;
+            stage: components["schemas"]["Stage"];
+            /** Open Role */
+            open_role: string | null;
+            /** Job Url */
+            job_url: string | null;
+            /** Posted */
+            posted: string | null;
+            /** Region */
+            region: string | null;
+            /** Cant Apply */
+            cant_apply: boolean;
+        };
+        /** CompanyCreate */
+        CompanyCreate: {
+            /** Name */
+            name: string;
+            /** Domain */
+            domain?: string | null;
+            /** Website */
+            website?: string | null;
+            /** Linkedin */
+            linkedin?: string | null;
+            /** Hq */
+            hq?: string | null;
+            /** Region */
+            region?: string | null;
+            /** Employees */
+            employees?: string | null;
+            /** @default not_started */
+            stage?: components["schemas"]["Stage"];
+            /** Wave */
+            wave?: string | null;
+            /** Open Role */
+            open_role?: string | null;
+            /** Job Url */
+            job_url?: string | null;
+            /** Posted */
+            posted?: string | null;
+            /** Research */
+            research?: {
+                [key: string]: unknown;
+            };
+        };
+        /** CompanyDetail */
+        CompanyDetail: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Domain */
+            domain: string | null;
+            stage: components["schemas"]["Stage"];
+            /** Open Role */
+            open_role: string | null;
+            /** Job Url */
+            job_url: string | null;
+            /** Posted */
+            posted: string | null;
+            /** Region */
+            region: string | null;
+            /** Cant Apply */
+            cant_apply: boolean;
+            /** Wave */
+            wave: string | null;
+            /** Rank */
+            rank: number | null;
+            /** Score */
+            score: number | null;
+            /** Hq */
+            hq: string | null;
+            /** Employees */
+            employees: string | null;
+            parked_why: components["schemas"]["ParkedWhy"] | null;
+            /** Parked Reason */
+            parked_reason: string | null;
+            /**
+             * People Count
+             * @default 0
+             */
+            people_count?: number;
+            next_move?: components["schemas"]["MoveOut"] | null;
+            /** Website */
+            website: string | null;
+            /** Linkedin */
+            linkedin: string | null;
+            /** Notes */
+            notes: string;
+            /** Research */
+            research: {
+                [key: string]: unknown;
+            };
+            /** People */
+            people: components["schemas"]["PersonOut"][];
+            /** Moves */
+            moves: components["schemas"]["MoveOut"][];
+            /** Activity */
+            activity: components["schemas"]["ActivityOut"][];
+        };
+        /** CompanyPatch */
+        CompanyPatch: {
+            /** Name */
+            name?: string | null;
+            stage?: components["schemas"]["Stage"] | null;
+            /** Wave */
+            wave?: string | null;
+            /** Rank */
+            rank?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /** Open Role */
+            open_role?: string | null;
+            /** Job Url */
+            job_url?: string | null;
+            /** Posted */
+            posted?: string | null;
+            /** Cant Apply */
+            cant_apply?: boolean | null;
+            /** Research */
+            research?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** CompanySummary */
+        CompanySummary: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Domain */
+            domain: string | null;
+            stage: components["schemas"]["Stage"];
+            /** Open Role */
+            open_role: string | null;
+            /** Job Url */
+            job_url: string | null;
+            /** Posted */
+            posted: string | null;
+            /** Region */
+            region: string | null;
+            /** Cant Apply */
+            cant_apply: boolean;
+            /** Wave */
+            wave: string | null;
+            /** Rank */
+            rank: number | null;
+            /** Score */
+            score: number | null;
+            /** Hq */
+            hq: string | null;
+            /** Employees */
+            employees: string | null;
+            parked_why: components["schemas"]["ParkedWhy"] | null;
+            /** Parked Reason */
+            parked_reason: string | null;
+            /**
+             * People Count
+             * @default 0
+             */
+            people_count?: number;
+            next_move?: components["schemas"]["MoveOut"] | null;
+        };
+        /** DayBlocks */
+        DayBlocks: {
+            /**
+             * Outreach
+             * @default false
+             */
+            outreach?: boolean;
+            /**
+             * Content
+             * @default false
+             */
+            content?: boolean;
+            /**
+             * Course
+             * @default false
+             */
+            course?: boolean;
+        };
+        /** DayCount */
+        DayCount: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Moves */
+            moves: number;
+        };
+        /** Draft */
+        Draft: {
+            /** Type */
+            type: string;
+            /**
+             * Subject
+             * @default
+             */
+            subject?: string;
+            /** Body */
+            body: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -75,6 +601,418 @@ export interface components {
             signed_in: boolean;
             /** Csrf */
             csrf?: string | null;
+        };
+        /**
+         * MoveCard
+         * @description A move with what it takes to do it right there: the company and the person, drafts included.
+         */
+        MoveCard: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Person Id */
+            person_id: string | null;
+            type: components["schemas"]["MoveType"];
+            /** Title */
+            title: string;
+            /**
+             * Due
+             * Format: date
+             */
+            due: string;
+            status: components["schemas"]["MoveStatus"];
+            /** Notes */
+            notes: string;
+            /** Url */
+            url: string | null;
+            /** Skip Reason */
+            skip_reason: string | null;
+            /** Done At */
+            done_at: string | null;
+            sequence?: components["schemas"]["Sequence"] | null;
+            company: components["schemas"]["CompanyBrief"] | null;
+            person: components["schemas"]["PersonOut"] | null;
+        };
+        /** MoveCreate */
+        MoveCreate: {
+            /** @default custom */
+            type?: components["schemas"]["MoveType"];
+            /** Title */
+            title: string;
+            /** Due */
+            due?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /** Person Id */
+            person_id?: string | null;
+            /**
+             * Notes
+             * @default
+             */
+            notes?: string;
+            /** Url */
+            url?: string | null;
+        };
+        /** MoveOut */
+        MoveOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Person Id */
+            person_id: string | null;
+            type: components["schemas"]["MoveType"];
+            /** Title */
+            title: string;
+            /**
+             * Due
+             * Format: date
+             */
+            due: string;
+            status: components["schemas"]["MoveStatus"];
+            /** Notes */
+            notes: string;
+            /** Url */
+            url: string | null;
+            /** Skip Reason */
+            skip_reason: string | null;
+            /** Done At */
+            done_at: string | null;
+            sequence?: components["schemas"]["Sequence"] | null;
+        };
+        /** MovePatch */
+        MovePatch: {
+            /** Title */
+            title?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Due */
+            due?: string | null;
+            status?: components["schemas"]["MoveStatus"] | null;
+            /** Skip Reason */
+            skip_reason?: string | null;
+        };
+        /**
+         * MoveStatus
+         * @enum {string}
+         */
+        MoveStatus: "open" | "done" | "skipped";
+        /**
+         * MoveType
+         * @enum {string}
+         */
+        MoveType: "reach" | "apply" | "email" | "approver_email" | "connect" | "comment" | "bump" | "linkedin_dm" | "call" | "interview" | "take_home" | "follow_up" | "research" | "prep" | "build" | "post" | "review" | "custom";
+        /** NoteCreate */
+        NoteCreate: {
+            /** Text */
+            text: string;
+            /** Company Id */
+            company_id?: string | null;
+            /** Person Id */
+            person_id?: string | null;
+        };
+        /** Page[ActivityOut] */
+        Page_ActivityOut_: {
+            /** Items */
+            items: components["schemas"]["ActivityOut"][];
+            /** Total */
+            total: number;
+        };
+        /** Page[CompanySummary] */
+        Page_CompanySummary_: {
+            /** Items */
+            items: components["schemas"]["CompanySummary"][];
+            /** Total */
+            total: number;
+        };
+        /** Page[PersonOut] */
+        Page_PersonOut_: {
+            /** Items */
+            items: components["schemas"]["PersonOut"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * ParkedWhy
+         * @enum {string}
+         */
+        ParkedWhy: "stale_role" | "not_a_fit" | "skipped_apply" | "manual";
+        /** PersonCreate */
+        PersonCreate: {
+            /** Company Id */
+            company_id: string;
+            /** Name */
+            name: string;
+            /**
+             * Title
+             * @default
+             */
+            title?: string;
+            /** Linkedin */
+            linkedin?: string | null;
+            /**
+             * Location
+             * @default
+             */
+            location?: string;
+            /** Email */
+            email?: string | null;
+            /** @default hiring manager */
+            role_in_hire?: components["schemas"]["RoleInHire"];
+            sureness?: components["schemas"]["Sureness"] | null;
+            /**
+             * Why
+             * @default
+             */
+            why?: string;
+        };
+        /** PersonOut */
+        PersonOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Linkedin */
+            linkedin: string | null;
+            /** Email */
+            email: string | null;
+            /** Location */
+            location: string;
+            status: components["schemas"]["PersonStatus"];
+            role_in_hire: components["schemas"]["RoleInHire"];
+            sureness: components["schemas"]["Sureness"] | null;
+            /** Left */
+            left: boolean;
+            /** Company Id */
+            company_id: string;
+            /** Why */
+            why: string;
+            /** Notes */
+            notes: string;
+            /** Emailed At */
+            emailed_at: string | null;
+            /** Ab Variant */
+            ab_variant: string | null;
+            /** Drafts */
+            drafts: components["schemas"]["Draft"][];
+            /** Details */
+            details: {
+                [key: string]: unknown;
+            };
+        };
+        /** PersonPatch */
+        PersonPatch: {
+            /** Title */
+            title?: string | null;
+            /** Linkedin */
+            linkedin?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Email */
+            email?: string | null;
+            status?: components["schemas"]["PersonStatus"] | null;
+            role_in_hire?: components["schemas"]["RoleInHire"] | null;
+            sureness?: components["schemas"]["Sureness"] | null;
+            /** Why */
+            why?: string | null;
+            /** Notes */
+            notes?: string | null;
+            /** Left */
+            left?: boolean | null;
+            /** Ab Variant */
+            ab_variant?: ("A" | "B") | null;
+        };
+        /**
+         * PersonStatus
+         * @enum {string}
+         */
+        PersonStatus: "none" | "requested" | "connected" | "replied" | "no_response" | "declined";
+        /** PlanDay */
+        PlanDay: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            /** Moves */
+            moves: components["schemas"]["MoveCard"][];
+        };
+        /** Promote */
+        Promote: {
+            /**
+             * Wave
+             * @default 2
+             */
+            wave?: string;
+        };
+        /** Pull */
+        Pull: {
+            /**
+             * N
+             * @default 3
+             */
+            n?: number;
+        };
+        /** Pulled */
+        Pulled: {
+            /** Pulled */
+            pulled: components["schemas"]["MoveOut"][];
+        };
+        /** Reply */
+        Reply: {
+            /**
+             * Text
+             * @default
+             */
+            text?: string;
+        };
+        /**
+         * RoleInHire
+         * @enum {string}
+         */
+        RoleInHire: "hiring manager" | "approver" | "manager's boss" | "boss" | "both" | "founder" | "recruiter" | "poster" | "peer or stakeholder";
+        /** Sequence */
+        Sequence: {
+            /** Day0 */
+            day0?: string | null;
+            /** Steps */
+            steps?: {
+                [key: string]: string;
+            };
+            /** Next */
+            next?: string | null;
+            /** Snooze */
+            snooze?: string | null;
+            /** Closed */
+            closed?: string | null;
+            /** Replied */
+            replied?: string | null;
+        };
+        /**
+         * SettingsOut
+         * @description The settings the app uses. Only these can be written.
+         */
+        SettingsOut: {
+            /** Candidate */
+            candidate?: string | null;
+            /** Pay Ask */
+            pay_ask?: string | null;
+            /** Campaign Start */
+            campaign_start?: string | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Loom Url */
+            loom_url?: string | null;
+            snippets?: components["schemas"]["Snippets"] | null;
+            /** Days */
+            days?: {
+                [key: string]: components["schemas"]["DayBlocks"];
+            } | null;
+        };
+        /** Snippets */
+        Snippets: {
+            /**
+             * Location Answer
+             * @default
+             */
+            location_answer?: string;
+            /**
+             * Dm On Accept
+             * @default
+             */
+            dm_on_accept?: string;
+            /**
+             * Bump Template
+             * @default
+             */
+            bump_template?: string;
+        };
+        /**
+         * Stage
+         * @enum {string}
+         */
+        Stage: "not_started" | "researching" | "contacted" | "replied" | "call_booked" | "interviewing" | "take_home" | "offer" | "rejected" | "parked" | "bench";
+        /** StatsOut */
+        StatsOut: {
+            /** Xp */
+            xp: number;
+            /** Level */
+            level: number;
+            /** Level Title */
+            level_title: string;
+            /** Level Floor Xp */
+            level_floor_xp: number;
+            /** Next Level Xp */
+            next_level_xp: number;
+            /** Streak */
+            streak: number;
+            /** Best Streak */
+            best_streak: number;
+            /** Streak Min */
+            streak_min: number;
+            /** Today Moves */
+            today_moves: number;
+            /** Recent */
+            recent: components["schemas"]["DayCount"][];
+            /** Funnel */
+            funnel: {
+                [key: string]: number;
+            };
+            /** In Play */
+            in_play: number;
+            /** Days Left */
+            days_left: number | null;
+        };
+        /**
+         * Step
+         * @enum {string}
+         */
+        Step: "email" | "request" | "accepted" | "dm" | "bump";
+        /** StepTick */
+        StepTick: {
+            step: components["schemas"]["Step"];
+            /**
+             * Value
+             * @default today
+             */
+            value?: ("today" | "na") | string | null;
+        };
+        /**
+         * Sureness
+         * @enum {string}
+         */
+        Sureness: "confirmed" | "likely" | "guess";
+        /** TodayGroup */
+        TodayGroup: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Moves */
+            moves: components["schemas"]["MoveCard"][];
+        };
+        /** TodayOut */
+        TodayOut: {
+            /**
+             * Today
+             * Format: date
+             */
+            today: string;
+            /** Groups */
+            groups: components["schemas"]["TodayGroup"][];
+            /** Overdue */
+            overdue: number;
+            /** Done Today */
+            done_today: components["schemas"]["MoveCard"][];
+            /** Waiting */
+            waiting: components["schemas"]["MoveCard"][];
+            /** Waiting Total */
+            waiting_total: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -167,6 +1105,671 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Me"];
+                };
+            };
+        };
+    };
+    list_companies_api_companies_get: {
+        parameters: {
+            query?: {
+                stage?: components["schemas"]["Stage"][] | null;
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_CompanySummary_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_api_companies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_one_api_companies__company_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_api_companies__company_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompanyPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    promote_company_api_companies__company_id__promote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Promote"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompanyDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_people_api_people_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                company_id?: string | null;
+                status?: components["schemas"]["PersonStatus"] | null;
+                role?: components["schemas"]["RoleInHire"] | null;
+                sureness?: components["schemas"]["Sureness"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_PersonOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_api_people_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_api_people__person_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reply_api_people__person_id__reply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Reply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_api_moves_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveCard"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_api_moves__move_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                move_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_api_moves__move_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                move_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MovePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveCard"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    step_api_moves__move_id__steps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                move_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepTick"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveCard"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pull_api_moves_pull_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Pull"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Pulled"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    today_list_api_today_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayOut"];
+                };
+            };
+        };
+    };
+    stats_api_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatsOut"];
+                };
+            };
+        };
+    };
+    plan_api_plan_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanDay"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activity_api_activity_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+                /** @description Return lines older than this id */
+                before?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Page_ActivityOut_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_note_api_activity_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_settings_route_api_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+        };
+    };
+    update_settings_api_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsOut"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

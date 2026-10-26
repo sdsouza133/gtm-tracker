@@ -3,6 +3,7 @@ back, so tests don't see each other's rows."""
 
 import os
 from collections.abc import Iterator
+from datetime import UTC, date, datetime
 
 import pytest
 from alembic import command
@@ -10,6 +11,10 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import Connection, create_engine
 from sqlalchemy.orm import Session
+
+# A Monday, so the working-day rules have a known shape. Tests that need "now" freeze it to this day too.
+TODAY = date(2026, 10, 26)
+NOON = datetime(2026, 10, 26, 16, 0, tzinfo=UTC)  # noon in Toronto
 
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "postgresql+psycopg://gt:gt@localhost:5432/gt_test")
 PASSWORD = "correct horse battery staple"
@@ -24,9 +29,11 @@ from app.auth import hash_password  # noqa: E402  (the environment above must be
 
 os.environ["PASSWORD_HASH"] = hash_password(PASSWORD)
 
+from app.clock import get_today  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.db import get_session  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.services import outreach  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -63,6 +70,7 @@ def client(db: Session) -> Iterator[TestClient]:
         yield db
 
     app.dependency_overrides[get_session] = _session
+    app.dependency_overrides[get_today] = lambda: TODAY
     with TestClient(app) as c:
         yield c
 
@@ -74,3 +82,10 @@ def signed_in(client: TestClient) -> TestClient:
     assert r.status_code == 200
     client.headers["X-CSRF-Token"] = r.json()["csrf"]
     return client
+
+
+@pytest.fixture(autouse=True)
+def frozen_now(monkeypatch: pytest.MonkeyPatch) -> datetime:
+    """Moves finished in a test are finished at noon on TODAY."""
+    monkeypatch.setattr(outreach, "now", lambda: NOON)
+    return NOON

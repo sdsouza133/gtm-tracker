@@ -27,7 +27,9 @@ from sqlalchemy import (
     MetaData,
     String,
     Text,
+    false,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -72,17 +74,31 @@ class Stage(enum.StrEnum):
 
 
 class MoveType(enum.StrEnum):
-    REACH = "reach"  # one person's whole outreach, step by step (connect, email, bump, DM)
+    REACH = "reach"  # one person's whole outreach, step by step (email, request, accepted, message, bump)
     APPLY = "apply"
-    EMAIL = "email"
+    EMAIL = "email"  # with no person: "find the hiring manager, then email them"
+    APPROVER_EMAIL = "approver_email"
     CONNECT = "connect"
     COMMENT = "comment"
-    POST = "post"
     BUMP = "bump"
     LINKEDIN_DM = "linkedin_dm"
-    BUILD = "build"
+    CALL = "call"
+    INTERVIEW = "interview"
+    TAKE_HOME = "take_home"
+    FOLLOW_UP = "follow_up"
+    RESEARCH = "research"
     PREP = "prep"
+    BUILD = "build"
+    POST = "post"
     REVIEW = "review"
+    CUSTOM = "custom"
+
+
+class ParkedWhy(enum.StrEnum):
+    STALE_ROLE = "stale_role"  # the role is too old to be worth working
+    NOT_A_FIT = "not_a_fit"
+    SKIPPED_APPLY = "skipped_apply"  # the application was skipped before anything else happened there
+    MANUAL = "manual"
 
 
 class MoveStatus(enum.StrEnum):
@@ -144,6 +160,9 @@ class Company(Timestamps, Base):
     job_url: Mapped[str | None] = mapped_column(String(1000))
     posted: Mapped[date | None] = mapped_column(Date)
     notes: Mapped[str] = mapped_column(Text, default="")
+    parked_why: Mapped[ParkedWhy | None] = mapped_column(_enum(ParkedWhy))
+    parked_reason: Mapped[str | None] = mapped_column(Text)
+    cant_apply: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     research: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
 
     people: Mapped[list["Person"]] = relationship(back_populates="company", cascade="all, delete-orphan")
@@ -166,6 +185,8 @@ class Person(Timestamps, Base):
     why: Mapped[str] = mapped_column(Text, default="")  # where the facts about their part in the hire came from
     left: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str] = mapped_column(Text, default="")
+    emailed_at: Mapped[date | None] = mapped_column(Date)  # the day of the first email
+    ab_variant: Mapped[str | None] = mapped_column(String(1))  # which Day 0 email they got, A or B
     drafts: Mapped[list[dict[str, Any]]] = mapped_column(JSONType, default=list)
     details: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)  # angles, authority, motive, proof
 
@@ -176,7 +197,11 @@ class Move(Timestamps, Base):
     """One thing to do on a day: apply, a reach-out sequence to one person, a comment, a build."""
 
     __tablename__ = "moves"
-    __table_args__ = (Index("ix_moves_status_due", "status", "due"),)
+    __table_args__ = (
+        Index("ix_moves_status_due", "status", "due"),
+        # one reach-out sequence per person
+        Index("uq_moves_reach_person", "person_id", unique=True, postgresql_where=text("type = 'reach'")),
+    )
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("a"))
     company_id: Mapped[str | None] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), index=True)
@@ -187,6 +212,7 @@ class Move(Timestamps, Base):
     status: Mapped[MoveStatus] = mapped_column(_enum(MoveStatus), default=MoveStatus.OPEN)
     notes: Mapped[str] = mapped_column(Text, default="")
     url: Mapped[str | None] = mapped_column(String(1000))
+    skip_reason: Mapped[str | None] = mapped_column(String(200))  # "US only": skipped without passing on the company
     done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # a reach sequence's state: its day 0, the dates of the steps done so far, the next step, why it closed
     sequence: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
@@ -196,9 +222,11 @@ class Move(Timestamps, Base):
 
 
 class Activity(Base):
-    """The history: what happened and when, newest last."""
+    """The history: what happened and when, newest last. One-off wins (a reply, a call booked) carry their XP here; the
+    `tag` makes a win count once (moving a company back and forth doesn't earn the "call booked" XP twice)."""
 
     __tablename__ = "activity"
+    __table_args__ = (Index("ix_activity_company_tag", "company_id", "tag"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
@@ -207,6 +235,8 @@ class Activity(Base):
     company_id: Mapped[str | None] = mapped_column(ForeignKey("companies.id", ondelete="SET NULL"), index=True)
     person_id: Mapped[str | None] = mapped_column(ForeignKey("people.id", ondelete="SET NULL"))
     move_id: Mapped[str | None] = mapped_column(ForeignKey("moves.id", ondelete="SET NULL"))
+    xp: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    tag: Mapped[str | None] = mapped_column(String(40))
 
 
 class Setting(Base):

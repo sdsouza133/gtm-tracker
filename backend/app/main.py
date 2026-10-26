@@ -12,9 +12,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import auth_routes
+from app.api import auth_routes, companies, moves, people, today
 from app.config import get_settings
 from app.db import get_engine
+from app.services.outreach import NotFoundError, RuleError
 
 log = logging.getLogger("gtm_tracker")
 
@@ -74,7 +75,13 @@ def create_app() -> FastAPI:
             return JSONResponse({"status": "unavailable"}, status_code=503)
         return JSONResponse({"status": "ok"})
 
-    app.include_router(auth_routes.router)
+    @app.exception_handler(RuleError)
+    def rule_broken(_request: Request, exc: RuleError) -> JSONResponse:
+        code = 404 if isinstance(exc, NotFoundError) else 409
+        return JSONResponse({"detail": str(exc)}, status_code=code)
+
+    for module in (auth_routes, companies, people, moves, today):
+        app.include_router(module.router)
 
     static = Path(settings.static_dir)
     if (static / "index.html").is_file():
