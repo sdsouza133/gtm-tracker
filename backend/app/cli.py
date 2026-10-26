@@ -32,7 +32,7 @@ def hash_password(_args: list[str]) -> int:
 def openapi(_args: list[str]) -> int:
     from app.main import create_app
 
-    Path("openapi.json").write_text(json.dumps(create_app().openapi(), indent=1) + "\n")
+    Path("openapi.json").write_text(json.dumps(create_app().openapi(), indent=1) + "\n", encoding="utf-8")
     print("wrote openapi.json")
     return 0
 
@@ -54,8 +54,8 @@ def import_legacy(args: list[str]) -> int:
     if not args:
         print(__doc__, file=sys.stderr)
         return 2
-    export = json.loads(Path(args[0]).read_text())
-    fx = json.loads(Path(args[1]).read_text()) if len(args) > 1 else None
+    export = json.loads(Path(args[0]).read_text(encoding="utf-8"))
+    fx = json.loads(Path(args[1]).read_text(encoding="utf-8")) if len(args) > 1 else None
     with session_factory()() as session:
         try:
             counts = load(session, export, fx)
@@ -74,7 +74,7 @@ def restore(args: list[str]) -> int:
     if not args:
         print(__doc__, file=sys.stderr)
         return 2
-    backup = json.loads(Path(args[0]).read_text())
+    backup = json.loads(Path(args[0]).read_text(encoding="utf-8"))
     with session_factory()() as session:
         try:
             counts = load(session, backup)
