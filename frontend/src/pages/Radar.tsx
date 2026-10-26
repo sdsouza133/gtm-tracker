@@ -181,6 +181,7 @@ function Settings({ data }: { data: RadarState }) {
         <input
           className={field}
           type="number"
+          required
           min={0}
           max={23}
           value={hour}
@@ -192,6 +193,7 @@ function Settings({ data }: { data: RadarState }) {
         <input
           className={field}
           type="number"
+          required
           min={0}
           step={1000}
           value={minUsd}
@@ -203,6 +205,7 @@ function Settings({ data }: { data: RadarState }) {
         <input
           className={field}
           type="number"
+          required
           min={0}
           step={1000}
           value={minCad}

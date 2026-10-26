@@ -170,3 +170,9 @@ def test_due_after_the_hour_once_a_day(db: Session) -> None:
     db.add(Setting(key="radar_status", value={"last_run_date": datetime.now(settings.tz).date().isoformat()}))
     db.flush()
     assert not radar.due(db, settings)
+
+
+def test_a_bad_posted_date_is_dropped_not_fatal() -> None:
+    assert radar._day("2026-10-25T10:00:00Z") == date(2026, 10, 25)
+    assert radar._day("yesterday") is None
+    assert radar._day(None) is None

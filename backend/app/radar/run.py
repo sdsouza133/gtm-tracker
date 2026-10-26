@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -41,6 +41,7 @@ INBOX_DAYS = 45
 POSTS_DAYS = 14
 POSTS_KEEP = 300
 MAX_ATTEMPTS = 3
+STARTING_GRACE = timedelta(minutes=2)  # a pass asked for this recently counts as running before it takes the lock
 CHECK_EVERY_S = 300
 APPLY_WHY_BOARD = (
     "New posting on their job board, found by the job radar on {day}. "
@@ -49,6 +50,35 @@ APPLY_WHY_BOARD = (
 APPLY_WHY_LINKEDIN = (
     "Posted {posted}, found by the job radar. Apply today, then email the hiring manager and say you've applied."
 )
+
+
+def _day(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(value[:10]) if isinstance(value, str) and value else None
+    except ValueError:
+        return None
+
+
+def is_running(session: Session, status: dict[str, Any]) -> bool:
+    """A pass holds the lock, or one was asked for moments ago and is still starting. A flag left behind by a crash
+    or a deploy mid-pass doesn't count, so it can't block "Check now" until the next morning."""
+    if not status.get("running"):
+        return False
+    held = session.scalar(
+        text(
+            "SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted AND classid = 0 "
+            "AND objid = :k AND objsubid = 1 AND database = (SELECT oid FROM pg_database "
+            "WHERE datname = current_database()))"
+        ),
+        {"k": LOCK_KEY},
+    )
+    if held:
+        return True
+    try:
+        since = datetime.now(UTC) - datetime.fromisoformat(status.get("started_at") or "")
+    except ValueError:
+        return False
+    return since < STARTING_GRACE
 
 
 def get_setting(session: Session, key: str, default: Any) -> Any:
@@ -254,31 +284,71 @@ def _company_snapshot(c: Company) -> dict[str, Any]:
     }
 
 
-class Index:
-    """Finds the tracked company behind a job: by LinkedIn page, domain, name, or job-board slug."""
+BOARD_SLUG = Company.research["jobs"]["board"]["slug"].as_string()
 
-    def __init__(self, companies: list[Company]) -> None:
-        self.keys: dict[tuple[str, str], Company] = {}
-        for c in companies:
+
+def _job_keys(job: dict[str, Any]) -> list[tuple[str, str]]:
+    return [
+        ("l", linkedin_slug(job.get("company_linkedin") or "")),
+        ("d", domain_of(job.get("website") or "")),
+        ("n", norm(job.get("company") or "")),
+        ("b", ((job.get("board") or {}).get("slug") or "").lower()),
+    ]
+
+
+class Index:
+    """Finds the tracked company behind a job: by LinkedIn page, domain, name, or job-board slug. Built once per pass
+    from the few columns it needs, not whole rows."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+        self.keys: dict[tuple[str, str], str] = {}
+        rows = session.execute(
+            select(Company.id, Company.linkedin, Company.domain, Company.website, Company.name, BOARD_SLUG)
+        )
+        for cid, linkedin, domain, website, name, slug in rows:
             for key in (
-                ("l", linkedin_slug(c.linkedin or "")),
-                ("d", c.domain or domain_of(c.website or "")),
-                ("n", norm(c.name)),
+                ("l", linkedin_slug(linkedin or "")),
+                ("d", domain or domain_of(website or "")),
+                ("n", norm(name)),
+                ("b", (slug or "").lower()),
             ):
                 if key[1]:
-                    self.keys.setdefault(key, c)
-            board = (c.research.get("jobs") or {}).get("board") or {}
-            if board.get("slug"):
-                self.keys.setdefault(("b", board["slug"].lower()), c)
+                    self.keys.setdefault(key, cid)
 
     def match(self, job: dict[str, Any]) -> Company | None:
-        keys = [
-            ("l", linkedin_slug(job.get("company_linkedin") or "")),
-            ("d", domain_of(job.get("website") or "")),
-            ("n", norm(job.get("company") or "")),
-            ("b", ((job.get("board") or {}).get("slug") or "").lower()),
-        ]
-        return next((self.keys[k] for k in keys if k[1] and k in self.keys), None)
+        cid = next((self.keys[k] for k in _job_keys(job) if k[1] and k in self.keys), None)
+        return self.session.get(Company, cid) if cid else None
+
+
+def find_company(session: Session, job: dict[str, Any]) -> Company | None:
+    """The same match as `Index`, for one job, with a few indexed lookups instead of reading every company."""
+    for kind, value in _job_keys(job):
+        if not value:
+            continue
+        if kind == "l":
+            rows = session.scalars(select(Company).where(Company.linkedin.ilike(f"%/company/{value}%")).limit(5))
+            hit = next((c for c in rows if linkedin_slug(c.linkedin or "") == value), None)
+        elif kind == "d":
+            hit = company_with_domain(session, value)
+        elif kind == "n":
+            squashed = func.regexp_replace(func.lower(Company.name), "[^a-z0-9]", "", "g")
+            hit = session.scalars(select(Company).where(squashed == value).limit(1)).first()
+        else:
+            hit = session.scalars(select(Company).where(func.lower(BOARD_SLUG) == value).limit(1)).first()
+        if hit is not None:
+            return hit
+    return None
+
+
+def company_with_domain(session: Session, domain: str) -> Company | None:
+    by_column = session.scalars(select(Company).where(func.lower(Company.domain) == domain).limit(1)).first()
+    if by_column is not None:
+        return by_column
+    rows = session.scalars(
+        select(Company).where(Company.domain.is_(None), Company.website.ilike(f"%{domain}%")).limit(20)
+    )
+    return next((c for c in rows if domain_of(c.website or "") == domain), None)
 
 
 def _apply_board_checks(
@@ -316,7 +386,7 @@ def _apply_board_checks(
 
 
 def _apply_found_jobs(session: Session, found: Searches, today: date, summary: dict[str, Any]) -> None:
-    index = Index(list(session.scalars(select(Company))))
+    index = Index(session)
     have = set(session.scalars(select(RadarItem.id)))
     linkedin_urls = {x["url"] for x in found.linkedin.jobs}
     for j in found.linkedin.jobs + [j for j in found.ats.jobs if j["url"] not in linkedin_urls]:
@@ -344,7 +414,7 @@ def _apply_found_jobs(session: Session, found: Searches, today: date, summary: d
                 company=(j["company"] or "")[:200],
                 title=(j["title"] or "")[:300],
                 url=web_url(j["url"]),
-                posted=date.fromisoformat(j["posted"]) if j.get("posted") else None,
+                posted=_day(j.get("posted")),
                 fit=j["fit"],
                 state="new",
                 company_id=c.id if c else None,
@@ -428,6 +498,7 @@ def run_once(factory: sessionmaker[Session], settings: Settings, tools: Tools, t
     with factory() as lock_session:
         if not lock_session.scalar(text("SELECT pg_try_advisory_lock(:k)"), {"k": LOCK_KEY}):
             return False
+        lock_session.commit()  # the lock belongs to the connection; no transaction stays open during the pass
         try:
             _run(factory, settings, tools, trigger)
         finally:
@@ -453,13 +524,17 @@ def _run(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigg
         )
         put_setting(session, "radar_status", status)
         session.commit()
-        cfg = config(session)
-        tracked = [
-            _company_snapshot(c)
-            for c in session.scalars(select(Company))
-            if c.stage not in SKIP_STAGES or c.parked_why is ParkedWhy.STALE_ROLE
-        ]
     try:
+        with factory() as session:
+            cfg = config(session)
+            tracked = [
+                _company_snapshot(c)
+                for c in session.scalars(
+                    select(Company).where(
+                        Company.stage.not_in(SKIP_STAGES) | (Company.parked_why == ParkedWhy.STALE_ROLE)
+                    )
+                )
+            ]
         checks = check_boards(tools.web, tracked, today, cfg.min_fit)
         found = search_all(tools.apify, tools.web, cfg, status, today) if tools.apify else Searches()
         with factory() as session:
@@ -530,7 +605,9 @@ def default_tools(settings: Settings) -> Tools:
     return Tools(web=boards.Web(), apify=Apify(token) if token else None)
 
 
-def find_board_for(factory: sessionmaker[Session], web: boards.Http, company_id: str, title: str, move_id: str) -> None:
+def find_board_for(
+    factory: sessionmaker[Session], web: boards.Http, company_id: str, title: str, move_id: str, today: date
+) -> None:
     """After a radar role is added for a new company: find its own job board, so the Apply move can point at the
     direct posting instead of LinkedIn."""
     with factory() as session:
@@ -548,7 +625,8 @@ def find_board_for(factory: sessionmaker[Session], web: boards.Http, company_id:
         earlier = (c.research.get("jobs") or {}).get("postings") or []
         known = {p["url"] for p in found.postings}
         found.postings += [p for p in earlier if p["url"] not in known]
-        c.research = {**c.research, "jobs": found.as_jobs([p["url"] for p in earlier], {}, datetime.now(UTC).date())}
+        first_seen = {p["url"]: p.get("first_seen", "") for p in earlier}
+        c.research = {**c.research, "jobs": found.as_jobs([p["url"] for p in earlier], first_seen, today)}
         t = norm(title)
         direct = next(
             (

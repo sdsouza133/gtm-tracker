@@ -88,12 +88,14 @@ def state(session: DbSession, settings: AppSettings) -> RadarOut:
         .limit(INBOX_LIMIT)
     ).all()
     posts = [HiringPost.model_validate(p) for p in radar.get_setting(session, "radar_posts", []) if isinstance(p, dict)]
+    status_now = dict(radar.get_setting(session, "radar_status", {}))
+    status_now["running"] = radar.is_running(session, status_now)
     return RadarOut(
-        status=radar.get_setting(session, "radar_status", {}),
+        status=status_now,
         config=RadarConfigOut(**radar.config(session).__dict__),
         items=[_item(r) for r in items],
         posts=posts,
-        apify=settings.apify_token is not None,
+        apify=bool(settings.apify_token and settings.apify_token.get_secret_value()),
     )
 
 
@@ -110,12 +112,17 @@ def update_config(body: RadarConfigPatch, session: DbSession) -> RadarConfigOut:
 @router.post("/run", status_code=status.HTTP_202_ACCEPTED)
 def run_now(session: DbSession, runtime: RadarRuntime) -> dict[str, str]:
     """Check now, in the background. The status shows progress; a second press while it runs is refused."""
-    if radar.get_setting(session, "radar_status", {}).get("running"):
+    current = dict(radar.get_setting(session, "radar_status", {}))
+    if radar.is_running(session, current):
         raise HTTPException(status.HTTP_409_CONFLICT, "The radar is already running.")
 
     def work() -> None:
         radar.run_once(runtime.factory, runtime.settings, runtime.tools(), "manual")
 
+    # marked before the thread starts, so the page's first refresh already sees it running and keeps polling
+    current.update(running=True, step="starting", error="", started_at=datetime.now(UTC).isoformat())
+    radar.put_setting(session, "radar_status", current)
+    session.commit()
     runtime.start(work)
     return {"status": "started"}
 
@@ -146,7 +153,7 @@ def add(item_id: str, session: DbSession, today: Today, runtime: RadarRuntime) -
     }
     company = session.get(Company, item.company_id) if item.company_id else None
     if company is None:  # the company may have been added since the radar found this role
-        company = radar.Index(list(session.scalars(select(Company)))).match(j)
+        company = radar.find_company(session, j)
     if company is not None:
         if company.stage is Stage.BENCH:
             company.stage = Stage.NOT_STARTED
@@ -158,9 +165,7 @@ def add(item_id: str, session: DbSession, today: Today, runtime: RadarRuntime) -
         domain = domain_of(j.get("website") or "") or None
         company = Company(
             name=item.company or "Unknown company",
-            domain=domain
-            if domain and not radar.Index(list(session.scalars(select(Company)))).keys.get(("d", domain))
-            else None,
+            domain=domain if domain and radar.company_with_domain(session, domain) is None else None,
             website=web_url(j.get("website")) or None,
             linkedin=web_url(j.get("company_linkedin")) or None,
             employees=str(j.get("employees") or "") or None,
@@ -199,7 +204,7 @@ def add(item_id: str, session: DbSession, today: Today, runtime: RadarRuntime) -
         title=f"Apply: {item.title}"[:500],
         due=today,
         notes=f"Found by the job radar. Apply early: the first applicants get read.{warn}",
-        url=(j.get("apply_url") or item.url)[:1000],
+        url=web_url(j.get("apply_url")) or web_url(item.url) or None,
     )
     session.add(apply_move)
     session.add(
@@ -219,7 +224,7 @@ def add(item_id: str, session: DbSession, today: Today, runtime: RadarRuntime) -
     session.commit()
     if not (company.research.get("jobs") or {}).get("board"):
         cid, title, move_id = company.id, item.title, apply_move.id
-        runtime.start(lambda: radar.find_board_for(runtime.factory, runtime.tools().web, cid, title, move_id))
+        runtime.start(lambda: radar.find_board_for(runtime.factory, runtime.tools().web, cid, title, move_id, today))
     return RadarAdded(company_id=company.id, move_id=apply_move.id)
 
 

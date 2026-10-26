@@ -73,7 +73,11 @@ CORE = re.compile(
 NOT_CORE = re.compile(r"\b(analyst|administrator|admin|specialist|coordinator|intern)\b", re.IGNORECASE)
 COUNTRY_WIDE = re.compile(r"^\s*(united states|usa?|u\.s\.a?\.?|north america|americas|anywhere)\s*$", re.IGNORECASE)
 ONSITE = re.compile(r"\b(on-?sites?|in[- ]office|in person|hybrid|relocat\w*)\b", re.IGNORECASE)
-MONEY = re.compile(r"(CA\$|C\$|CAD|US\$|USD|\$)\s?(\d{2,3}(?:,\d{3})?(?:\.\d+)?)\s*([kK])?")
+_AMOUNT = r"(\d{2,3}(?:,\d{3})?(?:\.\d+)?)\s*([kK])?"
+# a money amount, and the other end of a range when it follows ("CA$120,000-150,000", "$90k to $140k")
+MONEY = re.compile(
+    rf"(CA\$|C\$|CAD|US\$|USD|\$)\s?{_AMOUNT}(?:\s*(?:-|–|to)\s*(?:CA\$|C\$|CAD|US\$|USD|\$)?\s?{_AMOUNT})?"
+)
 FULLY_REMOTE = re.compile(r"\b(fully remote|remote[- ]first|100% remote)\b", re.IGNORECASE)
 HOURLY = re.compile(r"/\s*(hr|hour)|per hour|hourly", re.IGNORECASE)
 USD_NAMED = re.compile(r"\bUSD\b|US\s?\$", re.IGNORECASE)
@@ -161,9 +165,11 @@ def pay_ok(salary: str, cfg: RadarConfig, canadian: bool = False) -> bool:
     if not salary or HOURLY.search(salary):
         return True
     values = []
-    for currency, number, k in MONEY.findall(salary):
-        n = float(number.replace(",", ""))
-        values.append((n * (THOUSAND if k or n < THOUSAND else 1), currency.upper().startswith("C")))
+    for currency, low, low_k, high, high_k in MONEY.findall(salary):
+        for number, k in ((low, low_k), (high, high_k)):
+            if number:
+                n = float(number.replace(",", ""))
+                values.append((n * (THOUSAND if k or n < THOUSAND else 1), currency.upper().startswith("C")))
     if not values:
         return True
     top = max(values)[0]

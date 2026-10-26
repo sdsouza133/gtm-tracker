@@ -60,6 +60,8 @@ def test_workable_from_toronto(location: str, text: str, ok: bool) -> None:
         ("$90K-$120K", False, True),
         ("$70,000 - $95,000", False, False),
         ("CA$110,000-130,000", False, False),
+        ("CA$120,000-150,000", False, True),  # the top of the range counts even without its own sign
+        ("$90,000 - 140,000", False, True),
         ("$140,000 - $150,000", True, True),  # a plain "$" in Canada is CAD: 150K CAD clears the CAD floor
         ("$120,000 - $130,000", True, False),
         ("$60/hr", False, True),
