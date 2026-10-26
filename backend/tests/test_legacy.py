@@ -268,6 +268,8 @@ def test_a_backup_restores_into_an_empty_database(db: Session) -> None:
     assert reach.sequence["replied"] == "2026-10-22"
     with pytest.raises(RestoreRefusedError):
         restore(db, {**backup, "version": 99})
+    with pytest.raises(RestoreRefusedError, match="missing activity"):
+        restore(db, {k: v for k, v in backup.items() if k != "activity"})
 
 
 def test_backup_download(signed_in: TestClient, db: Session) -> None:

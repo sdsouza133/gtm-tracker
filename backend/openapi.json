@@ -1446,7 +1446,14 @@
     "operationId": "export_api_export_get",
     "responses": {
      "200": {
-      "description": "Successful Response"
+      "description": "The backup",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "object"
+        }
+       }
+      }
      }
     }
    }
