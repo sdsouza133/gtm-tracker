@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import { CalendarDays, Columns3, LogOut, Radar, Sparkles, Sun, Users } from "lucide-react";
+import { CalendarDays, Columns3, Download, LogOut, Radar, Sparkles, Sun, Users } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
@@ -54,10 +54,18 @@ export function Layout() {
             </NavLink>
           ))}
         </div>
+        <a
+          href="/api/export"
+          download
+          className="flex min-h-[40px] w-fit items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink md:mt-auto md:w-auto"
+        >
+          <Download size={16} aria-hidden="true" />
+          Download backup
+        </a>
         <button
           type="button"
           onClick={signOut}
-          className="flex min-h-[40px] w-fit items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink md:mt-auto md:w-auto"
+          className="flex min-h-[40px] w-fit items-center gap-2.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink md:w-auto"
         >
           <LogOut size={16} aria-hidden="true" />
           Sign out

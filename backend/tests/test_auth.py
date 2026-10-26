@@ -129,6 +129,7 @@ PROTECTED = [
     ("PUT", "/api/fx/prospects"),
     ("GET", "/api/fx/prospects/x1"),
     ("PATCH", "/api/fx/prospects/x1"),
+    ("GET", "/api/export"),
 ]
 
 

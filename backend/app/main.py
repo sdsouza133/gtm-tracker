@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import auth_routes, companies, fractional, moves, people, today
+from app.api import auth_routes, backup, companies, fractional, moves, people, today
 from app.config import get_settings
 from app.db import get_engine
 from app.services.outreach import NotFoundError, RuleError
@@ -81,7 +81,7 @@ def create_app() -> FastAPI:
         code = 404 if isinstance(exc, NotFoundError) else 409
         return JSONResponse({"detail": str(exc)}, status_code=code)
 
-    for module in (auth_routes, companies, people, moves, today, fractional):
+    for module in (auth_routes, companies, people, moves, today, fractional, backup):
         app.include_router(module.router)
 
     static = Path(settings.static_dir)
