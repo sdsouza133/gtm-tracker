@@ -22,7 +22,9 @@ export function makeQueryClient({ retry = true } = {}): QueryClient {
     // every failed change says why, in the server's words when it gave some
     mutationCache: new MutationCache({
       onError: (error, _vars, _context, mutation) => {
-        if (mutation.meta?.["quiet"]) return; // the form shows its own message
+        const quiet = mutation.meta?.["quiet"];
+        if (quiet === true) return; // the form shows its own message
+        if (typeof quiet === "number" && error instanceof ApiError && error.status === quiet) return; // expected, not news
         if (error instanceof ApiError && error.status === 401) {
           markSignedOut(client);
           return;

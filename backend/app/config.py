@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     api_token: SecretStr | None = None
     # The job radar's paid searches (LinkedIn, Google, hiring posts) run only with an Apify token; job boards are free.
     apify_token: SecretStr | None = None
+    # Apollo finds work emails and what a company does. It only runs once sign-in is on (not OPEN_ACCESS).
+    apollo_api_key: SecretStr | None = None
     # Run the radar every morning (at radar_config.hour, local time). Off in tests and one-off scripts.
     radar_schedule: bool = True
 

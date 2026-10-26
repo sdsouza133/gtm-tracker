@@ -212,6 +212,12 @@ class Cleared(BaseModel):
     cleared: int
 
 
+class EnrichOut(BaseModel):
+    tried: int = Field(description="People looked up with Apollo this time")
+    found: int = Field(description="Of them, how many now have a work email")
+    companies: int
+
+
 # ----------------------------------------------------------------------------- companies
 
 

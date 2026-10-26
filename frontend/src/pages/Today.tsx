@@ -1,8 +1,8 @@
 import { ArrowRight, Check, Flame, Sparkles, Trophy } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-import { type MoveCard, type S, usePull, useStats, useToday, useUpdatePerson } from "@/api/hooks";
+import { type MoveCard, type S, useEnrichToday, usePull, useStats, useToday, useUpdatePerson } from "@/api/hooks";
 import { CompanyCard } from "@/components/CompanyCard";
 import { CompanyPanel } from "@/components/CompanyPanel";
 import { MoveRow } from "@/components/MoveRow";
@@ -143,6 +143,14 @@ export function TodayPage() {
   const { data, isPending, isError } = useToday();
   const pull = usePull();
   const [open, setOpen] = useState<string | null>(null);
+  const enrich = useEnrichToday();
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!asked.current) {
+      asked.current = true; // get today's companies' emails ready before they're opened
+      enrich.mutate(undefined);
+    }
+  }, [enrich]);
   if (isPending) return <p className="text-sm text-muted">Loading today…</p>;
   if (isError) return <EmptyState title="Couldn't load today">Reload the page to try again.</EmptyState>;
 

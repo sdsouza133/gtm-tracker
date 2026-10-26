@@ -46,7 +46,7 @@ export function CompanyCard({ moves, onOpen }: { moves: MoveCard[]; onOpen: () =
           {company.open_role && <p className="text-[13px] text-muted">{company.open_role}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          {company.score !== null && <Chip tone="accent">Score {company.score.toFixed(1)}</Chip>}
+          {company.score ? <Chip tone="accent">Score {company.score.toFixed(1)}</Chip> : null}
           {apply && <Chip tone="warm">Apply</Chip>}
           <ChevronRight size={16} className="text-muted" aria-hidden="true" />
         </div>

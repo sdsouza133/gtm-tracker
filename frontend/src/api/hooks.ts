@@ -143,6 +143,35 @@ export function useReply() {
   );
 }
 
+/** Finding work emails with Apollo. It runs on its own in the background, so a 409 ("not set up yet") stays quiet;
+ * anything else says what went wrong. */
+export const NOT_SET_UP = 409;
+
+/** Whether a lookup failed for a reason worth showing (not just "Apollo isn't switched on yet"). */
+export function lookupFailed(error: Error | null): boolean {
+  return error !== null && !(error instanceof ApiError && error.status === NOT_SET_UP);
+}
+
+function useEnrich<TVars>(fn: (vars: TVars) => Promise<S["EnrichOut"]>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    meta: { quiet: NOT_SET_UP },
+    // refetch even when no one was looked up: "what they do" may have been filled in
+    onSuccess: () => Promise.all(AFFECTED.map((queryKey) => client.invalidateQueries({ queryKey }))),
+  });
+}
+
+export function useEnrichCompany() {
+  return useEnrich(async (id: string) =>
+    unwrap(await api.POST("/api/companies/{company_id}/enrich", { params: { path: { company_id: id } } })),
+  );
+}
+
+export function useEnrichToday() {
+  return useEnrich<undefined>(async () => unwrap(await api.POST("/api/enrich/today")));
+}
+
 export function useUpdatePerson() {
   return useChange(async ({ id, ...body }: { id: string } & S["PersonPatch"]) =>
     unwrap(await api.PATCH("/api/people/{person_id}", { params: { path: { person_id: id } }, body })),

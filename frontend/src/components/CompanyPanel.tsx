@@ -6,7 +6,9 @@ import {
   type Move,
   type Person,
   type Step,
+  lookupFailed,
   useCompany,
+  useEnrichCompany,
   useReply,
   useTickStep,
   useUpdateMove,
@@ -76,7 +78,9 @@ function Channel({
 const linkClass =
   "inline-flex min-h-[34px] items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-chip hover:text-ink";
 
-function PersonCard({ person, move }: { person: Person; move: Move | undefined }) {
+type Lookup = { looking: boolean; failed: boolean; retry: () => void };
+
+function PersonCard({ person, move, lookup }: { person: Person; move: Move | undefined; lookup: Lookup }) {
   const tick = useTickStep();
   const update = useUpdateMove();
   const reply = useReply();
@@ -118,7 +122,22 @@ function PersonCard({ person, move }: { person: Person; move: Move | undefined }
                 {person.email}
               </a>
             ) : (
-              <span className="px-2.5 text-sm text-muted">No email yet</span>
+              <>
+                <span aria-live="polite" className={`px-2.5 text-sm ${lookup.failed ? "text-bad" : "text-muted"}`}>
+                  {lookup.looking
+                    ? "Looking up the email…"
+                    : person.details["apollo_tried"]
+                      ? "No email found"
+                      : lookup.failed
+                        ? "Couldn't look up the email"
+                        : "No email yet"}
+                </span>
+                {lookup.failed && !person.details["apollo_tried"] && (
+                  <Button variant="quiet" disabled={lookup.looking} onClick={lookup.retry}>
+                    Try again
+                  </Button>
+                )}
+              </>
             )}
             {emailDraft && (
               <Button variant="quiet" onClick={() => void copy(emailDraft, "Email")}>
@@ -180,6 +199,16 @@ function PersonCard({ person, move }: { person: Person; move: Move | undefined }
 export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void }) {
   const { data: c, isPending, isError } = useCompany(id);
   const update = useUpdateMove();
+  const enrich = useEnrichCompany();
+  const missing = c?.people.some((p) => !p.left && !p.email && !p.details["apollo_tried"]) ?? false;
+  const asked = useRef(false);
+  useEffect(() => {
+    if (missing && !asked.current) {
+      asked.current = true; // once per opening; each person is only looked up once anyway
+      enrich.mutate(id);
+    }
+  }, [missing, id, enrich]);
+  const lookup = { looking: enrich.isPending, failed: lookupFailed(enrich.error), retry: () => enrich.mutate(id) };
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   useEffect(() => {
@@ -202,7 +231,7 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
   const research = c?.research ?? {};
   const text = (key: string) => (typeof research[key] === "string" ? (research[key] as string) : "");
   const signals = Array.isArray(research["signals"]) ? strings(research["signals"]).slice(0, 2).join(" ") : "";
-  const about = text("pmf_reason") || text("industry") || signals;
+  const about = text("pmf_reason") || text("apollo_about") || text("industry") || signals;
   const reachFor = (personId: string) =>
     c?.moves.find((m) => m.person_id === personId && m.type === "reach" && m.status === "open") ??
     c?.moves.find((m) => m.person_id === personId && m.type === "reach");
@@ -236,7 +265,7 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {c.score !== null && <Chip tone="accent">Score {c.score.toFixed(1)}</Chip>}
+                {c.score ? <Chip tone="accent">Score {c.score.toFixed(1)}</Chip> : null}
                 <Chip>{stageLabel(c.stage)}</Chip>
                 {c.employees && <Chip>{c.employees.split(/[ (]/)[0]} people</Chip>}
                 {c.hq && <Chip>{c.hq}</Chip>}
@@ -304,7 +333,7 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                 {people.length ? (
                   <div className="flex flex-col gap-3">
                     {people.map((p) => (
-                      <PersonCard key={p.id} person={p} move={reachFor(p.id)} />
+                      <PersonCard key={p.id} person={p} move={reachFor(p.id)} lookup={lookup} />
                     ))}
                   </div>
                 ) : (

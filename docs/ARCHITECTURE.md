@@ -65,6 +65,10 @@ Research written by automation never overwrites what the user changed: stage, no
 - Eight failed sign-ins (Google or password) in 15 minutes lock both for a while.
 - `OPEN_ACCESS=true` turns the login off: anyone with the address can use the tracker. It is off unless set; missing
   sign-in settings never open the app, they just mean nobody can sign in.
+- Work emails come from Apollo (`APOLLO_API_KEY`), and only while sign-in is on: with `OPEN_ACCESS` the enrich routes
+  answer 409, so emails never sit in a tracker anyone can open. Today asks `POST /api/enrich/today` when it opens and a
+  company panel asks `POST /api/companies/{id}/enrich`; each person is looked up once (`details.apollo_tried`), so a
+  repeat call costs no credits. Apollo is asked for work emails only, never personal ones.
 - `POST /api/restore` loads a backup into an empty tracker (for a server whose database is reachable only through the
   app). A tracker with any data refuses it.
 - Strict Content Security Policy (`default-src 'self'`). The one exception is Google's sign-in button: its script,
