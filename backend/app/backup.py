@@ -64,11 +64,13 @@ class RestoreRefusedError(RuntimeError):
 def restore(session: Session, backup: dict[str, Any]) -> dict[str, int]:
     if backup.get("version") != VERSION:
         raise RestoreRefusedError(f"This backup is version {backup.get('version')}; this app reads version {VERSION}.")
+    if missing := [t.name for t in tables() if not isinstance(backup.get(t.name), list)]:
+        raise RestoreRefusedError(f"This backup is missing {', '.join(missing)}; it may be cut short or edited.")
     if not is_empty(session):
         raise RestoreRefusedError("The database already has data; restore into an empty one.")
     counts = {}
     for table in tables():
-        rows = [_typed(table, r) for r in backup.get(table.name, [])]
+        rows = [_typed(table, r) for r in backup[table.name]]
         for i in range(0, len(rows), BATCH):
             session.execute(insert(table), rows[i : i + BATCH])
         counts[table.name] = len(rows)
