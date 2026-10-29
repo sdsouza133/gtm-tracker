@@ -95,6 +95,49 @@ describe("Today", () => {
     expect(tick?.headers.get("X-CSRF-Token")).toBe("token");
   });
 
+  it("keeps the posting and what you did with the application, and lets you undo it", async () => {
+    const applied = { ...moveOut(applyMove), status: "done" as const, done_at: "2026-10-26T15:00:00Z" };
+    const calls = mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": { body: { ...detail, open_role: "GTM Engineer", moves: [reachOut, applied] } },
+      "PATCH /api/moves/a1": { body: { ...applied, status: "open" } },
+    });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
+    expect(within(panel).getByRole("link", { name: /Open posting/ })).toHaveAttribute("href", "https://jobs.example/1");
+    expect(within(panel).getByText(/Applied/)).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Undo" }));
+    await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/moves/a1")).toBe(true));
+    expect(calls.find((c) => c.path === "/api/moves/a1")?.body).toEqual({ status: "open" });
+  });
+
+  it("shows the company's other to-dos with Done, and parks a company that's not for you", async () => {
+    const prep = { ...moveOut(applyMove), id: "x1", type: "prep" as const, title: "Prep for the interview", url: null };
+    const calls = mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": { body: { ...detail, moves: [reachOut, prep] } },
+      "PATCH /api/moves/x1": { body: { ...prep, status: "done" } },
+      "PATCH /api/companies/c1": { body: { ...detail, stage: "parked" } },
+    });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
+    expect(within(panel).getByText("Prep for the interview")).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Done" }));
+    await vi.waitFor(() => expect(calls.find((c) => c.path === "/api/moves/x1")?.body).toEqual({ status: "done" }));
+    await userEvent.click(within(panel).getByRole("button", { name: /Not for me/ }));
+    await vi.waitFor(() =>
+      expect(calls.find((c) => c.method === "PATCH" && c.path === "/api/companies/c1")?.body).toEqual({
+        stage: "parked",
+      }),
+    );
+  });
+
   it("gets Today's companies ready, and looks up a missing email when a company opens", async () => {
     const noEmail = { ...detail, people: [person({ email: null })] };
     const tried = { ...detail, people: [person({ email: null, details: { apollo_tried: "2026-10-26" } })] };

@@ -10,7 +10,9 @@ import {
   useCompany,
   useEnrichCompany,
   useReply,
+  useAddMove,
   useTickStep,
+  useUpdateCompany,
   useUpdateMove,
   useUpdatePerson,
 } from "@/api/hooks";
@@ -25,6 +27,9 @@ function stepDay(move: Move | undefined, step: "email" | "request"): string | un
   const day = move?.sequence?.steps?.[step];
   return typeof day === "string" ? day : undefined;
 }
+
+/** Stages where a company is off your list (the server's OUT_OF_PLAY). */
+const OUT_OF_PLAY = new Set(["parked", "rejected", "bench"]);
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -199,6 +204,8 @@ function PersonCard({ person, move, lookup }: { person: Person; move: Move | und
 export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void }) {
   const { data: c, isPending, isError } = useCompany(id);
   const update = useUpdateMove();
+  const add = useAddMove();
+  const patchCompany = useUpdateCompany();
   const enrich = useEnrichCompany();
   const missing = c?.people.some((p) => !p.left && !p.email && !p.details["apollo_tried"]) ?? false;
   const asked = useRef(false);
@@ -235,7 +242,15 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
   const reachFor = (personId: string) =>
     c?.moves.find((m) => m.person_id === personId && m.type === "reach" && m.status === "open") ??
     c?.moves.find((m) => m.person_id === personId && m.type === "reach");
-  const apply = c?.moves.find((m) => m.type === "apply" && m.status === "open");
+  // The open application, else the latest one, so what you did (applied or skipped) stays visible and can be undone.
+  const applies = c?.moves.filter((m) => m.type === "apply") ?? [];
+  const apply =
+    applies.find((m) => m.status === "open") ??
+    [...applies].sort((a, b) => (b.done_at ?? b.due).localeCompare(a.done_at ?? a.due))[0];
+  const posting = safeUrl(apply?.url ?? c?.job_url) ?? safeUrl(c?.job_url);
+  const todo = (c?.moves ?? []).filter((m) => m.status === "open" && m.type !== "reach" && m.type !== "apply");
+  const inPlay = c ? !OUT_OF_PLAY.has(c.stage) : false;
+  const busy = update.isPending || add.isPending || patchCompany.isPending;
   const people = [...(c?.people ?? [])]
     .filter((p) => !p.left)
     .sort((a, b) => Number(reachFor(b.id)?.status === "open") - Number(reachFor(a.id)?.status === "open"));
@@ -279,7 +294,29 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                 <Link to={`/companies/${c.id}`} className="text-accent hover:underline">
                   Full company page
                 </Link>
+                {inPlay ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    className="text-muted hover:text-ink hover:underline disabled:opacity-50"
+                    onClick={() => patchCompany.mutate({ id: c.id, stage: "parked" })}
+                  >
+                    Not for me (park it)
+                  </button>
+                ) : (
+                  c.stage === "parked" && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="text-accent hover:underline disabled:opacity-50"
+                      onClick={() => patchCompany.mutate({ id: c.id, stage: "not_started" })}
+                    >
+                      Bring it back
+                    </button>
+                  )
+                )}
               </div>
+              {c.stage === "parked" && c.parked_reason && <p className="text-[13px] text-muted">{c.parked_reason}</p>}
             </header>
 
             <div className="flex flex-col gap-6 p-5">
@@ -287,44 +324,117 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                 <p className="text-sm leading-relaxed">{about || "No description yet."}</p>
               </Section>
 
-              {c.open_role && (
+              {(c.open_role || posting || apply) && (
                 <Section title="The role">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="font-medium">{c.open_role}</p>
+                      <p className="font-medium">{c.open_role ?? apply?.title.replace(/^Apply: /, "")}</p>
                       {text("salary_verdict") && (
                         <p className="text-[13px] text-muted">{text("salary_verdict").slice(0, 160)}</p>
                       )}
                     </div>
-                    {apply && (
-                      <div className="flex flex-wrap gap-1">
-                        {safeUrl(apply.url ?? c.job_url) && (
-                          <a
-                            className={linkClass}
-                            href={safeUrl(apply.url ?? c.job_url)}
-                            target="_blank"
-                            rel="noreferrer"
+                    <div className="flex flex-wrap items-center gap-1">
+                      {posting && (
+                        <a className={linkClass} href={posting} target="_blank" rel="noreferrer">
+                          Open posting <ExternalLink size={12} aria-hidden="true" />
+                        </a>
+                      )}
+                      {apply?.status === "open" ? (
+                        <>
+                          <Button
+                            variant="primary"
+                            disabled={busy}
+                            onClick={() => update.mutate({ id: apply.id, status: "done" })}
                           >
-                            Open posting <ExternalLink size={12} aria-hidden="true" />
-                          </a>
-                        )}
-                        <Button
-                          variant="primary"
-                          disabled={update.isPending}
-                          onClick={() => update.mutate({ id: apply.id, status: "done" })}
-                        >
-                          <Check size={14} aria-hidden="true" />
-                          Applied
-                        </Button>
-                        <Button
-                          variant="quiet"
-                          disabled={update.isPending}
-                          onClick={() => update.mutate({ id: apply.id, status: "skipped", skip_reason: "Skipped" })}
-                        >
-                          Skip
-                        </Button>
+                            <Check size={14} aria-hidden="true" />
+                            Applied
+                          </Button>
+                          <Button
+                            variant="quiet"
+                            disabled={busy}
+                            onClick={() => update.mutate({ id: apply.id, status: "skipped", skip_reason: "Skipped" })}
+                          >
+                            Skip
+                          </Button>
+                        </>
+                      ) : apply ? (
+                        <>
+                          {apply.status === "done" ? (
+                            <Chip tone="good">
+                              <Check size={12} aria-hidden="true" /> Applied
+                              {apply.done_at ? ` ${formatDay(apply.done_at.slice(0, 10))}` : ""}
+                            </Chip>
+                          ) : (
+                            <Chip>Skipped</Chip>
+                          )}
+                          <Button
+                            variant="quiet"
+                            disabled={busy}
+                            onClick={() => update.mutate({ id: apply.id, status: "open" })}
+                          >
+                            Undo
+                          </Button>
+                        </>
+                      ) : (
+                        posting && (
+                          <Button
+                            variant="primary"
+                            disabled={busy}
+                            onClick={() =>
+                              add.mutate(
+                                {
+                                  type: "apply",
+                                  title: `Apply: ${c.open_role ?? c.name}`,
+                                  company_id: c.id,
+                                  url: posting,
+                                },
+                                { onSuccess: (m) => update.mutate({ id: m.id, status: "done" }) },
+                              )
+                            }
+                          >
+                            <Check size={14} aria-hidden="true" />
+                            Applied
+                          </Button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </Section>
+              )}
+
+              {todo.length > 0 && (
+                <Section title="To do here">
+                  <div className="flex flex-col divide-y divide-line-soft rounded-card border border-line">
+                    {todo.map((m) => (
+                      <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-sm">{m.title}</p>
+                          <p className="text-[13px] text-muted">Due {formatDay(m.due)}</p>
+                        </div>
+                        <div className="flex gap-1">
+                          {safeUrl(m.url) && (
+                            <a className={linkClass} href={safeUrl(m.url)} target="_blank" rel="noreferrer">
+                              Open <ExternalLink size={12} aria-hidden="true" />
+                            </a>
+                          )}
+                          <Button
+                            variant="secondary"
+                            disabled={busy}
+                            onClick={() => update.mutate({ id: m.id, status: "done" })}
+                          >
+                            <Check size={14} aria-hidden="true" />
+                            Done
+                          </Button>
+                          <Button
+                            variant="quiet"
+                            disabled={busy}
+                            onClick={() => update.mutate({ id: m.id, status: "skipped", skip_reason: "Skipped" })}
+                          >
+                            Skip
+                          </Button>
+                        </div>
                       </div>
-                    )}
+                    ))}
                   </div>
                 </Section>
               )}
