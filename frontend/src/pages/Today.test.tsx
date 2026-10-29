@@ -97,11 +97,18 @@ describe("Today", () => {
 
   it("keeps the posting and what you did with the application, and lets you undo it", async () => {
     const applied = { ...moveOut(applyMove), status: "done" as const, done_at: "2026-10-26T15:00:00Z" };
+    const undone = () => calls.some((c) => c.method === "PATCH" && c.path === "/api/moves/a1");
     const calls = mockApi({
       ...SIGNED_IN,
       "GET /api/stats": { body: STATS },
       "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
-      "GET /api/companies/c1": { body: { ...detail, open_role: "GTM Engineer", moves: [reachOut, applied] } },
+      "GET /api/companies/c1": {
+        body: () => ({
+          ...detail,
+          open_role: "GTM Engineer",
+          moves: [reachOut, undone() ? { ...applied, status: "open", done_at: null } : applied],
+        }),
+      },
       "PATCH /api/moves/a1": { body: { ...applied, status: "open" } },
     });
     renderApp(<App />);
@@ -110,8 +117,36 @@ describe("Today", () => {
     expect(within(panel).getByRole("link", { name: /Open posting/ })).toHaveAttribute("href", "https://jobs.example/1");
     expect(within(panel).getByText(/Applied/)).toBeInTheDocument();
     await userEvent.click(within(panel).getByRole("button", { name: "Undo" }));
-    await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/moves/a1")).toBe(true));
-    expect(calls.find((c) => c.path === "/api/moves/a1")?.body).toEqual({ status: "open" });
+    expect(await within(panel).findByRole("button", { name: "Applied" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Skip the application" })).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: /Open posting/ })).toBeInTheDocument();
+    expect(calls.find((c) => c.method === "PATCH" && c.path === "/api/moves/a1")?.body).toEqual({ status: "open" });
+  });
+
+  it("records an application from the posting when there's no Apply move yet", async () => {
+    const created = { ...moveOut(applyMove), id: "a9" };
+    const calls = mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": {
+        body: { ...detail, open_role: "GTM Engineer", job_url: "https://jobs.example/9", moves: [reachOut] },
+      },
+      "POST /api/moves": { body: created },
+      "PATCH /api/moves/a9": { body: { ...created, status: "done" } },
+    });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
+    expect(within(panel).getByRole("link", { name: /Open posting/ })).toHaveAttribute("href", "https://jobs.example/9");
+    await userEvent.click(within(panel).getByRole("button", { name: "Applied" }));
+    await vi.waitFor(() => expect(calls.some((c) => c.path === "/api/moves/a9")).toBe(true));
+    expect(calls.find((c) => c.method === "POST" && c.path === "/api/moves")?.body).toMatchObject({
+      type: "apply",
+      company_id: "c1",
+      url: "https://jobs.example/9",
+    });
+    expect(calls.find((c) => c.path === "/api/moves/a9")?.body).toEqual({ status: "done" });
   });
 
   it("shows the company's other to-dos with Done, and parks a company that's not for you", async () => {
@@ -128,7 +163,7 @@ describe("Today", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
     const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
     expect(within(panel).getByText("Prep for the interview")).toBeInTheDocument();
-    await userEvent.click(within(panel).getByRole("button", { name: "Done" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Done: Prep for the interview" }));
     await vi.waitFor(() => expect(calls.find((c) => c.path === "/api/moves/x1")?.body).toEqual({ status: "done" }));
     await userEvent.click(within(panel).getByRole("button", { name: /Not for me/ }));
     await vi.waitFor(() =>

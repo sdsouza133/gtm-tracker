@@ -352,6 +352,7 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                           <Button
                             variant="quiet"
                             disabled={busy}
+                            aria-label="Skip the application"
                             onClick={() => update.mutate({ id: apply.id, status: "skipped", skip_reason: "Skipped" })}
                           >
                             Skip
@@ -413,13 +414,20 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                         </div>
                         <div className="flex gap-1">
                           {safeUrl(m.url) && (
-                            <a className={linkClass} href={safeUrl(m.url)} target="_blank" rel="noreferrer">
+                            <a
+                              className={linkClass}
+                              href={safeUrl(m.url)}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={`Open: ${m.title}`}
+                            >
                               Open <ExternalLink size={12} aria-hidden="true" />
                             </a>
                           )}
                           <Button
                             variant="secondary"
                             disabled={busy}
+                            aria-label={`Done: ${m.title}`}
                             onClick={() => update.mutate({ id: m.id, status: "done" })}
                           >
                             <Check size={14} aria-hidden="true" />
@@ -428,6 +436,7 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                           <Button
                             variant="quiet"
                             disabled={busy}
+                            aria-label={`Skip: ${m.title}`}
                             onClick={() => update.mutate({ id: m.id, status: "skipped", skip_reason: "Skipped" })}
                           >
                             Skip
