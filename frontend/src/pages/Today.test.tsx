@@ -245,4 +245,22 @@ describe("Today", () => {
     expect(await screen.findByText("Done for today. Nice work.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Pull 3 moves/ })).not.toBeInTheDocument();
   });
+
+  it("says how many companies are waiting and shows them all on request", async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": {
+        body: () =>
+          calls.some((c) => c.path === "/api/today" && c.search.get("show_all") === "true")
+            ? today([{ key: "reach_out", label: "Reach out", moves: [move()] }]).body
+            : today([{ key: "reach_out", label: "Reach out", moves: [move()] }], { more: 9 }).body,
+      },
+    });
+    renderApp(<App />);
+    expect(await screen.findByText(/9 more companies are waiting/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show all" }));
+    expect(await screen.findByText(/Showing every company/)).toBeInTheDocument();
+    expect(calls.some((c) => c.path === "/api/today" && c.search.get("show_all") === "true")).toBe(true);
+  });
 });

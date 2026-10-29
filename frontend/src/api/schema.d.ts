@@ -298,7 +298,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Today List */
+        /**
+         * Today List
+         * @description The day's list. It holds back companies past the daily limit unless `show_all` asks for every one.
+         */
         get: operations["today_list_api_today_get"];
         put?: never;
         post?: never;
@@ -2555,7 +2558,9 @@ export interface operations {
     };
     today_list_api_today_get: {
         parameters: {
-            query?: never;
+            query?: {
+                show_all?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2569,6 +2574,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodayOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
