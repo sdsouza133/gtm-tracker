@@ -42,8 +42,12 @@ function useChange<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
 
 // ----------------------------------------------------------------------------- reads
 
-export function useToday() {
-  return useQuery({ queryKey: keys.today, queryFn: async () => unwrap(await api.GET("/api/today")) });
+/** The day's list; `showAll` includes the companies held back by the daily limit. */
+export function useToday(showAll = false) {
+  return useQuery({
+    queryKey: [...keys.today, { showAll }],
+    queryFn: async () => unwrap(await api.GET("/api/today", { params: { query: { show_all: showAll } } })),
+  });
 }
 
 /** The server's "today" (the configured time zone's calendar day), or the browser's until the server answers. */

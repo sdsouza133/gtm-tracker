@@ -940,7 +940,20 @@
      "today"
     ],
     "summary": "Today List",
+    "description": "The day's list. It holds back companies past the daily limit unless `show_all` asks for every one.",
     "operationId": "today_list_api_today_get",
+    "parameters": [
+     {
+      "name": "show_all",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "type": "boolean",
+       "default": false,
+       "title": "Show All"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
@@ -948,6 +961,16 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/TodayOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }

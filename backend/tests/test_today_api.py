@@ -81,6 +81,28 @@ def test_today_keeps_to_the_last_week_and_a_days_worth_of_companies(signed_in: T
     assert body["more"] == 2
 
 
+def test_the_newest_roles_come_first_and_a_call_doesnt_use_a_slot(signed_in: TestClient, db: Session) -> None:
+    old = [f.company(db, name=f"Old {i}", posted=TODAY - timedelta(days=5)) for i in range(4)]
+    new = [f.company(db, name=f"New {i}", posted=TODAY) for i in range(3)]
+    for c in old:
+        f.move(db, c, type=MoveType.APPLY, due=TODAY - timedelta(days=2), title=f"Apply {c.name}")
+    for c in new:
+        f.move(db, c, type=MoveType.APPLY, due=TODAY, title=f"Apply {c.name}")
+    called = f.company(db, name="Called Example")
+    call = f.move(db, called, type=MoveType.INTERVIEW, due=TODAY, title="Interview")
+    signed_in.patch(f"/api/moves/{call.id}", json={"status": "done"})
+
+    body = signed_in.get("/api/today").json()
+    shown = [m["company"]["name"] for g in body["groups"] for m in g["moves"] if m["company"]]
+    assert set(shown[:3]) == {"New 0", "New 1", "New 2"}
+    assert len(set(shown)) == 5  # the finished interview didn't take one of the five
+    assert body["more"] == 2
+
+    every = signed_in.get("/api/today", params={"show_all": True}).json()
+    assert len({m["company"]["name"] for g in every["groups"] for m in g["moves"] if m["company"]}) == 7
+    assert every["more"] == 0
+
+
 def test_a_loom_request_shows_until_its_sent(signed_in: TestClient, db: Session) -> None:
     c = f.company(db, name="Loom Example")
     p, _ = f.person(db, c, name="Asker Example", day0=TODAY)

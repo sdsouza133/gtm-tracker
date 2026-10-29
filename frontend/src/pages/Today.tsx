@@ -140,7 +140,8 @@ function LoomRow({ ask }: { ask: S["LoomAsk"] }) {
 }
 
 export function TodayPage() {
-  const { data, isPending, isError } = useToday();
+  const [showAll, setShowAll] = useState(false);
+  const { data, isPending, isError } = useToday(showAll);
   const pull = usePull();
   const [open, setOpen] = useState<string | null>(null);
   const enrich = useEnrichToday();
@@ -199,6 +200,11 @@ export function TodayPage() {
       {due === 0 && data.more > 0 ? (
         <EmptyState title="Done for today. Nice work.">
           <p>That's enough for one day. The rest will be here tomorrow.</p>
+          <div className="mt-4 flex justify-center">
+            <Button variant="secondary" onClick={() => setShowAll(true)}>
+              Show the {data.more} waiting
+            </Button>
+          </div>
         </EmptyState>
       ) : due === 0 ? (
         <EmptyState title="Nothing left for today">
@@ -231,6 +237,23 @@ export function TodayPage() {
                   <CompanyCard key={id} moves={moves} onOpen={() => setOpen(id)} />
                 ))}
               </Card>
+              {data.more > 0 ? (
+                <p className="flex flex-wrap items-center gap-2 text-[13px] text-muted">
+                  {data.more} more {data.more === 1 ? "company is" : "companies are"} waiting. Today keeps to 5 a day.
+                  <Button variant="quiet" onClick={() => setShowAll(true)}>
+                    Show all
+                  </Button>
+                </p>
+              ) : (
+                showAll && (
+                  <p className="text-[13px] text-muted">
+                    Showing every company.{" "}
+                    <button type="button" className="text-accent hover:underline" onClick={() => setShowAll(false)}>
+                      Back to 5 a day
+                    </button>
+                  </p>
+                )
+              )}
             </section>
           )}
           {loose.length > 0 && (

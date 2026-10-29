@@ -35,8 +35,9 @@ PLAN_MAX_DAYS = 62
 
 
 @router.get("/today")
-def today_list(session: DbSession, settings: AppSettings, today: Today) -> TodayOut:
-    built = today_service.build(session, settings, today)
+def today_list(session: DbSession, settings: AppSettings, today: Today, show_all: bool = False) -> TodayOut:
+    """The day's list. It holds back companies past the daily limit unless `show_all` asks for every one."""
+    built = today_service.build(session, settings, today, show_all)
 
     def cards(moves: list[Move]) -> list[MoveCard]:
         return [MoveCard.model_validate(m) for m in moves]

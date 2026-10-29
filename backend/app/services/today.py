@@ -60,13 +60,13 @@ def group_of(move: Move) -> Group:
     return _BY_TYPE.get(move.type, Group.PREP)
 
 
-def _priority(move: Move) -> tuple[int, date, int, str, int, str]:
+def _priority(move: Move) -> tuple[int, int, date, str, int, str]:
     company = move.company
     posted = company.posted.toordinal() if company and company.posted else 0
     return (
         _ORDER.index(group_of(move)),
+        -posted,  # the newest role first: a posting loses value by the day
         move.due,
-        -posted,  # the newest role first
         move.company_id or "",  # keeps a company's people together
         SURE_RANK[move.person.sureness if move.person else None],
         move.id,
@@ -88,7 +88,7 @@ class TodayList:
     looms: list[Person]  # asked for a Loom video that hasn't been sent yet
 
 
-def build(session: Session, settings: Settings, today: date) -> TodayList:
+def build(session: Session, settings: Settings, today: date, show_all: bool = False) -> TodayList:
     load = (joinedload(Move.company), joinedload(Move.person))
     due = session.scalars(
         select(Move)
@@ -108,7 +108,9 @@ def build(session: Session, settings: Settings, today: date) -> TodayList:
     touched = session.scalars(select(Move).options(*load).where(Move.updated_at >= start)).all()
     done_today = [m for m in touched if _done_on(m, today, settings)]
 
-    due, more = _days_worth(sorted(due, key=_priority), {m.company_id for m in done_today if m.company_id})
+    # a call or interview held today doesn't use up a company slot
+    started = {m.company_id for m in done_today if m.company_id and group_of(m) is not Group.CALLS}
+    due, more = _days_worth(sorted(due, key=_priority), started, None if show_all else DAILY_COMPANIES)
     groups = [(g, [m for m in due if group_of(m) is g]) for g in Group]
 
     waiting_all = [
@@ -139,10 +141,11 @@ def build(session: Session, settings: Settings, today: date) -> TodayList:
     )
 
 
-def _days_worth(ordered: list[Move], started: set[str]) -> tuple[list[Move], int]:
-    """Whole companies, most important first, up to the day's limit; a company already worked on today stays and
-    counts toward it. Calls and moves with no company always show. Returns the moves and how many companies wait."""
-    slots = max(0, DAILY_COMPANIES - len(started))
+def _days_worth(ordered: list[Move], started: set[str], limit: int | None) -> tuple[list[Move], int]:
+    """Whole companies, most important first, up to the day's limit (None: no limit); a company already worked on
+    today stays and counts toward it. Calls and moves with no company always show. Returns the moves and how many
+    companies wait."""
+    slots = len(ordered) if limit is None else max(0, limit - len(started))
     chosen: set[str] = set()
     waiting: set[str] = set()
     shown: list[Move] = []
