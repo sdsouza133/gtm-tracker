@@ -174,11 +174,23 @@ function PersonCard({
             onDone={sent("request")}
           >
             {linkedin ? (
-              <a className={linkClass} href={linkedin} target="_blank" rel="noreferrer">
+              <a
+                className={linkClass}
+                href={linkedin}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open ${person.name}'s LinkedIn profile`}
+              >
                 Open profile <ExternalLink size={12} aria-hidden="true" />
               </a>
             ) : (
-              <a className={linkClass} href={linkedinSearch(person.name, company)} target="_blank" rel="noreferrer">
+              <a
+                className={linkClass}
+                href={linkedinSearch(person.name, company)}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Find ${person.name} on LinkedIn`}
+              >
                 Find on LinkedIn <ExternalLink size={12} aria-hidden="true" />
               </a>
             )}
@@ -200,6 +212,7 @@ function PersonCard({
             href={linkedin ?? linkedinSearch(person.name, company)}
             target="_blank"
             rel="noreferrer"
+            aria-label={linkedin ? `Open ${person.name}'s LinkedIn profile` : `Find ${person.name} on LinkedIn`}
           >
             <Linkedin size={14} aria-hidden="true" />
             {linkedin ? "Open profile" : "Find on LinkedIn"}
