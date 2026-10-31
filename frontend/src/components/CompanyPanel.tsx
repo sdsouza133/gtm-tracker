@@ -85,7 +85,22 @@ const linkClass =
 
 type Lookup = { looking: boolean; failed: boolean; retry: () => void };
 
-function PersonCard({ person, move, lookup }: { person: Person; move: Move | undefined; lookup: Lookup }) {
+/** LinkedIn's people search for someone whose profile we don't have yet. */
+function linkedinSearch(name: string, company: string): string {
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`${name} ${company}`)}`;
+}
+
+function PersonCard({
+  person,
+  move,
+  lookup,
+  company,
+}: {
+  person: Person;
+  move: Move | undefined;
+  lookup: Lookup;
+  company: string;
+}) {
   const tick = useTickStep();
   const update = useUpdateMove();
   const reply = useReply();
@@ -158,9 +173,13 @@ function PersonCard({ person, move, lookup }: { person: Person; move: Move | und
             busy={busy}
             onDone={sent("request")}
           >
-            {linkedin && (
+            {linkedin ? (
               <a className={linkClass} href={linkedin} target="_blank" rel="noreferrer">
                 Open profile <ExternalLink size={12} aria-hidden="true" />
+              </a>
+            ) : (
+              <a className={linkClass} href={linkedinSearch(person.name, company)} target="_blank" rel="noreferrer">
+                Find on LinkedIn <ExternalLink size={12} aria-hidden="true" />
               </a>
             )}
             {noteDraft && (
@@ -452,7 +471,7 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                 {people.length ? (
                   <div className="flex flex-col gap-3">
                     {people.map((p) => (
-                      <PersonCard key={p.id} person={p} move={reachFor(p.id)} lookup={lookup} />
+                      <PersonCard key={p.id} person={p} move={reachFor(p.id)} lookup={lookup} company={c.name} />
                     ))}
                   </div>
                 ) : (

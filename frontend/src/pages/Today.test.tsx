@@ -173,6 +173,21 @@ describe("Today", () => {
     );
   });
 
+  it("links to a LinkedIn search for someone whose profile isn't known yet", async () => {
+    mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": { body: { ...detail, people: [person({ linkedin: null })] } },
+    });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
+    const link = within(panel).getByRole("link", { name: /Find on LinkedIn/ });
+    expect(link.getAttribute("href")).toContain("linkedin.com/search/results/people/?keywords=Priya");
+    expect(within(panel).queryByRole("link", { name: /Open profile/ })).not.toBeInTheDocument();
+  });
+
   it("gets Today's companies ready, and looks up a missing email when a company opens", async () => {
     const noEmail = { ...detail, people: [person({ email: null })] };
     const tried = { ...detail, people: [person({ email: null, details: { apollo_tried: "2026-10-26" } })] };
