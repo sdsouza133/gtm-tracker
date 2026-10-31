@@ -174,11 +174,23 @@ function PersonCard({
             onDone={sent("request")}
           >
             {linkedin ? (
-              <a className={linkClass} href={linkedin} target="_blank" rel="noreferrer">
+              <a
+                className={linkClass}
+                href={linkedin}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Open ${person.name}'s LinkedIn profile`}
+              >
                 Open profile <ExternalLink size={12} aria-hidden="true" />
               </a>
             ) : (
-              <a className={linkClass} href={linkedinSearch(person.name, company)} target="_blank" rel="noreferrer">
+              <a
+                className={linkClass}
+                href={linkedinSearch(person.name, company)}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Find ${person.name} on LinkedIn`}
+              >
                 Find on LinkedIn <ExternalLink size={12} aria-hidden="true" />
               </a>
             )}
@@ -193,6 +205,19 @@ function PersonCard({
       )}
 
       <div className="flex flex-wrap gap-1 border-t border-line-soft pt-2">
+        {!(move && open) && (
+          // Outreach is finished or there is none: the LinkedIn channel above isn't shown, so link to them here
+          <a
+            className={linkClass}
+            href={linkedin ?? linkedinSearch(person.name, company)}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={linkedin ? `Open ${person.name}'s LinkedIn profile` : `Find ${person.name} on LinkedIn`}
+          >
+            <Linkedin size={14} aria-hidden="true" />
+            {linkedin ? "Open profile" : "Find on LinkedIn"}
+          </a>
+        )}
         {person.status !== "replied" && (
           <Button variant="quiet" disabled={busy} onClick={() => reply.mutate({ id: person.id, text: "" })}>
             They replied
