@@ -12,8 +12,11 @@ from app.clock import Today
 from app.models import Activity, Company, Move, MoveStatus, Person, Setting
 from app.schemas import (
     ActivityOut,
+    CompanyBrief,
     DayCount,
     LoomAsk,
+    LovedCompany,
+    LovedPerson,
     MoveCard,
     NoteCreate,
     Page,
@@ -54,6 +57,18 @@ def today_list(session: DbSession, settings: AppSettings, today: Today, show_all
         waiting=cards(built.waiting),
         waiting_total=built.waiting_total,
         looms=[LoomAsk(person=PersonOut.model_validate(p), company=p.company) for p in built.looms],
+        loved=[_loved(c) for c in built.loved],
+    )
+
+
+def _loved(company: Company) -> LovedCompany:
+    applied, people, follow_up = today_service.loved_view(company)
+    return LovedCompany(
+        company=CompanyBrief.model_validate(company),
+        loved=company.loved or "",
+        applied=applied,
+        people=[LovedPerson(**vars(p)) for p in people],
+        follow_up=follow_up,
     )
 
 

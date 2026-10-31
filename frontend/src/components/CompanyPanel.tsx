@@ -1,4 +1,4 @@
-import { Check, Copy, ExternalLink, Linkedin, Mail, Video, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Heart, Linkedin, Mail, Video, X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -19,7 +19,7 @@ import {
 import { COPY_FOR, copy, findDraft } from "@/components/MoveRow";
 import { trapTab } from "@/components/ProspectDrawer";
 import { Button, Chip } from "@/components/ui";
-import { ROLE_LABEL, SURE_LABEL, formatDay, stageLabel } from "@/lib/format";
+import { ROLE_LABEL, SURE_LABEL, formatDay, isoDay, stageLabel } from "@/lib/format";
 import { safeUrl, strings } from "@/lib/safe";
 
 /** A first touch is done on a day, marked not possible ("na"), or still to do. */
@@ -318,7 +318,20 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
           <>
             <header className="flex flex-col gap-2 border-b border-line p-5">
               <div className="flex items-start justify-between gap-3">
-                <h2 className="text-xl font-bold">{c.name}</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-bold">{c.name}</h2>
+                  <Button
+                    variant={c.loved ? "primary" : "secondary"}
+                    disabled={busy}
+                    aria-pressed={!!c.loved}
+                    onClick={() =>
+                      patchCompany.mutate({ id: c.id, research: { loved: c.loved ? null : isoDay(new Date()) } })
+                    }
+                  >
+                    <Heart size={14} className={c.loved ? "fill-current" : ""} aria-hidden="true" />
+                    {c.loved ? "You love it" : "I love it"}
+                  </Button>
+                </div>
                 <button type="button" aria-label="Close" onClick={onClose} className="rounded p-1 hover:bg-chip">
                   <X size={18} aria-hidden="true" />
                 </button>
@@ -373,6 +386,7 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-medium">{c.open_role ?? apply?.title.replace(/^Apply: /, "")}</p>
+                      {c.posted && <p className="text-[13px] text-muted">Posted {formatDay(c.posted)}</p>}
                       {text("salary_verdict") && (
                         <p className="text-[13px] text-muted">{text("salary_verdict").slice(0, 160)}</p>
                       )}

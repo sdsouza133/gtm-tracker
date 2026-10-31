@@ -7,10 +7,10 @@ from datetime import date, datetime, time, timedelta
 from enum import StrEnum
 
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.config import Settings
-from app.models import Company, Move, MoveStatus, MoveType, Person, Sureness
+from app.models import Company, Move, MoveStatus, MoveType, Person, PersonStatus, Stage, Sureness
 from app.services import reach
 from app.services.history import record
 from app.services.stages import OUT_OF_PLAY
@@ -86,6 +86,7 @@ class TodayList:
     waiting: list[Move]
     waiting_total: int
     looms: list[Person]  # asked for a Loom video that hasn't been sent yet
+    loved: list[Company]  # jobs you marked "I love it", newest mark first
 
 
 def build(session: Session, settings: Settings, today: date, show_all: bool = False) -> TodayList:
@@ -110,7 +111,11 @@ def build(session: Session, settings: Settings, today: date, show_all: bool = Fa
 
     # a call or interview held today doesn't use up a company slot
     started = {m.company_id for m in done_today if m.company_id and group_of(m) is not Group.CALLS}
-    due, more = _days_worth(sorted(due, key=_priority), started, None if show_all else DAILY_COMPANIES)
+    loved = loved_companies(session)
+    loved_ids = {c.id for c in loved}
+    due, more = _days_worth(
+        sorted(due, key=_priority), started - loved_ids, None if show_all else DAILY_COMPANIES, loved_ids
+    )
     groups = [(g, [m for m in due if group_of(m) is g]) for g in Group]
 
     waiting_all = [
@@ -130,6 +135,7 @@ def build(session: Session, settings: Settings, today: date, show_all: bool = Fa
         done_today=done_today,
         waiting=waiting_all[:WAITING_LIMIT],
         waiting_total=len(waiting_all),
+        loved=loved,
         looms=list(
             session.scalars(
                 select(Person)
@@ -141,17 +147,19 @@ def build(session: Session, settings: Settings, today: date, show_all: bool = Fa
     )
 
 
-def _days_worth(ordered: list[Move], started: set[str], limit: int | None) -> tuple[list[Move], int]:
+def _days_worth(
+    ordered: list[Move], started: set[str], limit: int | None, loved: frozenset[str] | set[str] = frozenset()
+) -> tuple[list[Move], int]:
     """Whole companies, most important first, up to the day's limit (None: no limit); a company already worked on
-    today stays and counts toward it. Calls and moves with no company always show. Returns the moves and how many
-    companies wait."""
+    today stays and counts toward it. Calls, moves with no company and jobs you love always show, without using a
+    slot. Returns the moves and how many companies wait."""
     slots = len(ordered) if limit is None else max(0, limit - len(started))
     chosen: set[str] = set()
     waiting: set[str] = set()
     shown: list[Move] = []
     for m in ordered:
         cid = m.company_id
-        if cid is None or cid in started or cid in chosen or group_of(m) is Group.CALLS:
+        if cid is None or cid in started or cid in chosen or cid in loved or group_of(m) is Group.CALLS:
             shown.append(m)
         elif len(chosen) < slots:
             chosen.add(cid)
@@ -198,3 +206,64 @@ def clear_stale(session: Session, today: date) -> int:
         )
         record(session, "skipped", f"Cleared {len(ids)} old moves due before {cutoff:%b %-d}")
     return len(ids)
+
+
+def loved_companies(session: Session) -> list[Company]:
+    """Jobs you marked "I love it" and haven't been turned down for, newest mark first."""
+    rows = session.scalars(
+        select(Company)
+        .options(selectinload(Company.people), selectinload(Company.moves))
+        .where(Company.research["loved"].as_string().is_not(None), Company.stage != Stage.REJECTED)
+    ).all()
+    return sorted((c for c in rows if c.loved), key=lambda c: (c.loved or "", c.id), reverse=True)
+
+
+@dataclass(frozen=True)
+class LovedPersonView:
+    id: str
+    name: str
+    title: str
+    has_email: bool
+    linkedin: str | None
+    email_sent: str | None
+    linkedin_sent: str | None
+    replied: bool
+    next: str | None
+    due: date | None
+
+
+def loved_view(company: Company) -> tuple[bool, list[LovedPersonView], date | None]:
+    """For a job you love: whether you applied, each person's email and LinkedIn ticks, and the next follow-up."""
+    reach_by_person: dict[str, Move] = {}
+    for m in sorted(company.moves, key=lambda m: m.status is MoveStatus.OPEN):  # an open reach-out wins
+        if m.type is MoveType.REACH and m.person_id:
+            reach_by_person[m.person_id] = m
+    people = []
+    for p in sorted(company.people, key=lambda p: (p.left, p.name)):
+        if p.left:
+            continue
+        r = reach_by_person.get(p.id)
+        seq = (r.sequence or {}) if r else {}
+        steps = seq.get("steps", {})
+        is_open = r is not None and r.status is MoveStatus.OPEN
+        people.append(
+            LovedPersonView(
+                id=p.id,
+                name=p.name,
+                title=p.title,
+                has_email=bool(p.email),
+                linkedin=p.linkedin,
+                email_sent=_tick(steps.get(reach.Step.EMAIL)),
+                linkedin_sent=_tick(steps.get(reach.Step.REQUEST)),
+                replied=p.status is PersonStatus.REPLIED,
+                next=(str(seq.get("next") or "") or None) if is_open else None,
+                due=r.due if r is not None and is_open else None,
+            )
+        )
+    applied = any(m.type is MoveType.APPLY and m.status is MoveStatus.DONE for m in company.moves)
+    open_dues = [m.due for m in company.moves if m.status is MoveStatus.OPEN]
+    return applied, people, min(open_dues) if open_dues else None
+
+
+def _tick(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None

@@ -2028,6 +2028,18 @@
      "cant_apply": {
       "type": "boolean",
       "title": "Cant Apply"
+     },
+     "loved": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loved",
+      "description": "The day you marked the job \"I love it\", if you did"
      }
     },
     "type": "object",
@@ -2275,6 +2287,18 @@
      "cant_apply": {
       "type": "boolean",
       "title": "Cant Apply"
+     },
+     "loved": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loved",
+      "description": "The day you marked the job \"I love it\", if you did"
      },
      "wave": {
       "anyOf": [
@@ -2644,6 +2668,18 @@
      "cant_apply": {
       "type": "boolean",
       "title": "Cant Apply"
+     },
+     "loved": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loved",
+      "description": "The day you marked the job \"I love it\", if you did"
      },
      "wave": {
       "anyOf": [
@@ -3224,6 +3260,149 @@
     ],
     "title": "LoomAsk",
     "description": "Someone who asked for a Loom video, and where they work."
+   },
+   "LovedCompany": {
+    "properties": {
+     "company": {
+      "$ref": "#/components/schemas/CompanyBrief"
+     },
+     "loved": {
+      "type": "string",
+      "title": "Loved"
+     },
+     "applied": {
+      "type": "boolean",
+      "title": "Applied"
+     },
+     "people": {
+      "items": {
+       "$ref": "#/components/schemas/LovedPerson"
+      },
+      "type": "array",
+      "title": "People"
+     },
+     "follow_up": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Follow Up",
+      "description": "The earliest open move here: your next follow-up"
+     }
+    },
+    "type": "object",
+    "required": [
+     "company",
+     "loved",
+     "applied",
+     "people",
+     "follow_up"
+    ],
+    "title": "LovedCompany",
+    "description": "A job you love: who's been reached, who hasn't, and when to follow up next."
+   },
+   "LovedPerson": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "has_email": {
+      "type": "boolean",
+      "title": "Has Email"
+     },
+     "linkedin": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin"
+     },
+     "email_sent": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email Sent",
+      "description": "The day the email went out, \"na\" if it can't, or null"
+     },
+     "linkedin_sent": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Linkedin Sent",
+      "description": "The day the LinkedIn request went out, \"na\" if it can't, or null"
+     },
+     "replied": {
+      "type": "boolean",
+      "title": "Replied"
+     },
+     "next": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next",
+      "description": "What's due next for them, when their outreach is open"
+     },
+     "due": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Due"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "name",
+     "title",
+     "has_email",
+     "linkedin",
+     "email_sent",
+     "linkedin_sent",
+     "replied",
+     "next",
+     "due"
+    ],
+    "title": "LovedPerson",
+    "description": "One person at a job you love, and where your outreach to them stands."
    },
    "Me": {
     "properties": {
@@ -5904,6 +6083,13 @@
       },
       "type": "array",
       "title": "Looms"
+     },
+     "loved": {
+      "items": {
+       "$ref": "#/components/schemas/LovedCompany"
+      },
+      "type": "array",
+      "title": "Loved"
      }
     },
     "type": "object",

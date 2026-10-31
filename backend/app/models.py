@@ -175,6 +175,12 @@ class Company(Timestamps, Base):
     people: Mapped[list["Person"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     moves: Mapped[list["Move"]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
+    @property
+    def loved(self) -> str | None:
+        """The day you marked this job "I love it" (it stays at the top of Today until you take the mark off)."""
+        value = (self.research or {}).get("loved")
+        return value if isinstance(value, str) and value else None
+
 
 class Person(Timestamps, Base):
     __tablename__ = "people"

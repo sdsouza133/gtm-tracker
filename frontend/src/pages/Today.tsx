@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { type MoveCard, type S, useEnrichToday, usePull, useStats, useToday, useUpdatePerson } from "@/api/hooks";
 import { CompanyCard } from "@/components/CompanyCard";
 import { CompanyPanel } from "@/components/CompanyPanel";
+import { LovedCard } from "@/components/LovedCard";
 import { MoveRow } from "@/components/MoveRow";
 import { Button, Card, EmptyState, PageHeader } from "@/components/ui";
 import { formatLongDay, relativeDay } from "@/lib/format";
@@ -167,6 +168,22 @@ export function TodayPage() {
       <PageHeader eyebrow={formatLongDay(data.today)} title={title} />
 
       <StatsRow dueCount={due} />
+
+      {(data.loved ?? []).length > 0 && (
+        <section aria-labelledby="g-loved" className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between">
+            <h2 id="g-loved" className="text-[15px] font-semibold">
+              Jobs you love
+            </h2>
+            <span className="text-[13px] text-muted">Every email and LinkedIn touch, and your next follow-up</span>
+          </div>
+          <Card className="divide-y divide-line-soft">
+            {(data.loved ?? []).map((l) => (
+              <LovedCard key={l.company.id} loved={l} today={data.today} onOpen={() => setOpen(l.company.id)} />
+            ))}
+          </Card>
+        </section>
+      )}
 
       {calls.length > 0 && (
         <section aria-labelledby="g-calls" className="flex flex-col gap-2">

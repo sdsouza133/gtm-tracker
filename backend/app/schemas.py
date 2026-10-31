@@ -146,6 +146,7 @@ class CompanyBrief(Out):
     posted: date | None
     region: str | None
     cant_apply: bool
+    loved: str | None = Field(default=None, description='The day you marked the job "I love it", if you did')
 
 
 class MoveOut(Out):
@@ -304,6 +305,31 @@ class LoomAsk(Out):
     company: CompanyBrief | None
 
 
+class LovedPerson(BaseModel):
+    """One person at a job you love, and where your outreach to them stands."""
+
+    id: str
+    name: str
+    title: str
+    has_email: bool
+    linkedin: str | None
+    email_sent: str | None = Field(description='The day the email went out, "na" if it can\'t, or null')
+    linkedin_sent: str | None = Field(description='The day the LinkedIn request went out, "na" if it can\'t, or null')
+    replied: bool
+    next: str | None = Field(description="What's due next for them, when their outreach is open")
+    due: date | None
+
+
+class LovedCompany(BaseModel):
+    """A job you love: who's been reached, who hasn't, and when to follow up next."""
+
+    company: CompanyBrief
+    loved: str
+    applied: bool
+    people: list[LovedPerson]
+    follow_up: date | None = Field(description="The earliest open move here: your next follow-up")
+
+
 class TodayOut(BaseModel):
     today: date
     groups: list[TodayGroup]
@@ -313,6 +339,7 @@ class TodayOut(BaseModel):
     waiting: list[MoveCard]
     waiting_total: int
     looms: list[LoomAsk]
+    loved: list[LovedCompany] = Field(default_factory=list)
 
 
 class DayCount(BaseModel):
