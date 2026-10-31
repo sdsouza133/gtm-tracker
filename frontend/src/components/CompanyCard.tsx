@@ -1,8 +1,9 @@
 import { clsx } from "clsx";
-import { ChevronRight, Linkedin, Mail } from "lucide-react";
+import { ChevronRight, Heart, Linkedin, Mail } from "lucide-react";
 
 import type { MoveCard } from "@/api/hooks";
 import { Chip } from "@/components/ui";
+import { formatDay } from "@/lib/format";
 
 function sent(m: MoveCard, step: "email" | "request"): boolean {
   const day = m.sequence?.steps?.[step];
@@ -42,8 +43,12 @@ export function CompanyCard({ moves, onOpen }: { moves: MoveCard[]; onOpen: () =
     >
       <div className="flex w-full items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[15px] font-semibold text-ink">{company.name}</p>
+          <p className="flex items-center gap-1.5 text-[15px] font-semibold text-ink">
+            {company.loved && <Heart size={14} className="fill-current text-bad" aria-label="You love this job" />}
+            {company.name}
+          </p>
           {company.open_role && <p className="text-[13px] text-muted">{company.open_role}</p>}
+          {company.posted && <p className="text-[12px] text-muted">Posted {formatDay(company.posted)}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {company.score ? <Chip tone="accent">Score {company.score.toFixed(1)}</Chip> : null}

@@ -103,6 +103,36 @@ def test_the_newest_roles_come_first_and_a_call_doesnt_use_a_slot(signed_in: Tes
     assert every["more"] == 0
 
 
+def test_a_job_you_love_stays_on_today_with_each_persons_ticks(signed_in: TestClient, db: Session) -> None:
+    others = [f.company(db, name=f"Other {i}", posted=TODAY) for i in range(6)]
+    for c in others:
+        f.move(db, c, type=MoveType.APPLY, due=TODAY, title=f"Apply {c.name}")
+    dream = f.company(db, name="Dream Example", posted=TODAY - timedelta(days=4))
+    f.move(db, dream, type=MoveType.APPLY, due=TODAY - timedelta(days=1), title="Apply dream")
+    _reached, reach = f.person(db, dream, name="Reached Example", day0=TODAY)
+    f.person(db, dream, name="Waiting Example", day0=TODAY)
+    assert reach is not None
+    signed_in.post(f"/api/moves/{reach.id}/steps", json={"step": "email", "value": "today"})
+
+    loved = signed_in.patch(f"/api/companies/{dream.id}", json={"research": {"loved": "2026-10-26"}}).json()
+    assert loved["loved"] == "2026-10-26"
+    body = signed_in.get("/api/today").json()
+    shown = {m["company"]["name"] for g in body["groups"] for m in g["moves"] if m["company"]}
+    assert "Dream Example" in shown  # past the five a day, and ranked below newer roles, it still shows
+    assert len(shown - {"Dream Example"}) == 5
+    [card] = body["loved"]
+    assert card["company"]["name"] == "Dream Example"
+    assert card["applied"] is False
+    by_name = {p["name"]: p for p in card["people"]}
+    assert by_name["Reached Example"]["email_sent"] == TODAY.isoformat()
+    assert by_name["Reached Example"]["linkedin_sent"] is None
+    assert by_name["Waiting Example"]["email_sent"] is None
+    assert card["follow_up"] is not None
+
+    signed_in.patch(f"/api/companies/{dream.id}", json={"research": {"loved": None}})
+    assert signed_in.get("/api/today").json()["loved"] == []
+
+
 def test_a_loom_request_shows_until_its_sent(signed_in: TestClient, db: Session) -> None:
     c = f.company(db, name="Loom Example")
     p, _ = f.person(db, c, name="Asker Example", day0=TODAY)

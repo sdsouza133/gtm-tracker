@@ -207,6 +207,61 @@ describe("Today", () => {
     expect(within(panel).getByRole("link", { name: "Find Priya Example on LinkedIn" })).toBeInTheDocument();
   });
 
+  it("marks a job you love from its panel", async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": { body: { ...detail, posted: "2026-10-24" } },
+      "PATCH /api/companies/c1": { body: { ...detail, loved: "2026-10-26" } },
+    });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
+    await userEvent.click(within(panel).getByRole("button", { name: "I love it" }));
+    await vi.waitFor(() =>
+      expect(calls.some((c) => c.method === "PATCH" && c.path === "/api/companies/c1")).toBe(true),
+    );
+    const body = calls.find((c) => c.method === "PATCH" && c.path === "/api/companies/c1")?.body as {
+      research: { loved: string };
+    };
+    expect(body.research.loved).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("keeps jobs you love on top with each person's email and LinkedIn ticks", async () => {
+    const loved = {
+      company: { ...summary(), loved: "2026-10-25", posted: "2026-10-24" },
+      loved: "2026-10-25",
+      applied: false,
+      follow_up: "2026-10-26",
+      people: [
+        {
+          id: "p1",
+          name: "Priya Example",
+          title: "VP Sales",
+          has_email: true,
+          linkedin: null,
+          email_sent: "2026-10-25",
+          linkedin_sent: null,
+          replied: false,
+          next: "request",
+          due: "2026-10-26",
+        },
+      ],
+    };
+    mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([], { loved: [loved] }),
+    });
+    renderApp(<App />);
+    const section = await screen.findByRole("region", { name: "Jobs you love" });
+    expect(within(section).getByText(/Follow up now/)).toBeInTheDocument();
+    expect(within(section).getByLabelText("Email sent Sun, Oct 25")).toBeInTheDocument();
+    expect(within(section).getByLabelText("LinkedIn to send")).toBeInTheDocument();
+    expect(within(section).getByText("Not applied yet")).toBeInTheDocument();
+  });
+
   it("gets Today's companies ready, and looks up a missing email when a company opens", async () => {
     const noEmail = { ...detail, people: [person({ email: null })] };
     const tried = { ...detail, people: [person({ email: null, details: { apollo_tried: "2026-10-26" } })] };

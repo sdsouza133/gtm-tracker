@@ -711,6 +711,11 @@ export interface components {
             region: string | null;
             /** Cant Apply */
             cant_apply: boolean;
+            /**
+             * Loved
+             * @description The day you marked the job "I love it", if you did
+             */
+            loved?: string | null;
         };
         /** CompanyCreate */
         CompanyCreate: {
@@ -764,6 +769,11 @@ export interface components {
             region: string | null;
             /** Cant Apply */
             cant_apply: boolean;
+            /**
+             * Loved
+             * @description The day you marked the job "I love it", if you did
+             */
+            loved?: string | null;
             /** Wave */
             wave: string | null;
             /** Rank */
@@ -843,6 +853,11 @@ export interface components {
             region: string | null;
             /** Cant Apply */
             cant_apply: boolean;
+            /**
+             * Loved
+             * @description The day you marked the job "I love it", if you did
+             */
+            loved?: string | null;
             /** Wave */
             wave: string | null;
             /** Rank */
@@ -1058,6 +1073,59 @@ export interface components {
         LoomAsk: {
             person: components["schemas"]["PersonOut"];
             company: components["schemas"]["CompanyBrief"] | null;
+        };
+        /**
+         * LovedCompany
+         * @description A job you love: who's been reached, who hasn't, and when to follow up next.
+         */
+        LovedCompany: {
+            company: components["schemas"]["CompanyBrief"];
+            /** Loved */
+            loved: string;
+            /** Applied */
+            applied: boolean;
+            /** People */
+            people: components["schemas"]["LovedPerson"][];
+            /**
+             * Follow Up
+             * @description The earliest open move here: your next follow-up
+             */
+            follow_up: string | null;
+        };
+        /**
+         * LovedPerson
+         * @description One person at a job you love, and where your outreach to them stands.
+         */
+        LovedPerson: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Has Email */
+            has_email: boolean;
+            /** Linkedin */
+            linkedin: string | null;
+            /**
+             * Email Sent
+             * @description The day the email went out, "na" if it can't, or null
+             */
+            email_sent: string | null;
+            /**
+             * Linkedin Sent
+             * @description The day the LinkedIn request went out, "na" if it can't, or null
+             */
+            linkedin_sent: string | null;
+            /** Replied */
+            replied: boolean;
+            /**
+             * Next
+             * @description What's due next for them, when their outreach is open
+             */
+            next: string | null;
+            /** Due */
+            due: string | null;
         };
         /** Me */
         Me: {
@@ -1919,6 +1987,8 @@ export interface components {
             waiting_total: number;
             /** Looms */
             looms: components["schemas"]["LoomAsk"][];
+            /** Loved */
+            loved?: components["schemas"]["LovedCompany"][];
         };
         /** TouchChange */
         TouchChange: {
