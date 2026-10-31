@@ -184,8 +184,27 @@ describe("Today", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
     const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
     const link = within(panel).getByRole("link", { name: /Find on LinkedIn/ });
-    expect(link.getAttribute("href")).toContain("linkedin.com/search/results/people/?keywords=Priya");
+    const url = new URL(link.getAttribute("href") ?? "");
+    expect(url.origin + url.pathname).toBe("https://www.linkedin.com/search/results/people/");
+    expect(url.searchParams.get("keywords")).toBe("Priya Example Northwind Labs");
     expect(within(panel).queryByRole("link", { name: /Open profile/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps a LinkedIn link for someone whose outreach is finished", async () => {
+    const closed = { ...reachOut, status: "done" as const };
+    mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today([{ key: "reach_out", label: "Reach out", moves: [move()] }]),
+      "GET /api/companies/c1": {
+        body: { ...detail, people: [person({ status: "replied", linkedin: null })], moves: [closed] },
+      },
+    });
+    renderApp(<App />);
+    await userEvent.click(await screen.findByRole("button", { name: /Northwind Labs/ }));
+    const panel = await screen.findByRole("dialog", { name: "Northwind Labs" });
+    expect(within(panel).queryByRole("button", { name: "Sent" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: /Find on LinkedIn/ })).toBeInTheDocument();
   });
 
   it("gets Today's companies ready, and looks up a missing email when a company opens", async () => {

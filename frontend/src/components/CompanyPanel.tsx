@@ -193,6 +193,18 @@ function PersonCard({
       )}
 
       <div className="flex flex-wrap gap-1 border-t border-line-soft pt-2">
+        {!(move && open) && (
+          // Outreach is finished or there is none: the LinkedIn channel above isn't shown, so link to them here
+          <a
+            className={linkClass}
+            href={linkedin ?? linkedinSearch(person.name, company)}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Linkedin size={14} aria-hidden="true" />
+            {linkedin ? "Open profile" : "Find on LinkedIn"}
+          </a>
+        )}
         {person.status !== "replied" && (
           <Button variant="quiet" disabled={busy} onClick={() => reply.mutate({ id: person.id, text: "" })}>
             They replied
