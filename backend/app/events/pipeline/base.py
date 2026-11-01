@@ -39,8 +39,9 @@ class JobContext:
         return self.clock()
 
     def today(self) -> date:
-        """Today in UTC: the budget day, and the date event windows are measured from."""
-        return self.now().astimezone(UTC).date()
+        """Today in the tracker's timezone: the date event windows and searches are measured from. (The budget day
+        is UTC's: `budget.utc_day`.)"""
+        return self.now().astimezone(self.settings.tz).date()
 
 
 @dataclass(frozen=True)

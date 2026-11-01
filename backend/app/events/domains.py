@@ -7,6 +7,7 @@ import tldextract
 
 _EXTRACT = tldextract.TLDExtract(cache_dir=None, suffix_list_urls=(), fallback_to_snapshot=True)
 MAX_URL_LENGTH = 2048
+STANDARD_PORTS = {"http": 80, "https": 443}
 
 
 def registrable_domain(host: str) -> str | None:
@@ -37,5 +38,6 @@ def website(raw: str) -> tuple[str, str] | None:
     domain = registrable_domain(parts.hostname)
     if domain is None:
         return None
-    netloc = parts.hostname.lower() + (f":{port}" if port else "")
-    return f"{parts.scheme}://{netloc}{parts.path or '/'}", domain
+    if port is not None and port != STANDARD_PORTS[parts.scheme]:
+        return None  # the fetcher only connects on the standard web ports, so a run for this could never read it
+    return f"{parts.scheme}://{parts.hostname.lower()}{parts.path or '/'}", domain

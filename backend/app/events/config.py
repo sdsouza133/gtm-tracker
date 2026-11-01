@@ -8,6 +8,7 @@ tracker.
 from decimal import Decimal
 from functools import lru_cache
 from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -19,6 +20,10 @@ class EventsSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", env_prefix="EVENTS_", extra="ignore", populate_by_name=True
     )
+
+    # The tracker's timezone (TIMEZONE): "today" for event dates. The daily spend cap counts UTC days, as the
+    # providers bill.
+    timezone: str = Field(default="America/Toronto", validation_alias=AliasChoices("TIMEZONE"))
 
     # Spend caps for the dollar-billed services, Apify and Claude.
     run_budget_usd: Decimal = Field(default=Decimal("3.00"), gt=0)
@@ -93,6 +98,10 @@ class EventsSettings(BaseSettings):
         if self.worker_heartbeat_seconds * 3 > self.worker_stale_after_seconds:
             raise ValueError("EVENTS_WORKER_STALE_AFTER_SECONDS must be at least three heartbeats")
         return self
+
+    @property
+    def tz(self) -> ZoneInfo:
+        return ZoneInfo(self.timezone)
 
     def missing(self) -> list[str]:
         """The keys a real run needs that aren't set, by the names to set them under."""

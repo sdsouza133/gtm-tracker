@@ -27,8 +27,9 @@ The worker claims jobs from `ev_jobs` and runs them (see [ADR 0002](adr-0002-pos
 - **The worker needs three keys:** `ANTHROPIC_API_KEY`, `APIFY_TOKEN` and `APOLLO_API_KEY`, the same keys the rest of
   the tracker uses. Without them the worker doesn't start and says which are missing.
 - **`EVENTS_WORKER=false`** turns the worker off. The tests do this.
-- **A redeploy** stops the worker after the job it is running. A job about to make a paid call goes back to the queue,
-  and a job cut off mid-way is picked up again once its heartbeat goes quiet (5 minutes).
+- **A redeploy** stops the worker. It takes no new job, and waits up to 20 seconds for the one it's running. A job about
+  to make a paid call goes back to the queue, and a job cut off mid-way is picked up again once its heartbeat goes
+  quiet (5 minutes).
 - **Every outside service is behind an interface with a fake** (see
   [ADR 0003](adr-0003-providers-behind-interfaces.md)). `EVENTS_PROVIDERS=fake` runs the whole pipeline offline.
 

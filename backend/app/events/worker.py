@@ -6,8 +6,9 @@ job to another worker only when its worker has really stopped (a redeploy that c
 worker does the housekeeping: it puts back jobs whose worker died, closes the spend reservations such workers left
 open, and queues the hourly job that deletes old personal data (`app/events/pipeline/retention.py`).
 
-Stopping the app (a redeploy) stops the worker after the job it is running, which starts no new paid call meanwhile:
-a job about to make one is put back for the next worker.
+Stopping the app (a redeploy) stops the worker: it takes no new job and waits up to STOP_WAIT_SECONDS for the one it
+is running, which starts no new paid call meanwhile (a job about to make one is put back for the next worker). A job
+still running then is picked up again once its heartbeat goes quiet.
 """
 
 import dataclasses
@@ -42,6 +43,7 @@ from app.events.providers.types import ProviderError
 log = logging.getLogger(__name__)
 
 MAINTENANCE_EVERY_SECONDS = 60.0
+STOP_WAIT_SECONDS = 20.0  # well inside the time a platform gives a stopping app
 RESERVATIONS_OPEN_AT_MOST = timedelta(hours=1)
 
 
@@ -70,12 +72,18 @@ class Worker:
     def __init__(self, ctx: JobContext, kinds: Mapping[str, JobKind], *, name: str | None = None) -> None:
         self._stop = threading.Event()
         self.ctx = dataclasses.replace(ctx, stopping=self._stop.is_set)  # a stopping worker starts no paid call
+        self._thread: threading.Thread | None = None
         self.kinds = dict(kinds)
         self.name = name or worker_name()
         self._last_maintenance: float | None = None
 
-    def stop(self) -> None:
+    def stop(self, timeout: float | None = None) -> None:
+        """Take no more jobs and, given a timeout, wait up to that long for the one running to finish. A job still
+        running after it is picked up again once its heartbeat goes quiet (WORKER_STALE_AFTER_SECONDS)."""
         self._stop.set()
+        thread = self._thread
+        if timeout is not None and thread is not None and thread is not threading.current_thread():
+            thread.join(timeout)
 
     def run_forever(self) -> None:
         log.info("worker started", extra={"worker": self.name, "kinds": sorted(self.kinds)})
@@ -240,5 +248,6 @@ def start(settings: EventsSettings) -> Worker | None:
         log.warning("events worker not started", extra={"missing": missing})
         return None
     worker = Worker(JobContext(settings=settings, providers=build_providers(settings)), JOBS)
-    threading.Thread(target=worker.run_forever, name="events-worker", daemon=True).start()
+    worker._thread = threading.Thread(target=worker.run_forever, name="events-worker", daemon=True)
+    worker._thread.start()
     return worker

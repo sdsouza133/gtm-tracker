@@ -70,6 +70,8 @@ def test_apify_start_caps_the_charge_and_reads_no_profiles() -> None:
     ("status", "expected"),
     [
         ("RUNNING", SearchStatus.RUNNING),
+        ("TIMING-OUT", SearchStatus.RUNNING),  # on its way to TIMED-OUT, with the final usage still to come
+        ("ABORTING", SearchStatus.RUNNING),
         ("SUCCEEDED", SearchStatus.SUCCEEDED),
         ("TIMED-OUT", SearchStatus.SUCCEEDED),  # partial results are still charged and still useful
         ("ABORTED", SearchStatus.SUCCEEDED),
@@ -103,6 +105,13 @@ def test_a_post_item_becomes_a_normalized_post() -> None:
     assert post.posted_at is not None
     assert post.posted_at.isoformat() == "2026-10-21T19:43:28.091000+00:00"
     assert post.query == '"RevOps Summit 2026" AND attending'
+
+
+def test_an_unreadable_post_date_is_left_out_not_fatal() -> None:
+    for date_value in ("not a date", 20261021, {"x": 1}):
+        post = parse_post({**POST_ITEM, "postedAt": {"date": date_value}})
+        assert post is not None
+        assert post.posted_at is None
 
 
 def test_company_posts_and_reposts() -> None:
