@@ -320,8 +320,8 @@ def _posts(rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, 
     if people:
         try:
             more, spent = linkedin.posts(people, plan.posts_per_target, budget.left(keep), people=True)
-        except LinkedInError:
-            more, spent = [], 0.0  # the decision makers are extra; the company pages alone still work
+        except LinkedInError as e:
+            more, spent = [], e.spent  # the decision makers are extra; the company pages alone still work
         budget.add(spent)
         found += more
     chosen: list[Post] = []
@@ -342,7 +342,8 @@ def _engage(
     for post in posts:
         try:
             found, spent = linkedin.engagers(post, plan.reactions, plan.comments, budget.left(keep))
-        except LinkedInError:
+        except LinkedInError as e:
+            budget.add(e.spent)  # what a failed post cost before it failed still counts
             failed += 1
             continue
         budget.add(spent)
