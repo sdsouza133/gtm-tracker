@@ -125,7 +125,7 @@ def norm(text: str) -> str:
 
 def domain_of(url: str) -> str:
     u = re.sub(r"^https?://", "", (url or "").strip().lower()).removeprefix("www.")
-    return u.split("/")[0].split("?")[0]
+    return re.split(r"[/?#]", u, maxsplit=1)[0]  # the host only: no path, query or #fragment
 
 
 def web_url(url: str | None) -> str:

@@ -5,6 +5,7 @@ import pytest
 from app.radar.fit import (
     RadarConfig,
     core_role,
+    domain_of,
     fits,
     flags_for,
     pay_ok,
@@ -109,3 +110,17 @@ def test_web_url_keeps_only_http_links() -> None:
     assert web_url("HTTP://jobs.example") == "HTTP://jobs.example"
     assert web_url("javascript:alert(1)") == ""
     assert web_url(None) == ""
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "rival.example",
+        "https://www.Rival.example/",
+        "rival.example/pricing",
+        "rival.example?ref=x",
+        "https://rival.example#about",
+    ],
+)
+def test_domain_of_keeps_the_host_only(url: str) -> None:
+    assert domain_of(url) == "rival.example"

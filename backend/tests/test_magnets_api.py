@@ -75,6 +75,8 @@ def test_a_teaser_builds_in_the_background_and_shares_by_a_private_link(magnet_c
     assert db.query(Activity).filter(Activity.kind == "magnet").count() == 1
 
     token = m["link"].rsplit("/", 1)[-1]
+    long_ago = datetime(2026, 1, 1, tzinfo=UTC)
+    db.execute(update(Magnet).where(Magnet.id == m["id"]).values(updated_at=long_ago))
     magnet_client.cookies.clear()  # the prospect isn't signed in
     report = magnet_client.get(f"/api/public/magnets/{m['id']}/{token}")
     assert report.status_code == 200
@@ -92,6 +94,7 @@ def test_a_teaser_builds_in_the_background_and_shares_by_a_private_link(magnet_c
     assert seen is not None
     assert seen.data["views"] == 1
     assert "last_viewed" not in seen.data  # a view changes the count and nothing else
+    assert seen.updated_at == long_ago  # so it can't make a stopped build look alive
 
 
 def test_the_full_build_carries_emails(magnet_client: TestClient, db: Session) -> None:
