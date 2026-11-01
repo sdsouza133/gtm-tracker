@@ -5,53 +5,8 @@ import { useParams } from "react-router-dom";
 import { type PublicLead, type PublicMagnet, usePublicMagnet } from "@/api/hooks";
 import { Button, Card, Chip, EmptyState } from "@/components/ui";
 import { formatDay } from "@/lib/format";
+import { SINGLE, TIER, toCsv } from "@/lib/leads";
 import { safeUrl } from "@/lib/safe";
-
-type Tier = { label: string; tone: "bad" | "warm" | "neutral"; meaning: string };
-const SINGLE: Tier = {
-  label: "Single touch",
-  tone: "neutral",
-  meaning: "One like. A touchpoint, not a sign they're buying",
-};
-const TIER: Record<string, Tier> = {
-  hot: {
-    label: "Hot",
-    tone: "bad",
-    meaning: "Commented at two competitors, or engaged three or more times across posts",
-  },
-  warm: { label: "Warm", tone: "warm", meaning: "Engaged twice, or left a comment" },
-  touch: SINGLE,
-};
-
-const CSV_COLUMNS: [string, (l: PublicLead) => string | number | null][] = [
-  ["Name", (l) => l.name],
-  ["Title", (l) => l.title],
-  ["Company", (l) => l.company],
-  ["Country", (l) => l.country],
-  ["Tier", (l) => TIER[l.tier]?.label ?? l.tier],
-  ["Touches", (l) => l.touches],
-  ["Comments", (l) => l.comments],
-  ["Likes", (l) => l.reactions],
-  ["Posts", (l) => l.posts],
-  ["Competitors", (l) => l.competitors.join("; ")],
-  ["Last touch", (l) => l.last],
-  ["Email", (l) => l.email],
-  ["LinkedIn", (l) => l.linkedin],
-  ["Why they fit", (l) => l.why_fit],
-];
-
-/** One CSV cell: quoted, and a leading = + - @ neutralised so a spreadsheet never runs it as a formula. */
-export function csvCell(value: string | number | null): string {
-  let text = value === null ? "" : String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return `"${text.replace(/"/g, '""')}"`;
-}
-
-export function toCsv(leads: PublicLead[]): string {
-  const header = CSV_COLUMNS.map(([name]) => csvCell(name)).join(",");
-  const rows = leads.map((l) => CSV_COLUMNS.map(([, get]) => csvCell(get(l))).join(","));
-  return [header, ...rows].join("\r\n");
-}
 
 function download(report: PublicMagnet) {
   const blob = new Blob([toCsv(report.leads)], { type: "text/csv;charset=utf-8" });

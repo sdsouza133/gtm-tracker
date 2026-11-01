@@ -136,8 +136,8 @@ def _out(m: Magnet) -> MagnetOut:
     )
 
 
-def _company(session: Session, company_id: str) -> Company:
-    company = session.get(Company, company_id)
+def _company(session: Session, company_id: str, *, lock: bool = False) -> Company:
+    company = session.get(Company, company_id, with_for_update=lock)
     if company is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That company isn't in the tracker.")
     return company
@@ -159,8 +159,9 @@ def list_for_company(company_id: str, session: DbSession) -> list[MagnetOut]:
 def start(
     company_id: str, body: MagnetCreate, session: DbSession, settings: AppSettings, today: Today, runtime: MagnetRuntime
 ) -> MagnetOut:
-    """Start building, in the background. The magnet shows each step; one build per company at a time."""
-    company = _company(session, company_id)
+    """Start building, in the background. The magnet shows each step; one build per company at a time (the company
+    row stays locked until the new magnet is saved, so two quick clicks can't both start one)."""
+    company = _company(session, company_id, lock=True)
     problem = missing_setup(settings, body.mode)
     if problem:
         raise HTTPException(status.HTTP_409_CONFLICT, problem)

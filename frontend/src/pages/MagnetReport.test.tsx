@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 
 import type { PublicLead, PublicMagnet } from "@/api/hooks";
 import { App } from "@/App";
-import { csvCell, toCsv } from "@/pages/MagnetReport";
+import { csvCell, toCsv } from "@/lib/leads";
 import { mockApi, renderApp } from "@/test/render";
 
 const NOT_SIGNED_IN = { "GET /api/auth/me": { body: { signed_in: false, csrf: null, open_access: false } } };
@@ -109,6 +109,9 @@ describe("the lead magnet report", () => {
     expect(csvCell('=HYPERLINK("x")')).toBe(`"'=HYPERLINK(""x"")"`);
     expect(csvCell("-1+1")).toBe(`"'-1+1"`);
     expect(csvCell(null)).toBe('""');
+    expect(csvCell("\n=1+1")).toBe(`"'\n=1+1"`); // a spreadsheet skips the line break and runs the rest
+    expect(csvCell(" @SUM(A1)")).toBe(`"' @SUM(A1)"`);
+    expect(csvCell("Ana Example")).toBe('"Ana Example"');
     const csv = toCsv([lead({ email: "ana@buyer.example" })]).split("\r\n");
     expect(csv[0]).toContain('"Name","Title","Company"');
     expect(csv[1]).toContain('"Ana Example","VP Sales","Buyer Inc","US","Hot"');
