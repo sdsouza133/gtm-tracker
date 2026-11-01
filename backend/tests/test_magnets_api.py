@@ -215,3 +215,4 @@ def test_report_tokens_never_reach_the_log() -> None:
     assert log_path("/api/public/magnets/m123/secret-token") == "/api/public/magnets/m123/***"
     assert log_path("/m/m123/secret-token") == "/m/m123/***"
     assert log_path("/api/companies/c1/magnets") == "/api/companies/c1/magnets"
+    assert log_path("/api/x\nFAKE log line\r") == "/api/x?FAKE log line?"

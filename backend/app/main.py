@@ -30,12 +30,14 @@ CSP = (
     f"font-src 'self'; connect-src 'self' {GSI}/; frame-src {GSI}/; frame-ancestors 'none'; base-uri 'none'; "
     "form-action 'self'"
 )
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 REPORT_LINK = re.compile(r"^(/(?:api/public/magnets|m)/[^/]+/)[^/]+")
 
 
 def log_path(path: str) -> str:
-    """The path as logged: a lead magnet report's token is the only thing guarding it, so it never reaches a log."""
-    return REPORT_LINK.sub(r"\1***", path)
+    """The path as logged: a lead magnet report's token is the only thing guarding it, so it never reaches a log, and
+    control characters (a decoded %0A, say) are replaced, so a request can't forge a log line."""
+    return CONTROL.sub("?", REPORT_LINK.sub(r"\1***", path))
 
 
 HEADERS = {
