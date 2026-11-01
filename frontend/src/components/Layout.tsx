@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import { CalendarDays, Columns3, Download, LogOut, Radar, Sparkles, Sun, Users } from "lucide-react";
+import { CalendarDays, Columns3, Download, LogOut, Radar, Sparkles, Sun, Ticket, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
@@ -15,6 +15,7 @@ const NAV = [
   { to: "/plan", label: "Plan", icon: CalendarDays },
   { to: "/radar", label: "Radar", icon: Radar },
   { to: "/fractional", label: "Fractional", icon: Sparkles },
+  { to: "/events", label: "Events", icon: Ticket },
 ];
 
 /** Fetch the backup first, so a lapsed session shows the sign-in page instead of saving an error as the "backup". */

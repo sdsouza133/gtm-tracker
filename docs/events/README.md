@@ -19,6 +19,28 @@ These came out, because they only served outside companies using the tool themse
 
 You start a run for any website, and you review its plan and read its list in the tracker.
 
+## Where it is in the tracker
+
+- **The Events tab** (`/events`) shows:
+  - the day's spend against the cap, and the job queue;
+  - a switch that holds new runs;
+  - a box to start a run for any website;
+  - the latest runs.
+- **A run's page** (`/events/:id`) depends on where the run is:
+  - **Working:** its steps, and the posts, people and emails found so far. It checks back every few seconds.
+  - **Awaiting approval:** the plan to edit. That covers the ICP (summary, industries, regions, company sizes,
+    buyers, excluded titles) and the events, with up to three picked and their LinkedIn searches. You can also add up
+    to three events you know. "Find the people" approves the plan and starts the search.
+  - **Ready:** the list, best fit first, with a CSV download.
+  - **Stopped:** why it stopped.
+  - **Any time before it finishes:** a Cancel button.
+- **A company's panel** has an "Event leads" section. It starts a run from the company's website, linked to the
+  company, and lists that company's runs.
+- **The API** is under `/api/events` (`app/api/events.py`, over `app/events/views.py`).
+  - Every route needs sign-in.
+  - While the tracker runs with `OPEN_ACCESS` (no sign-in), the tool is off and answers 409, because its lists hold
+    work emails. The overview route stays on, to say so.
+
 ## How it runs
 
 The tool has no service of its own. When the tracker starts, it starts one worker thread (`app/events/worker.py`).

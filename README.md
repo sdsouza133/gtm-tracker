@@ -12,6 +12,11 @@ around each hire, and work a short, dated list of moves every day.
 - **Radar** — new roles found every morning on LinkedIn and company job boards, filtered to what fits.
 - **Fractional** — a daily list of funded startups to pitch for fractional GTM engineering, each with an offer and a
   free first deliverable.
+- **Lead magnets** — from a company's panel: the people in its ICP who engage with its competitors on LinkedIn, as a
+  private report to send them.
+- **Events** — the people going to (or just back from) the events a company's buyers attend, found in public LinkedIn
+  posts, kept when they fit its ICP, with verified work emails. You approve the plan before anything is searched. See
+  [docs/events](docs/events/README.md).
 
 The demo data in this repository is made up. Real data lives only in the database.
 

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import auth_routes, backup, companies, enrich, fractional, magnets, moves, people, radar, today
+from app.api import auth_routes, backup, companies, enrich, events, fractional, magnets, moves, people, radar, today
 from app.config import get_settings
 from app.db import get_engine, session_factory
 from app.events import worker as events_worker
@@ -121,7 +121,7 @@ def create_app() -> FastAPI:
         code = 404 if isinstance(exc, NotFoundError) else 409
         return JSONResponse({"detail": str(exc)}, status_code=code)
 
-    for module in (auth_routes, companies, people, moves, today, fractional, backup, radar, enrich, magnets):
+    for module in (auth_routes, companies, people, moves, today, fractional, backup, radar, enrich, magnets, events):
         app.include_router(module.router)
     app.include_router(magnets.public)
 
