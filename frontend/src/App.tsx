@@ -7,6 +7,7 @@ import { Button, EmptyState, PageHeader } from "@/components/ui";
 import { CompanyPage } from "@/pages/Company";
 import { FractionalPage } from "@/pages/Fractional";
 import { LoginPage } from "@/pages/Login";
+import { MagnetReportPage } from "@/pages/MagnetReport";
 import { PeoplePage } from "@/pages/People";
 import { PipelinePage } from "@/pages/Pipeline";
 import { PlanPage } from "@/pages/Plan";
@@ -44,6 +45,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/m/:id/:token" element={<MagnetReportPage />} />
       <Route
         element={
           <RequireAuth>

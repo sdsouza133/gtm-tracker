@@ -648,6 +648,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/companies/{company_id}/magnets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List For Company */
+        get: operations["list_for_company_api_companies__company_id__magnets_get"];
+        put?: never;
+        /**
+         * Start
+         * @description Start building, in the background. The magnet shows each step; one build per company at a time (the company
+         *     row stays locked until the new magnet is saved, so two quick clicks can't both start one).
+         */
+        post: operations["start_api_companies__company_id__magnets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/magnets/{magnet_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get One */
+        get: operations["get_one_api_magnets__magnet_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete
+         * @description Delete it, which also turns its link off.
+         */
+        delete: operations["delete_api_magnets__magnet_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/public/magnets/{magnet_id}/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report
+         * @description The finished report, for whoever has the link. A teaser shows its first few leads. The row is locked while the
+         *     view is counted, so two people opening it at once both count.
+         */
+        get: operations["report_api_public_magnets__magnet_id___token__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1126,6 +1190,69 @@ export interface components {
             next: string | null;
             /** Due */
             due: string | null;
+        };
+        /** MagnetCreate */
+        MagnetCreate: {
+            /**
+             * Mode
+             * @default teaser
+             * @enum {string}
+             */
+            mode?: "teaser" | "full";
+            /** Website */
+            website?: string | null;
+            /** Competitors */
+            competitors?: string[];
+        };
+        /** MagnetOut */
+        MagnetOut: {
+            /** Id */
+            id: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Kind */
+            kind: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Mode */
+            mode: string;
+            /** Website */
+            website: string;
+            /** Step */
+            step: string;
+            /** Error */
+            error: string;
+            /**
+             * Created
+             * Format: date-time
+             */
+            created: string;
+            /** Link */
+            link: string | null;
+            /** Views */
+            views: number;
+            summary: components["schemas"]["MagnetSummary"] | null;
+        };
+        /** MagnetSummary */
+        MagnetSummary: {
+            /** Leads */
+            leads: number;
+            /** Hot */
+            hot: number;
+            /** Warm */
+            warm: number;
+            /** Touch */
+            touch: number;
+            /** Emails */
+            emails: number;
+            /** Fit */
+            fit: number;
+            /** People */
+            people: number;
+            /** Apify Usd */
+            apify_usd: number;
         };
         /** Me */
         Me: {
@@ -1679,6 +1806,89 @@ export interface components {
         ProspectSync: {
             /** Prospects */
             prospects: components["schemas"]["ProspectIn"][];
+        };
+        /** PublicCompetitor */
+        PublicCompetitor: {
+            /** Name */
+            name: string;
+            /** Domain */
+            domain: string;
+            /** Linkedin */
+            linkedin: string;
+            /** Why */
+            why: string;
+        };
+        /** PublicIcp */
+        PublicIcp: {
+            /** Sells */
+            sells: string;
+            /** Industries */
+            industries: string[];
+            /** Company Sizes */
+            company_sizes: string[];
+            /** Titles */
+            titles: string[];
+            /** Seniority */
+            seniority: string[];
+            /** Functions */
+            functions: string[];
+        };
+        /** PublicLead */
+        PublicLead: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Company */
+            company: string;
+            /** Headline */
+            headline: string;
+            /** Linkedin */
+            linkedin: string;
+            /** Country */
+            country: string;
+            /** Tier */
+            tier: string;
+            /** Points */
+            points: number;
+            /** Touches */
+            touches: number;
+            /** Comments */
+            comments: number;
+            /** Reactions */
+            reactions: number;
+            /** Posts */
+            posts: number;
+            /** Competitors */
+            competitors: string[];
+            /** Last */
+            last: string | null;
+            /** Said */
+            said: string[];
+            /** Why Fit */
+            why_fit: string;
+            /** Email */
+            email: string | null;
+        };
+        /** PublicMagnet */
+        PublicMagnet: {
+            /** Company */
+            company: string;
+            /** Mode */
+            mode: string;
+            /** Built */
+            built: string;
+            icp: components["schemas"]["PublicIcp"];
+            /** Competitors */
+            competitors: components["schemas"]["PublicCompetitor"][];
+            /** Leads */
+            leads: components["schemas"]["PublicLead"][];
+            /** Fit */
+            fit: number;
+            /** In Region */
+            in_region: number;
+            /** More */
+            more: number;
         };
         /** Pull */
         Pull: {
@@ -3243,6 +3453,164 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrichOut"];
+                };
+            };
+        };
+    };
+    list_for_company_api_companies__company_id__magnets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MagnetOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_companies__company_id__magnets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                company_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MagnetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MagnetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_one_api_magnets__magnet_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                magnet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MagnetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_api_magnets__magnet_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                magnet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_api_public_magnets__magnet_id___token__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                magnet_id: string;
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicMagnet"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

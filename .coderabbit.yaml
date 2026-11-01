@@ -16,7 +16,9 @@ reviews:
       instructions: |
         A single-user app holding real personal data (names, titles, LinkedIn URLs, emails of people being contacted).
         Check in particular:
-        - every /api route except /api/auth/* depends on `SignedIn`, and changes check the CSRF header;
+        - every /api route except /api/auth/* and /api/public/* depends on `SignedIn`, and changes check the CSRF header;
+          /api/public/* changes nothing but a view count, and each route checks an unguessable token from its own link (constant-time),
+          with the routes listed by name in tests/test_auth.py;
         - no personal data, tokens or passwords are written to logs;
         - queries stay bounded (pagination or limits) so a large table can't be loaded whole by accident;
         - datetimes are timezone-aware, and "today" uses the configured timezone, not UTC;

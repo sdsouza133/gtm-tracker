@@ -1,6 +1,7 @@
 """The app: the JSON API under /api, and the built front end for every other path."""
 
 import logging
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -13,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
-from app.api import auth_routes, backup, companies, enrich, fractional, moves, people, radar, today
+from app.api import auth_routes, backup, companies, enrich, fractional, magnets, moves, people, radar, today
 from app.config import get_settings
 from app.db import get_engine, session_factory
 from app.radar import run as radar_run
@@ -29,6 +30,16 @@ CSP = (
     f"font-src 'self'; connect-src 'self' {GSI}/; frame-src {GSI}/; frame-ancestors 'none'; base-uri 'none'; "
     "form-action 'self'"
 )
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+REPORT_LINK = re.compile(r"^(/(?:api/public/magnets|m)/[^/]+/)[^/]+")
+
+
+def log_path(path: str) -> str:
+    """The path as logged: a lead magnet report's token is the only thing guarding it, so it never reaches a log, and
+    control characters (a decoded %0A, say) are replaced, so a request can't forge a log line."""
+    return CONTROL.sub("?", REPORT_LINK.sub(r"\1***", path))
+
+
 HEADERS = {
     "Content-Security-Policy": CSP,
     "X-Content-Type-Options": "nosniff",
@@ -67,12 +78,17 @@ def create_app() -> FastAPI:
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         if request.url.path.startswith("/api/"):
             response.headers.setdefault("Cache-Control", "no-store")
+        if REPORT_LINK.match(
+            request.url.path
+        ):  # a shared report: kept out of search engines, its link out of referrers
+            response.headers["X-Robots-Tag"] = "noindex, nofollow"
+            response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Request-Id"] = request_id
         log.info(
             "request",
             extra={
                 "method": request.method,
-                "path": request.url.path,  # never the query string: it can carry tokens
+                "path": log_path(request.url.path),  # never the query string, nor a report link's token
                 "status": response.status_code,
                 "ms": round((time.perf_counter() - started) * 1000),
                 "request_id": request_id,
@@ -99,8 +115,9 @@ def create_app() -> FastAPI:
         code = 404 if isinstance(exc, NotFoundError) else 409
         return JSONResponse({"detail": str(exc)}, status_code=code)
 
-    for module in (auth_routes, companies, people, moves, today, fractional, backup, radar, enrich):
+    for module in (auth_routes, companies, people, moves, today, fractional, backup, radar, enrich, magnets):
         app.include_router(module.router)
+    app.include_router(magnets.public)
 
     static = Path(settings.static_dir)
     if (static / "index.html").is_file():

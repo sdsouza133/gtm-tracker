@@ -1830,6 +1830,231 @@
      }
     }
    }
+  },
+  "/api/companies/{company_id}/magnets": {
+   "get": {
+    "tags": [
+     "magnets"
+    ],
+    "summary": "List For Company",
+    "operationId": "list_for_company_api_companies__company_id__magnets_get",
+    "parameters": [
+     {
+      "name": "company_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Company Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/MagnetOut"
+         },
+         "title": "Response List For Company Api Companies  Company Id  Magnets Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "magnets"
+    ],
+    "summary": "Start",
+    "description": "Start building, in the background. The magnet shows each step; one build per company at a time (the company\nrow stays locked until the new magnet is saved, so two quick clicks can't both start one).",
+    "operationId": "start_api_companies__company_id__magnets_post",
+    "parameters": [
+     {
+      "name": "company_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Company Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MagnetCreate"
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MagnetOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/magnets/{magnet_id}": {
+   "get": {
+    "tags": [
+     "magnets"
+    ],
+    "summary": "Get One",
+    "operationId": "get_one_api_magnets__magnet_id__get",
+    "parameters": [
+     {
+      "name": "magnet_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Magnet Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MagnetOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   },
+   "delete": {
+    "tags": [
+     "magnets"
+    ],
+    "summary": "Delete",
+    "description": "Delete it, which also turns its link off.",
+    "operationId": "delete_api_magnets__magnet_id__delete",
+    "parameters": [
+     {
+      "name": "magnet_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Magnet Id"
+      }
+     }
+    ],
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/public/magnets/{magnet_id}/{token}": {
+   "get": {
+    "tags": [
+     "magnets"
+    ],
+    "summary": "Report",
+    "description": "The finished report, for whoever has the link. A teaser shows its first few leads. The row is locked while the\nview is counted, so two people opening it at once both count.",
+    "operationId": "report_api_public_magnets__magnet_id___token__get",
+    "parameters": [
+     {
+      "name": "magnet_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Magnet Id"
+      }
+     },
+     {
+      "name": "token",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Token"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PublicMagnet"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
   }
  },
  "components": {
@@ -3403,6 +3628,186 @@
     ],
     "title": "LovedPerson",
     "description": "One person at a job you love, and where your outreach to them stands."
+   },
+   "MagnetCreate": {
+    "properties": {
+     "mode": {
+      "type": "string",
+      "enum": [
+       "teaser",
+       "full"
+      ],
+      "title": "Mode",
+      "default": "teaser"
+     },
+     "website": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 300
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Website"
+     },
+     "competitors": {
+      "items": {
+       "type": "string",
+       "maxLength": 200,
+       "minLength": 3
+      },
+      "type": "array",
+      "maxItems": 5,
+      "title": "Competitors"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "MagnetCreate"
+   },
+   "MagnetOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     },
+     "kind": {
+      "type": "string",
+      "title": "Kind"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "mode": {
+      "type": "string",
+      "title": "Mode"
+     },
+     "website": {
+      "type": "string",
+      "title": "Website"
+     },
+     "step": {
+      "type": "string",
+      "title": "Step"
+     },
+     "error": {
+      "type": "string",
+      "title": "Error"
+     },
+     "created": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created"
+     },
+     "link": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Link"
+     },
+     "views": {
+      "type": "integer",
+      "title": "Views"
+     },
+     "summary": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MagnetSummary"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "company_id",
+     "kind",
+     "status",
+     "title",
+     "mode",
+     "website",
+     "step",
+     "error",
+     "created",
+     "link",
+     "views",
+     "summary"
+    ],
+    "title": "MagnetOut"
+   },
+   "MagnetSummary": {
+    "properties": {
+     "leads": {
+      "type": "integer",
+      "title": "Leads"
+     },
+     "hot": {
+      "type": "integer",
+      "title": "Hot"
+     },
+     "warm": {
+      "type": "integer",
+      "title": "Warm"
+     },
+     "touch": {
+      "type": "integer",
+      "title": "Touch"
+     },
+     "emails": {
+      "type": "integer",
+      "title": "Emails"
+     },
+     "fit": {
+      "type": "integer",
+      "title": "Fit"
+     },
+     "people": {
+      "type": "integer",
+      "title": "People"
+     },
+     "apify_usd": {
+      "type": "number",
+      "title": "Apify Usd"
+     }
+    },
+    "type": "object",
+    "required": [
+     "leads",
+     "hot",
+     "warm",
+     "touch",
+     "emails",
+     "fit",
+     "people",
+     "apify_usd"
+    ],
+    "title": "MagnetSummary"
    },
    "Me": {
     "properties": {
@@ -5134,6 +5539,258 @@
      "prospects"
     ],
     "title": "ProspectSync"
+   },
+   "PublicCompetitor": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "domain": {
+      "type": "string",
+      "title": "Domain"
+     },
+     "linkedin": {
+      "type": "string",
+      "title": "Linkedin"
+     },
+     "why": {
+      "type": "string",
+      "title": "Why"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "domain",
+     "linkedin",
+     "why"
+    ],
+    "title": "PublicCompetitor"
+   },
+   "PublicIcp": {
+    "properties": {
+     "sells": {
+      "type": "string",
+      "title": "Sells"
+     },
+     "industries": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Industries"
+     },
+     "company_sizes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Company Sizes"
+     },
+     "titles": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Titles"
+     },
+     "seniority": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Seniority"
+     },
+     "functions": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Functions"
+     }
+    },
+    "type": "object",
+    "required": [
+     "sells",
+     "industries",
+     "company_sizes",
+     "titles",
+     "seniority",
+     "functions"
+    ],
+    "title": "PublicIcp"
+   },
+   "PublicLead": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "company": {
+      "type": "string",
+      "title": "Company"
+     },
+     "headline": {
+      "type": "string",
+      "title": "Headline"
+     },
+     "linkedin": {
+      "type": "string",
+      "title": "Linkedin"
+     },
+     "country": {
+      "type": "string",
+      "title": "Country"
+     },
+     "tier": {
+      "type": "string",
+      "title": "Tier"
+     },
+     "points": {
+      "type": "integer",
+      "title": "Points"
+     },
+     "touches": {
+      "type": "integer",
+      "title": "Touches"
+     },
+     "comments": {
+      "type": "integer",
+      "title": "Comments"
+     },
+     "reactions": {
+      "type": "integer",
+      "title": "Reactions"
+     },
+     "posts": {
+      "type": "integer",
+      "title": "Posts"
+     },
+     "competitors": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Competitors"
+     },
+     "last": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last"
+     },
+     "said": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Said"
+     },
+     "why_fit": {
+      "type": "string",
+      "title": "Why Fit"
+     },
+     "email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "title",
+     "company",
+     "headline",
+     "linkedin",
+     "country",
+     "tier",
+     "points",
+     "touches",
+     "comments",
+     "reactions",
+     "posts",
+     "competitors",
+     "last",
+     "said",
+     "why_fit",
+     "email"
+    ],
+    "title": "PublicLead"
+   },
+   "PublicMagnet": {
+    "properties": {
+     "company": {
+      "type": "string",
+      "title": "Company"
+     },
+     "mode": {
+      "type": "string",
+      "title": "Mode"
+     },
+     "built": {
+      "type": "string",
+      "title": "Built"
+     },
+     "icp": {
+      "$ref": "#/components/schemas/PublicIcp"
+     },
+     "competitors": {
+      "items": {
+       "$ref": "#/components/schemas/PublicCompetitor"
+      },
+      "type": "array",
+      "title": "Competitors"
+     },
+     "leads": {
+      "items": {
+       "$ref": "#/components/schemas/PublicLead"
+      },
+      "type": "array",
+      "title": "Leads"
+     },
+     "fit": {
+      "type": "integer",
+      "title": "Fit"
+     },
+     "in_region": {
+      "type": "integer",
+      "title": "In Region"
+     },
+     "more": {
+      "type": "integer",
+      "title": "More"
+     }
+    },
+    "type": "object",
+    "required": [
+     "company",
+     "mode",
+     "built",
+     "icp",
+     "competitors",
+     "leads",
+     "fit",
+     "in_region",
+     "more"
+    ],
+    "title": "PublicMagnet"
    },
    "Pull": {
     "properties": {

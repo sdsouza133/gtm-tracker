@@ -16,6 +16,7 @@ import {
   useUpdateMove,
   useUpdatePerson,
 } from "@/api/hooks";
+import { MagnetSection } from "@/components/MagnetSection";
 import { COPY_FOR, copy, findDraft } from "@/components/MoveRow";
 import { trapTab } from "@/components/ProspectDrawer";
 import { Button, Chip } from "@/components/ui";
@@ -516,6 +517,10 @@ export function CompanyPanel({ id, onClose }: { id: string; onClose: () => void 
                 ) : (
                   <p className="text-sm text-muted">No one found yet.</p>
                 )}
+              </Section>
+
+              <Section title="Lead magnet">
+                <MagnetSection key={c.id} companyId={c.id} website={c.website ?? c.domain ?? ""} />
               </Section>
             </div>
           </>

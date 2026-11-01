@@ -188,3 +188,64 @@ class FakeApollo:
         self.matched.append(linkedin or "")
         email = self.emails.get(linkedin or "")
         return {"email": email, "email_status": "verified"} if email else None
+
+
+# ----------------------------------------------------------------------------- one made-up market
+P1, P2, P3, P4 = (f"https://www.linkedin.com/posts/rivalco_p{n}" for n in range(1, 5))
+O1 = "https://www.linkedin.com/posts/otherco_o1"
+R1 = "https://www.linkedin.com/posts/ria-example_r1"
+RIA = "https://www.linkedin.com/in/ria-example/"
+ORGS = {
+    "rivalco.example": {"name": "RivalCo", "linkedin_url": "http://www.linkedin.com/company/rivalco"},
+    "otherco.example": {"name": "OtherCo", "linkedin_url": OTHER_PAGE},
+    "nolinkedin.example": {"name": "NoPage"},
+}
+
+
+def site(_: str) -> dict[str, Any]:
+    return {"url": "https://prospect.example", "pages": ["https://prospect.example"], "text": "Pipeline software"}
+
+
+def runner(**overrides: Any) -> FakeRunner:
+    data: dict[str, Any] = {
+        "posts": [
+            post(P1, RIVAL_PAGE, likes=10, comments=2),
+            post(P2, RIVAL_PAGE, likes=50, comments=1),
+            post(P3, RIVAL_PAGE, likes=1, comments=0),
+            post(P4, RIVAL_PAGE, likes=0, comments=0),
+            post(O1, OTHER_PAGE, likes=5, comments=1),
+        ],
+        "people_posts": [post(R1, RIA, likes=3, comments=0)],
+        "reactions": {
+            P1: [
+                reaction("ACoAAana", "Ana E.", "VP Sales at Buyer Inc", P1),
+                reaction("ACoAAcal", "Cal E.", "Technical Recruiter", P1),
+                reaction("ACoAAdee", "Dee E.", "Account Executive at RivalCo", P1),
+                company_reaction(P1),
+            ],
+            P2: [
+                reaction("ACoAAana", "Ana E.", "VP Sales at Buyer Inc", P2),
+                reaction("ACoAAben", "Ben E.", "Head of RevOps", P2),
+                reaction("ACoAAcal", "Cal E.", "Technical Recruiter", P2),
+                reaction("ACoAAeve", "Eve E.", "Sales Director", P2),
+                reaction("ACoAAfay", "Fay E.", "Graphic designer", P2),
+            ],
+            P3: [reaction("ACoAAben", "Ben E.", "Head of RevOps", P3)],
+            O1: [reaction("ACoAAana", "Ana E.", "VP Sales at Buyer Inc", O1)],
+            R1: [reaction("ACoAAhal", "Hal E.", "VP Sales", R1)],
+        },
+        "comments": {
+            P1: [comment("ACoAAana", "ana-example", "VP Sales at Buyer Inc", P1, "Great point")],
+            P2: [comment("ACoAAgus", "gus-example", "VP Sales at Maple Co", P2, "Agreed")],
+            O1: [comment("ACoAAana", "ana-example", "VP Sales at Buyer Inc", O1, "Same here")],
+        },
+        "profiles": [
+            profile("ACoAAana", "ana-example", "US"),
+            profile("ACoAAben", "ben-example", "US", "Head of RevOps", "Buyer Two"),
+            profile("ACoAAeve", "eve-example", "GB", "Sales Director", "Overseas Ltd"),
+            profile("ACoAAgus", "gus-example", "CA", "VP Sales", "Maple Co"),
+            profile("ACoAAhal", "hal-example", "US", "VP Sales", "Hal Co"),
+        ],
+    }
+    data.update(overrides)
+    return FakeRunner(**data)

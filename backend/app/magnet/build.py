@@ -200,7 +200,7 @@ def build(spec: Spec, tools: Tools, today: date, progress: Progress | None = Non
 
     say("pulling likes and comments", {"posts": len(posts)})
     owner = {p.url: r for r in rivals for p in posts if p.url in r.posts}
-    engagers, failed = _engage(posts, tools.linkedin, plan, budget, keep_for_profiles)
+    engagers, failed = _engage(posts, tools.linkedin, plan, budget, keep_for_profiles, say)
     touches = [
         touch.Touch(person=e.key, post=e.post, competitor=owner[e.post].domain, kind=e.kind, day=e.day, text=e.text)
         for e in engagers
@@ -334,12 +334,14 @@ def _posts(rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, 
 
 
 def _engage(
-    posts: list[Post], linkedin: LinkedIn, plan: Plan, budget: Budget, keep: float
+    posts: list[Post], linkedin: LinkedIn, plan: Plan, budget: Budget, keep: float, say: Progress
 ) -> tuple[list[Engager], int]:
-    """Every post's likes and comments, and how many posts failed. One post failing still leaves the others."""
+    """Every post's likes and comments, and how many posts failed. One post failing still leaves the others. Each post
+    reports progress, so a long build keeps showing signs of life."""
     engagers: list[Engager] = []
     failed = 0
-    for post in posts:
+    for n, post in enumerate(posts, start=1):
+        say(f"pulling likes and comments ({n} of {len(posts)} posts)", {"post": post.url})
         try:
             found, spent = linkedin.engagers(post, plan.reactions, plan.comments, budget.left(keep))
         except LinkedInError as e:
