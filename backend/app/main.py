@@ -68,7 +68,7 @@ def create_app() -> FastAPI:
         if stop is not None:
             stop.set()
         if worker is not None:
-            worker.stop()  # after the job it's running; a job about to make a paid call goes back to the queue
+            worker.stop(timeout=events_worker.STOP_WAIT_SECONDS)  # lets the job it's running finish
 
     app = FastAPI(title="GTM Tracker", docs_url=None, openapi_url=None, redoc_url=None, lifespan=lifespan)
     app.add_middleware(GZipMiddleware, minimum_size=1024)

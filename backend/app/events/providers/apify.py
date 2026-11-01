@@ -19,7 +19,8 @@ SERVICE = "Apify"
 PAGE_SIZE = 1000
 RUN_TIMEOUT_SECONDS = 900
 
-_RUNNING = {"READY", "RUNNING"}
+# TIMING-OUT and ABORTING are on the way to TIMED-OUT and ABORTED, which come with the run's final usage.
+_RUNNING = {"READY", "RUNNING", "TIMING-OUT", "ABORTING"}
 # A run stopped by its time or charge limit still returns (and charges for) what it found, so it counts as done.
 _DONE = {"SUCCEEDED", "TIMED-OUT", "ABORTED"}
 
@@ -106,6 +107,17 @@ def parse_post(item: dict[str, Any]) -> SearchedPost | None:
         author_url=author.get("linkedinUrl") if is_company else normalize_profile_url(author.get("linkedinUrl")),
         author_headline=None if is_company else author.get("info"),
         author_kind="company" if is_company else "person",
-        posted_at=datetime.fromisoformat(posted.replace("Z", "+00:00")) if posted else None,
+        posted_at=_posted_at(posted),
         query=(item.get("query") or {}).get("search"),
     )
+
+
+def _posted_at(value: object) -> datetime | None:
+    """When the post went up, or None when the date is missing or unreadable: one odd item mustn't fail a search that
+    was paid for."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None

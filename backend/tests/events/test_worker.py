@@ -379,6 +379,20 @@ def test_start_runs_a_worker_on_a_thread_until_stopped(monkeypatch: pytest.Monke
     assert w._stop.is_set()
 
 
+def test_stopping_waits_for_the_job_under_way(monkeypatch: pytest.MonkeyPatch) -> None:
+    finished = threading.Event()
+
+    def busy(self: Worker) -> None:  # a job that takes a moment, then the loop sees it should stop
+        time.sleep(0.2)
+        finished.set()
+
+    monkeypatch.setattr(Worker, "run_forever", busy)
+    w = worker.start(EventsSettings(providers="fake"))
+    assert w is not None
+    w.stop(timeout=5)
+    assert finished.is_set()
+
+
 def test_without_its_keys_no_worker_starts(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING, logger="app.events.worker"):
         assert worker.start(EventsSettings(providers="real", anthropic_api_key="a")) is None

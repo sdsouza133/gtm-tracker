@@ -1,9 +1,11 @@
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
 
 from app.events.config import EventsSettings
 from app.events.linkedin import normalize_profile_url
+from app.events.pipeline.base import JobContext
 from app.events.providers import fakes, pricing
 from app.events.providers.anthropic_llm import AnthropicLlm
 from app.events.providers.apify import ApifyPostSearch
@@ -55,7 +57,8 @@ def test_reoon_key_is_required_only_when_enabled() -> None:
         ("https://www.linkedin.com/in/Jane-Doe-123/", "https://www.linkedin.com/in/jane-doe-123"),
         ("http://linkedin.com/in/jane-doe-123?trk=x", "https://www.linkedin.com/in/jane-doe-123"),
         ("https://ca.linkedin.com/in/jane-doe-123", "https://www.linkedin.com/in/jane-doe-123"),
-        ("https://www.linkedin.com/pub/jane-doe/1/2/3", "https://www.linkedin.com/in/jane-doe"),
+        ("https://www.linkedin.com/pub/jane-doe/1/2/3", "https://www.linkedin.com/pub/jane-doe/1/2/3"),
+        ("https://www.linkedin.com/pub/Jane-Doe/4/5/6/?trk=x", "https://www.linkedin.com/pub/jane-doe/4/5/6"),
         ("https://www.linkedin.com/company/acme", None),
         ("https://evil.example/in/jane", None),
         ("https://linkedin.com.evil.example/in/jane", None),
@@ -92,3 +95,13 @@ def test_labeling_a_batch_is_estimated_from_its_size_and_model() -> None:
 def test_apify_estimate_is_the_worst_case() -> None:
     assert pricing.apify_search_estimate(queries=4, max_posts_per_query=50) == Decimal("0.400")
     assert pricing.apify_search_estimate(queries=2, max_posts_per_query=0) == Decimal("0.002")
+
+
+def test_today_is_the_trackers_day_for_event_dates() -> None:
+    evening = datetime(2026, 10, 27, 2, 0, tzinfo=UTC)  # 10 PM on the 26th in Toronto
+    ctx = JobContext(
+        settings=EventsSettings(timezone="America/Toronto"),
+        providers=build_providers(EventsSettings()),
+        clock=lambda: evening,
+    )
+    assert ctx.today() == date(2026, 10, 26)

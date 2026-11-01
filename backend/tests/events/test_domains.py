@@ -27,7 +27,7 @@ def test_the_registrable_domain_is_the_company_part_of_a_host(host: str, domain:
     [
         ("acme.com", ("https://acme.com/", "acme.com")),
         ("  https://www.acme.co.uk/about?ref=x#top ", ("https://www.acme.co.uk/about", "acme.co.uk")),
-        ("http://Shop.Acme.com:8080", ("http://shop.acme.com:8080/", "acme.com")),
+        ("https://acme.com:443/about", ("https://acme.com/about", "acme.com")),  # the standard port, said out loud
     ],
 )
 def test_a_website_is_read_however_it_was_typed(typed: str, parsed: tuple[str, str]) -> None:
@@ -45,6 +45,8 @@ def test_a_website_is_read_however_it_was_typed(typed: str, parsed: tuple[str, s
         "ftp://acme.com",
         "https://user:secret@acme.com",
         "https://acme.com:99999",
+        "http://Shop.Acme.com:8080",  # the fetcher only connects on the standard web ports
+        "http://acme.com:443",
         "https://" + "a" * 2050 + ".com",
     ],
 )
