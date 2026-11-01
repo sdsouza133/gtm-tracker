@@ -1881,7 +1881,7 @@
      "magnets"
     ],
     "summary": "Start",
-    "description": "Start building, in the background. The magnet shows each step; one build per company at a time.",
+    "description": "Start building, in the background. The magnet shows each step; one build per company at a time (the company\nrow stays locked until the new magnet is saved, so two quick clicks can't both start one).",
     "operationId": "start_api_companies__company_id__magnets_post",
     "parameters": [
      {

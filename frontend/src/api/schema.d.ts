@@ -660,7 +660,8 @@ export interface paths {
         put?: never;
         /**
          * Start
-         * @description Start building, in the background. The magnet shows each step; one build per company at a time.
+         * @description Start building, in the background. The magnet shows each step; one build per company at a time (the company
+         *     row stays locked until the new magnet is saved, so two quick clicks can't both start one).
          */
         post: operations["start_api_companies__company_id__magnets_post"];
         delete?: never;
