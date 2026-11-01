@@ -68,6 +68,25 @@ class Apollo:
         org = self._call("GET", "/organizations/enrich", params={"domain": domain}).get("organization")
         return org if isinstance(org, dict) else None
 
+    def search_people(self, domain: str, titles: list[str], limit: int) -> list[dict[str, Any]]:
+        """People at a company with one of these titles, most senior first by Apollo's ranking. Free: Apollo hides
+        their last names and LinkedIn until `match_id`."""
+        body = {
+            "q_organization_domains_list": [domain],
+            "person_titles": titles,
+            "include_similar_titles": True,
+            "per_page": max(1, min(limit, 25)),
+            "page": 1,
+        }
+        people = self._call("POST", "/mixed_people/api_search", json=body).get("people")
+        return [p for p in people if isinstance(p, dict) and p.get("id")][:limit] if isinstance(people, list) else []
+
+    def match_id(self, person_id: str) -> dict[str, Any] | None:
+        """One person from a search, in full (one credit)."""
+        body = {"id": person_id, "reveal_personal_emails": False, "reveal_phone_number": False}
+        person = self._call("POST", "/people/match", json=body).get("person")
+        return person if isinstance(person, dict) else None
+
 
 def work_email(person: dict[str, Any] | None) -> str | None:
     """The match's email, unless it's missing or Apollo's locked placeholder."""
