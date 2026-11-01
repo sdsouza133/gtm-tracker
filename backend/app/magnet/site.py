@@ -73,17 +73,21 @@ def public_url(url: str) -> str:
     """The URL with a scheme, if it points at a public host; SiteError otherwise."""
     if "://" not in url:
         url = "https://" + url
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+    except ValueError as e:  # "http://[abc", say
+        raise SiteError("Give a website address, like acme.com.") from e
+    if parsed.scheme not in ("http", "https") or not host:
         raise SiteError("Give a website address, like acme.com.")
     try:
-        infos = socket.getaddrinfo(parsed.hostname, None)
-    except socket.gaierror as e:
-        raise SiteError(f"{parsed.hostname} doesn't resolve.") from e
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError) as e:  # UnicodeError: an empty or over-long label, like "a..com"
+        raise SiteError(f"{host} doesn't resolve.") from e
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
         if not ip.is_global:
-            raise SiteError(f"{parsed.hostname} isn't a public website.")
+            raise SiteError(f"{host} isn't a public website.")
     return url
 
 
@@ -102,7 +106,7 @@ def read_site(url: str, get: Callable[[str], str] | None = None) -> dict[str, ob
             continue
         try:
             html = fetch(page)
-        except (httpx2.HTTPError, SiteError):
+        except (httpx2.HTTPError, httpx2.InvalidURL, SiteError):
             if page == home:
                 raise SiteError(f"Couldn't read {home}.") from None
             continue
@@ -113,8 +117,13 @@ def read_site(url: str, get: Callable[[str], str] | None = None) -> dict[str, ob
         texts.append(f"[{page}]\n" + " ".join(parser.parts)[:PAGE_CHARS])
         if page == home:
             for href in parser.links:
-                link = urljoin(home, href).split("#")[0]
-                if urlparse(link).hostname == host and USEFUL.search(urlparse(link).path) and link not in queue:
+                try:  # the page is someone else's: a malformed link is skipped, not fatal
+                    link = urljoin(home, href).split("#")[0]
+                    target = urlparse(link)
+                    same_host = target.hostname == host
+                except ValueError:
+                    continue
+                if same_host and USEFUL.search(target.path) and link not in queue:
                     queue.append(link)
     return {"url": home, "title": title, "pages": pages, "text": "\n\n".join(texts)[:MAX_CHARS]}
 
@@ -127,7 +136,10 @@ def _get(url: str) -> str:
             public_url(url)
             with client.stream("GET", url) as r:
                 if r.status_code in REDIRECTS and "location" in r.headers:
-                    url = urljoin(url, r.headers["location"])
+                    try:
+                        url = urljoin(url, r.headers["location"])
+                    except ValueError as e:
+                        raise SiteError(f"{url} redirects somewhere that isn't a web address.") from e
                     continue
                 if r.status_code >= 400:  # noqa: PLR2004
                     raise SiteError(f"{url} answered {r.status_code}.")

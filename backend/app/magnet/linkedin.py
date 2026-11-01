@@ -9,6 +9,7 @@ from datetime import date
 from typing import Any
 
 from app.magnet.touch import Kind
+from app.radar.apify import MIN_CHARGE_USD
 from app.radar.sources import Runner
 
 COMPANY_POSTS = "harvestapi/linkedin-company-posts"
@@ -68,14 +69,18 @@ class LinkedIn:
         self.runner = runner
 
     def _run(self, actor: str, actor_input: dict[str, Any], expected: int, max_usd: float) -> tuple[list[Any], float]:
-        cap = min(max_usd, expected * PRICE[actor] * CAP_SLACK + 0.01)
-        if cap <= 0:
+        # Apify won't take a cap under MIN_CHARGE_USD, so with less budget than that left, nothing starts
+        if max_usd < MIN_CHARGE_USD or expected <= 0:
             return [], 0.0
+        name = actor.rsplit("/", maxsplit=1)[-1]
+        cap = min(max_usd, expected * PRICE[actor] * CAP_SLACK + 0.01)
         try:
             result = self.runner.run(actor, actor_input, cap, partial_ok=True)
         except RuntimeError as e:  # ApifyError and network failures alike
-            raise LinkedInError(f"{actor.rsplit('/', maxsplit=1)[-1]}: {e}") from e
+            raise LinkedInError(f"{name}: {e}") from e
         items = [i for i in result.items if isinstance(i, dict)]
+        if result.status != "SUCCEEDED" and not items:  # a run stopped at its cap still keeps what it saved
+            raise LinkedInError(f"{name} ended {result.status}.")
         return items, max(result.charged_usd, len(items) * PRICE[actor])
 
     def posts(
@@ -97,12 +102,14 @@ class LinkedIn:
         """Up to `reactions` likes and `comments` comments on one post, people only (company pages dropped)."""
         out: list[Engager] = []
         spent = 0.0
+        reactions = min(reactions, affordable(REACTIONS, max_usd))
         if reactions and post.likes:
             items, cost = self._run(
                 REACTIONS, {"posts": [post.url], "maxItems": reactions}, min(reactions, post.likes), max_usd
             )
             spent += cost
             out += [e for e in (parse_engager(i, "reaction", post) for i in items) if e]
+        comments = min(comments, affordable(COMMENTS, max_usd - spent))
         if comments and post.comments:
             items, cost = self._run(
                 COMMENTS, {"posts": [post.url], "maxItems": comments}, min(comments, post.comments), max_usd - spent
@@ -112,12 +119,18 @@ class LinkedIn:
         return out, spent
 
     def profiles(self, urls: list[str], max_usd: float) -> tuple[dict[str, Profile], float]:
-        """Profiles by member key: where they live and where they work now."""
+        """Profiles by member key: where they live and where they work now. As many as the budget covers."""
+        urls = urls[: affordable(PROFILES, max_usd)]
         if not urls:
             return {}, 0.0
         items, spent = self._run(PROFILES, {"urls": urls, "profileScraperMode": PROFILE_MODE}, len(urls), max_usd)
         found = [p for p in (parse_profile(i) for i in items) if p]
         return {p.key: p for p in found}, spent
+
+
+def affordable(actor: str, max_usd: float) -> int:
+    """How many items of this actor the budget pays for, so a run can't charge more than is left."""
+    return max(0, int(max_usd / PRICE[actor]))
 
 
 def _day(value: Any) -> date | None:

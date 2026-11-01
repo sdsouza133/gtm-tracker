@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal, Protocol
+from urllib.parse import urlsplit
 
 from pydantic import SecretStr
 
@@ -50,6 +51,8 @@ NOT_BUYERS = re.compile(
     r"looking for (new |my next )?(opportunit\w+|roles?|positions?))\b",
     re.IGNORECASE,
 )
+# an ICP whose buyers are recruiters, talent teams or students: then those headlines are the point, not noise
+SELLS_TO_RECRUITERS_OR_STUDENTS = re.compile(r"recruit|talent|sourc|student|universit|campus", re.IGNORECASE)
 SAID_KEPT = 2  # comments quoted per lead
 MIN_NAME = 3  # shorter company names match too many headlines by accident
 
@@ -207,7 +210,8 @@ def build(spec: Spec, tools: Tools, today: date, progress: Progress | None = Non
     seen = _first_seen(engagers)
 
     rule_out = [r.name for r in rivals] + [spec.company]
-    candidates = [s for s in scores if not _ruled_out(seen[s.person].headline, rule_out)]
+    sells_to_them = bool(SELLS_TO_RECRUITERS_OR_STUDENTS.search(" ".join([*icp.titles, *icp.functions])))
+    candidates = [s for s in scores if not _ruled_out(seen[s.person].headline, rule_out, keep_roles=sells_to_them)]
     say("screening against the ICP", {"people": len(scores), "after_rules": len(candidates)})
     verdicts = tools.brain.screen([seen[s.person].headline for s in candidates], icp, rule_out)
     fits = [(s, verdicts[i].reason) for i, s in enumerate(candidates) if i in verdicts and verdicts[i].fit]
@@ -314,7 +318,10 @@ def _posts(rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, 
     found, spent = linkedin.posts(pages, plan.posts_per_target, budget.left(keep))
     budget.add(spent)
     if people:
-        more, spent = linkedin.posts(people, plan.posts_per_target, budget.left(keep), people=True)
+        try:
+            more, spent = linkedin.posts(people, plan.posts_per_target, budget.left(keep), people=True)
+        except LinkedInError:
+            more, spent = [], 0.0  # the decision makers are extra; the company pages alone still work
         budget.add(spent)
         found += more
     chosen: list[Post] = []
@@ -355,10 +362,10 @@ def _first_seen(engagers: list[Engager]) -> dict[str, Engager]:
     return out
 
 
-def _ruled_out(headline: str, names: list[str]) -> bool:
+def _ruled_out(headline: str, names: list[str], *, keep_roles: bool = False) -> bool:
     """A recruiter, student or job seeker, or someone whose headline names the prospect or a competitor (they work
-    there, or sell its services)."""
-    return bool(NOT_BUYERS.search(headline or "")) or _works_at(headline, names)
+    there, or sell its services). With `keep_roles` (the ICP is recruiters or students), only the second applies."""
+    return (not keep_roles and bool(NOT_BUYERS.search(headline or ""))) or _works_at(headline, names)
 
 
 def _works_at(text: str, names: list[str]) -> bool:
@@ -418,4 +425,10 @@ def _https(url: Any) -> str:
 
 
 def _key(url: str) -> str:
-    return re.sub(r"^https?://(www\.)?", "", (url or "").strip().lower()).rstrip("/")
+    """A LinkedIn page or profile as a comparable key: its path, without host, query (`?miniProfileUrn=…`), a
+    trailing slash or a `/posts` tab."""
+    try:
+        path = urlsplit((url or "").strip()).path.lower().rstrip("/")
+    except ValueError:
+        return ""
+    return path.removesuffix("/posts").removesuffix("/recent-activity/all")

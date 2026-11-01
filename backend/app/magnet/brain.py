@@ -118,6 +118,8 @@ class Brain:
             )
         except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.APIStatusError) as e:
             raise BrainError(f"Claude couldn't read the site: {type(e).__name__}") from e
+        except ValueError as e:  # the SDK parses as it reads: a cut-off or refused reply fails validation here
+            raise BrainError("Claude's answer about the site was incomplete. Try again.") from e
         icp = _parsed(response, ICP)
         icp.competitors = icp.competitors[:MAX_COMPETITORS]
         return icp
@@ -140,6 +142,8 @@ class Brain:
                 )
             except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.APIStatusError) as e:
                 raise BrainError(f"Claude couldn't screen the people: {type(e).__name__}") from e
+            except ValueError as e:  # pydantic's ValidationError is a ValueError
+                raise BrainError("Claude's screening answer was incomplete. Try again.") from e
             for v in _parsed(response, Screen).people:
                 if start <= v.i < start + len(batch):
                     out[v.i] = v
