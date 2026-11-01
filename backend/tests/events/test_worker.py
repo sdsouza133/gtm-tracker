@@ -22,6 +22,7 @@ from app.events.db import session_scope
 from app.events.models import Job, JobStatus, Person, Run, SpendEntry, SpendStatus
 from app.events.pipeline.base import DONE, Defer, JobContext, JobKind, Outcome, Payload
 from app.events.pipeline.paid import PAUSED_RECHECK, check_not_paused
+from app.events.pipeline.retention import RETENTION
 from app.events.providers.registry import build_providers
 from app.events.providers.types import ProviderError
 from app.events.worker import Worker, describe
@@ -393,11 +394,24 @@ def test_stopping_waits_for_the_job_under_way(monkeypatch: pytest.MonkeyPatch) -
     assert finished.is_set()
 
 
-def test_without_its_keys_no_worker_starts(caplog: pytest.LogCaptureFixture) -> None:
+def test_without_its_keys_only_housekeeping_and_deletion_run(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(Worker, "run_forever", lambda _self: None)
     with caplog.at_level(logging.WARNING, logger="app.events.worker"):
-        assert worker.start(EventsSettings(providers="real", anthropic_api_key="a")) is None
-    [record] = [r for r in caplog.records if r.getMessage() == "events worker not started"]
+        w = worker.start(EventsSettings(providers="real", anthropic_api_key="a"))
+    assert set(w.kinds) == {RETENTION}  # personal data is still deleted after 30 days
+    [record] = [r for r in caplog.records if r.getMessage() == "events worker running housekeeping only"]
     assert record.missing == ["APIFY_TOKEN", "APOLLO_API_KEY"]  # type: ignore[attr-defined]
+
+
+def test_a_missing_reoon_key_doesnt_stop_the_app_starting(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(Worker, "run_forever", lambda _self: None)
+    settings = EventsSettings(
+        providers="real", anthropic_api_key="a", apify_token="b", apollo_api_key="c", reoon_enabled=True
+    )
+    assert settings.missing() == ["EVENTS_REOON_API_KEY"]
+    assert set(worker.start(settings).kinds) == {RETENTION}
 
 
 def test_jobs_of_other_kinds_are_left_for_other_workers(db: Session) -> None:

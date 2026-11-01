@@ -3,7 +3,7 @@
 Pay per post. Every run is started with `maxTotalChargeUsd`, so Apify itself stops it at the amount we reserved.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from functools import partial
 from typing import Any
@@ -118,6 +118,7 @@ def _posted_at(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)  # Apify's timestamps are UTC

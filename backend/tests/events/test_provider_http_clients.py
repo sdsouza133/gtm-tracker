@@ -107,6 +107,13 @@ def test_a_post_item_becomes_a_normalized_post() -> None:
     assert post.query == '"RevOps Summit 2026" AND attending'
 
 
+def test_a_post_date_without_an_offset_is_utc() -> None:
+    post = parse_post({**POST_ITEM, "postedAt": {"date": "2026-10-21T19:43:28"}})
+    assert post is not None
+    assert post.posted_at is not None
+    assert post.posted_at.isoformat() == "2026-10-21T19:43:28+00:00"
+
+
 def test_an_unreadable_post_date_is_left_out_not_fatal() -> None:
     for date_value in ("not a date", 20261021, {"x": 1}):
         post = parse_post({**POST_ITEM, "postedAt": {"date": date_value}})

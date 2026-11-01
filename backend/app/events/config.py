@@ -109,6 +109,8 @@ class EventsSettings(BaseSettings):
             return []
         keys = {"ANTHROPIC_API_KEY": self.anthropic_api_key, "APIFY_TOKEN": self.apify_token}
         keys["APOLLO_API_KEY"] = self.apollo_api_key
+        if self.reoon_enabled:
+            keys["EVENTS_REOON_API_KEY"] = self.reoon_api_key
         return [name for name, key in keys.items() if key is None or not key.get_secret_value().strip()]
 
 
