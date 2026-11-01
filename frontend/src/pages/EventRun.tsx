@@ -19,7 +19,18 @@ import { Button, Card, Chip, EmptyState, PageHeader } from "@/components/ui";
 import { formatDay } from "@/lib/format";
 import { toEventCsv } from "@/lib/leads";
 import { safeUrl } from "@/lib/safe";
-import { type Buyer, type Draft, SIZES, type Seniority, bodyOf, draftOf, lines, statusTone, usd } from "@/lib/events";
+import {
+  type Buyer,
+  type Draft,
+  SIZES,
+  type Seniority,
+  bodyOf,
+  draftOf,
+  lines,
+  planProblem,
+  statusTone,
+  usd,
+} from "@/lib/events";
 
 const field = "min-h-[38px] rounded-lg border border-line bg-surface px-3 text-sm";
 const SENIORITIES: [Seniority, string][] = [
@@ -214,8 +225,22 @@ function PlanEditor({ run, plan }: { run: EventRun; plan: EventPlan }) {
   const picked = draft.events.filter((e) => e.picked).length;
   const busy = save.isPending || add.isPending;
 
+  /** The plan to send, or null after saying what to fix (the server's schema check would only say "something went
+   * wrong"). */
+  function checked(approve: boolean) {
+    const body = bodyOf(draft, approve);
+    const problem = planProblem(body);
+    if (problem) {
+      notify(problem, "error");
+      return null;
+    }
+    return body;
+  }
+
   function submit(approve: boolean) {
-    save.mutate(bodyOf(draft, approve), {
+    const body = checked(approve);
+    if (!body) return;
+    save.mutate(body, {
       onSuccess: (saved) => {
         if (saved.plan) setDraft(draftOf(saved.plan));
         notify(approve ? "Searching: this page updates as it goes" : "Plan saved");
@@ -225,7 +250,9 @@ function PlanEditor({ run, plan }: { run: EventRun; plan: EventPlan }) {
 
   async function addEvent(body: S["EventAdd"]) {
     try {
-      await save.mutateAsync(bodyOf(draft, false)); // keep what's typed in the plan
+      const typed = checked(false); // keep what's typed in the plan
+      if (!typed) return;
+      await save.mutateAsync(typed);
       const added = await add.mutateAsync(body);
       if (added.plan) setDraft(draftOf(added.plan));
       notify("Event added");

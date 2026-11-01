@@ -1,4 +1,4 @@
-import { bodyOf, draftOf, items } from "@/lib/events";
+import { bodyOf, draftOf, items, planProblem } from "@/lib/events";
 import { toEventCsv } from "@/lib/leads";
 
 describe("the events helpers", () => {
@@ -51,5 +51,28 @@ describe("the events helpers", () => {
       '"Name","Title","Company","Email","LinkedIn","Event","Attendance","Post","ICP score","Why they fit"',
     );
     expect(row?.startsWith(`"'=HYPERLINK(1)"`)).toBe(true);
+  });
+
+  it("says what's wrong with a plan the server would refuse", () => {
+    const icp = {
+      summary: "B2B teams.",
+      industries: ["Software"],
+      company_sizes: ["51-200" as const],
+      regions: ["United States"],
+      personas: [{ label: "RevOps", title_keywords: ["revops"], seniorities: [] }],
+      exclude_title_keywords: [],
+    };
+    const ok = { icp, events: [{ picked: true, queries: ['"A" going'] }], approve: false };
+    expect(planProblem(ok)).toBe("");
+    expect(planProblem({ ...ok, icp: { ...icp, industries: [] } })).toBe(
+      "List 1 to 12 industries, separated by commas.",
+    );
+    expect(planProblem({ ...ok, icp: { ...icp, company_sizes: [] } })).toBe("Pick at least one company size.");
+    expect(planProblem({ ...ok, icp: { ...icp, personas: [{ label: "RevOps", title_keywords: [] }] } })).toBe(
+      "Give buyer 1 a name and 1 to 15 words from their job titles.",
+    );
+    expect(planProblem({ ...ok, events: [{ picked: true, queries: ["x".repeat(301)] }] })).toBe(
+      "Keep each search to 300 characters.",
+    );
   });
 });

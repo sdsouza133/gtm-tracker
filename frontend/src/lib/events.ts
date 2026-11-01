@@ -97,3 +97,36 @@ export function bodyOf(draft: Draft, approve: boolean): S["EventPlanSave"] {
     approve,
   };
 }
+
+const SHORT = 120;
+const SENTENCE = 600;
+const QUERY = 300;
+
+/** What's wrong with the plan as it would be sent, in words, or "" when the server will take it. The same limits as
+ * the server's Icp: a refusal from its schema check would only say "something went wrong". */
+export function planProblem(body: S["EventPlanSave"]): string {
+  const { icp } = body;
+  const tooLong = (items: string[]) => items.find((item) => item.length > SHORT);
+  if (!icp.summary || icp.summary.length > SENTENCE) return "Describe who they sell to in up to 600 characters.";
+  if (icp.industries.length < 1 || icp.industries.length > 12) return "List 1 to 12 industries, separated by commas.";
+  if (icp.regions.length < 1 || icp.regions.length > 12)
+    return "List 1 to 12 countries or regions, separated by commas.";
+  if (icp.company_sizes.length < 1) return "Pick at least one company size.";
+  if (icp.personas.length < 1 || icp.personas.length > 5) return "Describe 1 to 5 kinds of buyer.";
+  const buyer = icp.personas.findIndex(
+    (p) => !p.label || p.label.length > SHORT || p.title_keywords.length < 1 || p.title_keywords.length > 15,
+  );
+  if (buyer >= 0) return `Give buyer ${buyer + 1} a name and 1 to 15 words from their job titles.`;
+  const exclude = icp.exclude_title_keywords ?? [];
+  if (exclude.length > 20) return "List up to 20 titles that rule someone out.";
+  const long = tooLong([
+    ...icp.industries,
+    ...icp.regions,
+    ...exclude,
+    ...icp.personas.flatMap((p) => p.title_keywords),
+  ]);
+  if (long) return `"${long.slice(0, 40)}…" is too long: keep each item to 120 characters.`;
+  if (body.events.some((e) => (e.queries ?? []).length > 10 || (e.queries ?? []).some((q) => q.length > QUERY)))
+    return "Keep each search to 300 characters.";
+  return "";
+}

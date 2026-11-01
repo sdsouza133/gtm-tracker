@@ -144,6 +144,22 @@ describe("an events run's page", () => {
     expect(screen.getByLabelText("In a sentence or two")).toHaveValue("Revenue teams at B2B software companies.");
   });
 
+  it("names what to fix in the plan before sending it", async () => {
+    const calls = mockApi({ ...SIGNED_IN, [RUN]: { body: run() } });
+    renderApp(
+      <>
+        <ToastHost />
+        {page()}
+      </>,
+      { path: "/events/r1" },
+    );
+    const user = userEvent.setup();
+    await user.clear(await screen.findByLabelText(/^Industries/));
+    await user.click(screen.getByRole("button", { name: "Save the plan" }));
+    expect(await screen.findByText("List 1 to 12 industries, separated by commas.")).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+
   it("adds an event you know after saving what's typed", async () => {
     const calls = mockApi({
       ...SIGNED_IN,
