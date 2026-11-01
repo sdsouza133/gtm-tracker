@@ -88,7 +88,10 @@ def test_a_teaser_builds_in_the_background_and_shares_by_a_private_link(magnet_c
     assert "token" not in report.text
     assert magnet_client.get(f"/api/public/magnets/{m['id']}/wrong-token").status_code == 404
     db.expire_all()
-    assert db.get(Magnet, m["id"]).data["views"] == 1  # type: ignore[union-attr]
+    seen = db.get(Magnet, m["id"])
+    assert seen is not None
+    assert seen.data["views"] == 1
+    assert "last_viewed" not in seen.data  # a view changes the count and nothing else
 
 
 def test_the_full_build_carries_emails(magnet_client: TestClient, db: Session) -> None:

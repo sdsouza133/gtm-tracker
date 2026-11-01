@@ -226,7 +226,14 @@ def report(magnet_id: str, token: str, session: DbSession) -> PublicMagnet:
     built = (m.data or {}).get("report")
     if m.status != "ready" or not isinstance(built, dict):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This report isn't ready yet.")
-    m.data = {**m.data, "views": int(m.data.get("views", 0)) + 1, "last_viewed": _now().isoformat()}
+    # only the count changes: updated_at is set to itself, so the row's onupdate timestamp doesn't move either
+    views = int(m.data.get("views", 0)) + 1
+    session.execute(
+        update(Magnet)
+        .where(Magnet.id == m.id)
+        .values(data={**m.data, "views": views}, updated_at=Magnet.updated_at)
+        .execution_options(synchronize_session=False)
+    )
     session.commit()
     return public_view(built)
 
