@@ -25,11 +25,15 @@ The tool has no service of its own. When the tracker starts, it starts one worke
 The worker claims jobs from `ev_jobs` and runs them (see [ADR 0002](adr-0002-postgres-job-queue.md)).
 
 - **The worker needs three keys:** `ANTHROPIC_API_KEY`, `APIFY_TOKEN` and `APOLLO_API_KEY`, the same keys the rest of
-  the tracker uses. Without them the worker doesn't start and says which are missing.
+  the tracker uses (and `EVENTS_REOON_API_KEY` with `EVENTS_REOON_ENABLED`). Without them it runs only its
+  housekeeping and the 30-day deletion, and the Events page says which keys are missing.
 - **`EVENTS_WORKER=false`** turns the worker off. The tests do this.
 - **A redeploy** stops the worker. It takes no new job, and waits up to 20 seconds for the one it's running. A job about
   to make a paid call goes back to the queue, and a job cut off mid-way is picked up again once its heartbeat goes
   quiet (5 minutes).
+  - Railway only waits for this if the service has `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` set to 30 or more (its
+    default is 0). Without it, a redeploy can cut a job off, and the job is then picked up again as above. A paid call
+    cut off that way counts at its full reserved cost.
 - **Every outside service is behind an interface with a fake** (see
   [ADR 0003](adr-0003-providers-behind-interfaces.md)). `EVENTS_PROVIDERS=fake` runs the whole pipeline offline.
 

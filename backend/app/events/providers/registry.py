@@ -38,8 +38,6 @@ def build_providers(settings: EventsSettings) -> Providers:
         )
 
     missing = settings.missing()
-    if settings.reoon_enabled and settings.reoon_api_key is None:
-        missing.append("EVENTS_REOON_API_KEY")
     if missing:
         raise ProviderConfigError("The events tool needs " + ", ".join(missing))
 

@@ -240,14 +240,21 @@ class _Heartbeat:
                 return
 
 
-def start(settings: EventsSettings) -> Worker | None:
-    """Start a worker on a daemon thread, or nothing when the keys a real run needs aren't set (the Events page says
-    which). Stop it with `stop()`."""
+def start(settings: EventsSettings) -> Worker:
+    """Start the worker on a daemon thread; stop it with `stop()`.
+
+    Without the keys a real run needs (the Events page says which), it still runs its housekeeping and the job that
+    deletes personal data after 30 days, so data from earlier runs is never kept longer because a key went missing.
+    No other job can run then: it's given fakes that nothing calls.
+    """
     missing = settings.missing()
     if missing:
-        log.warning("events worker not started", extra={"missing": missing})
-        return None
-    worker = Worker(JobContext(settings=settings, providers=build_providers(settings)), JOBS)
+        log.warning("events worker running housekeeping only", extra={"missing": missing})
+        providers = build_providers(settings.model_copy(update={"providers": "fake"}))
+        kinds = {RETENTION: JOBS[RETENTION]}
+    else:
+        providers, kinds = build_providers(settings), JOBS
+    worker = Worker(JobContext(settings=settings, providers=providers), kinds)
     worker._thread = threading.Thread(target=worker.run_forever, name="events-worker", daemon=True)
     worker._thread.start()
     return worker
