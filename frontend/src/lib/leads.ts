@@ -12,7 +12,7 @@ export const TIER: Record<string, Tier> = {
   hot: {
     label: "Hot",
     tone: "bad",
-    meaning: "Commented at two competitors, or engaged three or more times across posts",
+    meaning: "Commented at two competitors, or engaged three or more times across two or more posts",
   },
   warm: { label: "Warm", tone: "warm", meaning: "Engaged twice, or left a comment" },
   touch: SINGLE,

@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import exists, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth import AppSettings, DbSession, SignedIn
@@ -48,12 +48,13 @@ public = APIRouter(prefix="/api/public", tags=["magnets"])
 KIND = "engagement"
 LIST_LIMIT = 20
 TEASER_SHOWN = 5
-STALE_AFTER = timedelta(minutes=20)  # a build this quiet died with the app (a deploy, say)
+STALE_AFTER = timedelta(minutes=30)  # a build reports every step and every post; this quiet, it died with the app
+STOPPED = "The build stopped before it finished (the app restarted). Build it again."
 KNOWN_ERRORS = (BuildError, BrainError, SiteError, LinkedInError, ApolloError, ApifyError)
 
 
 class CancelledError(Exception):
-    """The magnet was deleted while it was building."""
+    """The magnet was deleted, or given up on as stopped, while it was building."""
 
 
 @dataclass
@@ -128,7 +129,7 @@ def _out(m: Magnet) -> MagnetOut:
         mode=str(d.get("mode") or ""),
         website=str(d.get("website") or ""),
         step="" if stale else str(d.get("step") or ""),
-        error="The build stopped when the app restarted. Build it again." if stale else str(d.get("error") or ""),
+        error=STOPPED if stale or (m.status == "failed" and not d.get("error")) else str(d.get("error") or ""),
         created=m.created_at,
         link=f"/m/{m.id}/{token}" if summary and isinstance(token, str) else None,
         views=int(d.get("views", 0)),
@@ -168,14 +169,12 @@ def start(
     website = (body.website or company.website or company.domain or "").strip()
     if not website:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Add the company's website first.")
-    running = session.scalars(
-        select(Magnet).where(Magnet.company_id == company_id, Magnet.status == "running").limit(LIST_LIMIT)
-    ).all()
-    if any(not _stale(m) for m in running):
+    running = (Magnet.company_id == company_id) & (Magnet.status == "running")
+    cutoff = _now() - STALE_AFTER
+    if session.scalar(select(exists().where(running, Magnet.updated_at >= cutoff))):
         raise HTTPException(status.HTTP_409_CONFLICT, "A lead magnet is already building for this company.")
-    for m in running:  # left behind by a restart
-        m.status = "failed"
-        m.data = {**m.data, "step": "", "error": "The build stopped when the app restarted."}
+    # any left behind by a restart stop counting as running; their workers, if still alive, stop at their next step
+    session.execute(update(Magnet).where(running, Magnet.updated_at < cutoff).values(status="failed"))
     competitors = tuple(dict.fromkeys(d for d in (domain_of(c) for c in body.competitors) if d))
     magnet = Magnet(
         company_id=company.id,
@@ -294,10 +293,12 @@ def _public_lead(lead: dict[str, Any]) -> PublicLead:
 def run(runtime: Runtime, magnet_id: str, spec: Spec, today: date) -> None:
     """Build it and store the result. Each step is saved as it starts, so the page can show where it is."""
 
-    def update(**changes: Any) -> bool:
+    def save(**changes: Any) -> bool:
+        """Save progress or the result; False, saving nothing, once the magnet is no longer this build's to update
+        (deleted, or given up on as stopped and maybe started again)."""
         with runtime.factory() as session:
-            m = session.get(Magnet, magnet_id)
-            if m is None:  # deleted while building
+            m = session.get(Magnet, magnet_id, with_for_update=True)
+            if m is None or m.status != "running":
                 return False
             data = {**m.data, **{k: v for k, v in changes.items() if k != "status"}}
             m.data = data
@@ -312,18 +313,18 @@ def run(runtime: Runtime, magnet_id: str, spec: Spec, today: date) -> None:
             return True
 
     def progress(step: str, _info: dict[str, Any]) -> None:
-        if not update(step=step):
-            raise CancelledError  # deleted: stop before spending more
+        if not save(step=step):
+            raise CancelledError  # deleted or superseded: stop before spending more
 
     try:
         report_data = build(spec, runtime.tools(), today, progress)
     except CancelledError:
         return
     except KNOWN_ERRORS as e:
-        update(status="failed", step="", error=str(e)[:500])
+        save(status="failed", step="", error=str(e)[:500])
         return
     except Exception:  # anything else is a bug; the log has it, the page says so plainly
         log.exception("lead magnet build failed", extra={"magnet": magnet_id})
-        update(status="failed", step="", error="Something went wrong while building. Try again.")
+        save(status="failed", step="", error="Something went wrong while building. Try again.")
         return
-    update(status="ready", step="", error="", report=report_data, finished_at=_now().isoformat())
+    save(status="ready", step="", error="", report=report_data, finished_at=_now().isoformat())

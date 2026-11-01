@@ -43,7 +43,7 @@ cp .env.example .env            # then fill in SECRET_KEY, and GOOGLE_CLIENT_ID 
 uv sync
 uv run alembic upgrade head
 uv run python -m app.cli seed-demo
-uv run uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload --no-access-log  # the app logs requests itself, without tokens
 
 cd ../frontend
 npm install

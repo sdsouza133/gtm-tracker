@@ -7,7 +7,7 @@ import { Button, Chip } from "@/components/ui";
 
 const MODES: { mode: MagnetMode; label: string; cost: string }[] = [
   { mode: "teaser", label: "Build a teaser", cost: "1 competitor, a few examples, about $0.40" },
-  { mode: "full", label: "Build the full list", cost: "3 competitors with emails, up to about $2" },
+  { mode: "full", label: "Build the full list", cost: "up to 3 competitors, work emails where found, up to about $2" },
 ];
 
 function absolute(link: string): string {

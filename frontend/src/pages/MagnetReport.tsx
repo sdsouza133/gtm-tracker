@@ -124,8 +124,8 @@ function Report({ report }: { report: PublicMagnet }) {
         {teaser && (
           <p className="rounded-lg bg-accent-tint p-3 text-sm text-accent-ink">
             {report.more > 0 ? `${plural(report.more, "more person", "more people")} found. ` : ""}
-            This is a preview from one competitor. The full list covers three competitors and their leaders' own posts,
-            with work emails.
+            This is a preview from one competitor. The full list covers up to three competitors and their leaders' own
+            posts, with work emails where they can be found.
           </p>
         )}
       </Card>

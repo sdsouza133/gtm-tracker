@@ -155,6 +155,24 @@ def test_one_build_at_a_time_unless_the_last_one_died(
     db.execute(update(Magnet).where(Magnet.id == first["id"]).values(updated_at=long_ago))
     assert magnet_client.get(f"/api/magnets/{first['id']}").json()["status"] == "failed"  # shown as stopped
     assert magnet_client.post(f"/api/companies/{c.id}/magnets", json={}).status_code == 202
+    stopped = magnet_client.get(f"/api/magnets/{first['id']}").json()
+    assert (stopped["status"], stopped["error"]) == ("failed", magnets.STOPPED)
+
+
+def test_a_build_given_up_on_stops_at_its_next_step_and_overwrites_nothing(
+    magnet_client: TestClient, db: Session, run: FakeRunner, started: list[Callable[[], None]]
+) -> None:
+    magnet_client.app.state.magnet_runtime.spawn = started.append  # type: ignore[attr-defined]
+    c = a_company(db)
+    first = magnet_client.post(f"/api/companies/{c.id}/magnets", json={}).json()
+    long_ago = datetime.now(UTC) - timedelta(hours=1)
+    db.execute(update(Magnet).where(Magnet.id == first["id"]).values(updated_at=long_ago))
+    second = magnet_client.post(f"/api/companies/{c.id}/magnets", json={}).json()
+    started[0]()  # the first build's worker was only slow, and wakes up now
+    assert run.runs == []  # it stopped before spending anything
+    assert magnet_client.get(f"/api/magnets/{first['id']}").json()["status"] == "failed"
+    started[1]()
+    assert magnet_client.get(f"/api/magnets/{second['id']}").json()["status"] == "ready"
 
 
 def test_a_failed_build_says_why(magnet_client: TestClient, db: Session) -> None:
