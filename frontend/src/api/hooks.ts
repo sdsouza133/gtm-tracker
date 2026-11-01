@@ -345,3 +345,60 @@ export function useDismissRadarItem() {
 export function useUpdateRadarConfig() {
   return useRadarChange(async (body: S["RadarConfigPatch"]) => unwrap(await api.PATCH("/api/radar/config", { body })));
 }
+
+// ----------------------------------------------------------------------------- lead magnets
+
+export type Magnet = S["MagnetOut"];
+export type MagnetMode = S["MagnetCreate"]["mode"];
+export type PublicMagnet = S["PublicMagnet"];
+export type PublicLead = S["PublicLead"];
+const BUILDING_POLL_MS = 3000;
+const magnetKeys = {
+  forCompany: (companyId: string) => ["magnets", companyId] as const,
+  report: (id: string, token: string) => ["magnet-report", id, token] as const,
+};
+
+export function useMagnets(companyId: string) {
+  return useQuery({
+    queryKey: magnetKeys.forCompany(companyId),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/companies/{company_id}/magnets", { params: { path: { company_id: companyId } } })),
+    // while one builds, follow its steps
+    refetchInterval: (query) => (query.state.data?.some((m) => m.status === "running") ? BUILDING_POLL_MS : false),
+  });
+}
+
+export function useBuildMagnet(companyId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { mode: MagnetMode; website?: string; competitors?: string[] }) =>
+      unwrap(
+        await api.POST("/api/companies/{company_id}/magnets", {
+          params: { path: { company_id: companyId } },
+          body,
+        }),
+      ),
+    onSettled: () => client.invalidateQueries({ queryKey: magnetKeys.forCompany(companyId) }),
+  });
+}
+
+export function useDeleteMagnet(companyId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const result = await api.DELETE("/api/magnets/{magnet_id}", { params: { path: { magnet_id: id } } });
+      if (!result.response.ok) unwrap(result);
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: magnetKeys.forCompany(companyId) }),
+  });
+}
+
+/** A finished report, by its private link. Works without signing in. */
+export function usePublicMagnet(id: string, token: string) {
+  return useQuery({
+    queryKey: magnetKeys.report(id, token),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/public/magnets/{magnet_id}/{token}", { params: { path: { magnet_id: id, token } } })),
+    staleTime: Infinity, // each load counts as a view; don't refetch on focus
+  });
+}

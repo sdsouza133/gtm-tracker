@@ -151,7 +151,13 @@ PROTECTED = [
     ("POST", "/api/radar/items/r1/add"),
     ("POST", "/api/radar/items/r1/dismiss"),
     ("POST", "/api/restore"),
+    ("GET", "/api/companies/c1/magnets"),
+    ("POST", "/api/companies/c1/magnets"),
+    ("GET", "/api/magnets/g1"),
+    ("DELETE", "/api/magnets/g1"),
 ]
+# Open on purpose: a lead magnet report, for whoever holds its link (the token in it is checked).
+PUBLIC = {("GET", "/api/public/magnets/{magnet_id}/{token}")}
 
 
 @pytest.mark.parametrize(("method", "path"), PROTECTED)
@@ -172,9 +178,16 @@ def test_every_api_route_is_covered_above() -> None:
     routes = {
         (method.upper(), path) for path, ops in paths.items() for method in ops if not path.startswith("/api/auth/")
     }
-    ids = {"c1": "{company_id}", "p1": "{person_id}", "m1": "{move_id}", "x1": "{prospect_id}", "r1": "{item_id}"}
+    ids = {
+        "c1": "{company_id}",
+        "p1": "{person_id}",
+        "m1": "{move_id}",
+        "x1": "{prospect_id}",
+        "r1": "{item_id}",
+        "g1": "{magnet_id}",
+    }
     covered = {(m, "/".join(ids.get(part, part) for part in p.split("/"))) for m, p in PROTECTED}
-    assert routes == covered
+    assert routes == covered | PUBLIC
 
 
 def test_open_access_lets_everyone_in_but_only_when_turned_on(client: TestClient) -> None:

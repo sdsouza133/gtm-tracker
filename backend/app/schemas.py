@@ -668,3 +668,92 @@ class RadarOut(BaseModel):
 class RadarAdded(BaseModel):
     company_id: str
     move_id: str
+
+
+# ----------------------------------------------------------------------------- lead magnets
+
+MagnetMode = Literal["teaser", "full"]
+CompetitorDomain = Annotated[str, Field(min_length=3, max_length=200)]
+
+
+class MagnetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: MagnetMode = "teaser"
+    website: str | None = Field(default=None, max_length=300)  # the company's own site when left out
+    competitors: list[CompetitorDomain] = Field(default_factory=list, max_length=5)
+
+
+class MagnetSummary(BaseModel):
+    leads: int
+    hot: int
+    warm: int
+    touch: int
+    emails: int
+    fit: int
+    people: int
+    apify_usd: float
+
+
+class MagnetOut(BaseModel):
+    id: str
+    company_id: str | None
+    kind: str
+    status: str  # running, ready or failed (older magnets may say something else)
+    title: str
+    mode: str
+    website: str
+    step: str
+    error: str
+    created: datetime
+    link: str | None  # the private report's path, once it's ready
+    views: int
+    summary: MagnetSummary | None
+
+
+class PublicLead(BaseModel):
+    name: str
+    title: str
+    company: str
+    headline: str
+    linkedin: str
+    country: str
+    tier: str
+    points: int
+    touches: int
+    comments: int
+    reactions: int
+    posts: int
+    competitors: list[str]
+    last: str | None
+    said: list[str]
+    why_fit: str
+    email: str | None
+
+
+class PublicCompetitor(BaseModel):
+    name: str
+    domain: str
+    linkedin: str
+    why: str
+
+
+class PublicIcp(BaseModel):
+    sells: str
+    industries: list[str]
+    company_sizes: list[str]
+    titles: list[str]
+    seniority: list[str]
+    functions: list[str]
+
+
+class PublicMagnet(BaseModel):
+    company: str
+    mode: str
+    built: str
+    icp: PublicIcp
+    competitors: list[PublicCompetitor]
+    leads: list[PublicLead]
+    fit: int  # everyone in the ICP who engaged, anywhere
+    in_region: int  # of those looked up, in the US or Canada
+    more: int  # leads found but not shown (a teaser shows a few)
