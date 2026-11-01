@@ -233,7 +233,7 @@ def save_plan(
 
 
 def add_event(
-    session: Session, run_id: uuid.UUID, name: str, when: date | None, url: str | None, *, now: datetime
+    session: Session, run_id: uuid.UUID, name: str, when: date | None, url: str | None, *, today: date
 ) -> Run | None:
     """Add an event you know to the plan, with searches written for it the way they're written for the ones found,
     picked if there's room. None for a run that isn't there. The caller commits."""
@@ -250,14 +250,14 @@ def add_event(
         link = f"https://{link}"
     if link is not None and (any(c.isspace() for c in link) or not _valid(_URL, link)):
         raise PlanError("Enter the event's web address, like https://example.com/event.")
-    events = plan_events(run, today=now.date())
+    events = plan_events(run, today=today)
     if sum(1 for event in events if event["own"]) >= MAX_OWN_EVENTS:
         raise PlanError(f"You can add up to {MAX_OWN_EVENTS} events of your own.")
     key = collect.event_key(name, when)
     if any(collect.event_key(event["name"], _day(event.get("start_date"))) == key for event in events):
         raise PlanError("That event is already in the plan.")
     basics = EventFields(name=name, start_date=when, end_date=when)
-    queries = build_queries(basics, today=now.date())
+    queries = build_queries(basics, today=today)
     picked = sum(1 for event in events if event["picked"]) < collect.MAX_EVENTS
     added = {**basics.model_dump(mode="json"), "url": link, "source": "requester", "picked": picked, "queries": queries}
     run.suggested_events = [*[_stored(event) for event in events], added]

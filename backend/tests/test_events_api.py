@@ -2,7 +2,7 @@
 worker would leave them; the worker itself is tested in tests/events."""
 
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -395,3 +395,15 @@ def test_spend_today_counts_against_the_daily_cap(events_client: TestClient, db:
     db.flush()
     today = events_client.get("/api/events").json()["today"]
     assert (today["spent_usd"], today["reserved_usd"], today["cap_usd"]) == (1.25, 0.5, 20.0)
+
+
+def test_an_event_is_over_by_the_trackers_day(events_client: TestClient, db: Session) -> None:
+    run = planned_run(db)
+    events = list(run.suggested_events or [])
+    events[0] = {**events[0], "start_date": "2026-10-26", "end_date": "2026-10-26"}
+    run.suggested_events = events
+    db.flush()
+    evening = datetime(2026, 10, 27, 2, 0, tzinfo=UTC)  # 10 PM on the 26th in Toronto, the tracker's timezone
+    events_client.app.dependency_overrides[get_now] = lambda: evening  # type: ignore[attr-defined]
+    first = events_client.get(f"/api/events/runs/{run.id}").json()["plan"]["events"][0]
+    assert first["past"] is False

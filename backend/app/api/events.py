@@ -106,7 +106,10 @@ def _out(session: Session, run: Run, settings: EventsSettings, now: datetime) ->
             company_name=analysis.company_name,
             offering=analysis.offering,
             icp=analysis.icp,
-            events=[PlanEvent.model_validate(event) for event in views.plan_events(run, today=now.date())],
+            events=[
+                PlanEvent.model_validate(event)
+                for event in views.plan_events(run, today=now.astimezone(settings.tz).date())
+            ],
             max_picked=views.MAX_PICKED,
             max_queries=views.MAX_SEARCHES,
         )
@@ -199,7 +202,7 @@ def save_plan(run_id: uuid.UUID, body: EventPlanSave, session: DbSession, events
 def add_event(run_id: uuid.UUID, body: EventAdd, session: DbSession, events: Events, now: Now) -> EventRunOut:
     """Add an event you know to the plan; its searches are written for you, and it's picked if there's room."""
     try:
-        run = views.add_event(session, run_id, body.name, body.day, body.url, now=now)
+        run = views.add_event(session, run_id, body.name, body.day, body.url, today=now.astimezone(events.tz).date())
     except views.NotEditableError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except views.PlanError as exc:
