@@ -25,11 +25,13 @@ CAP_SLACK = 1.25  # Apify's cap sits a little above the list price, so a run isn
 
 
 class LinkedInError(RuntimeError):
-    """A run that failed. `spent` is what was charged before it failed, so the budget still counts it."""
+    """A run that failed. `spent` is what it may have cost, so the budget still counts it; `found` is what earlier runs
+    for the same post had already read, so it isn't lost with the failure."""
 
-    def __init__(self, message: str, spent: float = 0.0) -> None:
+    def __init__(self, message: str, spent: float = 0.0, found: list["Engager"] | None = None) -> None:
         super().__init__(message)
         self.spent = spent
+        self.found = found or []
 
 
 @dataclass(frozen=True)
@@ -83,7 +85,8 @@ class LinkedIn:
         try:
             result = self.runner.run(actor, actor_input, cap, partial_ok=True)
         except (RuntimeError, httpx2.HTTPError) as e:  # ApifyError, and timeouts or dropped connections
-            raise LinkedInError(f"{name}: {type(e).__name__} {e}") from e
+            # the run may have started and be charging, and its cost is now unknown: count all it was allowed to spend
+            raise LinkedInError(f"{name}: {type(e).__name__} {e}", spent=cap) from e
         items = [i for i in result.items if isinstance(i, dict)]
         if result.status != "SUCCEEDED" and not items:  # a run stopped at its cap still keeps what it saved
             raise LinkedInError(f"{name} ended {result.status}.", spent=result.charged_usd)
@@ -121,8 +124,8 @@ class LinkedIn:
                 items, cost = self._run(
                     COMMENTS, {"posts": [post.url], "maxItems": comments}, min(comments, post.comments), max_usd - spent
                 )
-            except LinkedInError as e:  # the likes already read were still paid for
-                raise LinkedInError(str(e), spent=spent + e.spent) from e
+            except LinkedInError as e:  # the likes already read were paid for, and still count as touches
+                raise LinkedInError(str(e), spent=spent + e.spent, found=out) from e
             spent += cost
             out += [e for e in (parse_engager(i, "comment", post) for i in items) if e]
         return out, spent
