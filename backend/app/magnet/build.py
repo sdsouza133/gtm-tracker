@@ -343,12 +343,13 @@ def _engage(
         try:
             found, spent = linkedin.engagers(post, plan.reactions, plan.comments, budget.left(keep))
         except LinkedInError as e:
-            budget.add(e.spent)  # what a failed post cost before it failed still counts
+            budget.add(e.spent)  # what a failed post may have cost still counts
+            engagers += e.found  # and the likes read before its comments failed are kept
             failed += 1
             continue
         budget.add(spent)
         engagers += found
-    if failed == len(posts):
+    if failed == len(posts) and not engagers:
         raise BuildError("Apify couldn't read the likes and comments. Try again in a few minutes.")
     return engagers, failed
 

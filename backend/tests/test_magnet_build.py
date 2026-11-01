@@ -255,6 +255,7 @@ def test_recruiters_are_kept_for_a_prospect_that_sells_to_recruiters() -> None:
 def test_a_post_whose_comments_failed_still_counts_the_likes_it_paid_for() -> None:
     report = build(spec(), tools(runner(fail={li.COMMENTS})), TODAY)
     assert report["stats"]["posts_failed"] == 2  # the two posts with comments; the third had none to read
+    assert "Ana Example" in {lead["name"] for lead in report["leads"]}  # her likes on those two posts still count
     likes_read = 5 + 4 + 1  # P2, P1 (the company page too), P3
     posts_read = 4
     assert report["stats"]["apify_usd"] >= round((likes_read + posts_read) * 0.002, 3)

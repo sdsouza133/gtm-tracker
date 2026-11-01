@@ -97,8 +97,9 @@ def test_a_timeout_is_a_linkedin_error() -> None:
         def run(self, *_: Any, **__: Any) -> Any:
             raise httpx2.ReadTimeout("slow", request=httpx2.Request("GET", "https://api.apify.com/v2/x"))
 
-    with pytest.raises(LinkedInError, match="ReadTimeout"):
+    with pytest.raises(LinkedInError, match="ReadTimeout") as timed_out:
         LinkedIn(Slow()).posts([RIVAL_PAGE], 5, 1.0)
+    assert timed_out.value.spent == pytest.approx(5 * 0.002 * li.CAP_SLACK + 0.01)  # the run may still be charging
 
 
 def test_what_a_failed_run_cost_is_still_counted() -> None:
@@ -109,4 +110,6 @@ def test_what_a_failed_run_cost_is_still_counted() -> None:
     likes = [reaction(f"ACoAA{n}", "X", "VP Sales", P1) for n in range(10)]
     with pytest.raises(LinkedInError) as comments_failed:
         LinkedIn(FakeRunner(reactions={P1: likes}, fail={li.COMMENTS})).engagers(a_post(), 30, 15, 1.0)
-    assert comments_failed.value.spent == pytest.approx(10 * 0.002)  # the likes read before the comments failed
+    comments_cap = 2 * 0.002 * li.CAP_SLACK + 0.01  # the failed run's cost is unknown, so all of its cap counts
+    assert comments_failed.value.spent == pytest.approx(10 * 0.002 + comments_cap)
+    assert len(comments_failed.value.found) == 10  # the likes read before the comments failed are kept
