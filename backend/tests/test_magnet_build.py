@@ -7,7 +7,21 @@ from app.enrich.apollo import ApolloError
 from app.magnet import linkedin as li
 from app.magnet.build import PLANS, BuildError, Spec, Tools, build
 from app.magnet.linkedin import LinkedIn
-from tests.magnet_fakes import ORGS, P1, P2, P3, R1, RIA, RIVAL_PAGE, FakeApollo, FakeBrain, FakeRunner, runner, site
+from tests.magnet_fakes import (
+    ORGS,
+    P1,
+    P2,
+    P3,
+    R1,
+    RIA,
+    RIVAL_PAGE,
+    FakeApollo,
+    FakeBrain,
+    FakeRunner,
+    post,
+    runner,
+    site,
+)
 
 TODAY = date(2026, 11, 1)
 
