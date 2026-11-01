@@ -18,7 +18,7 @@ const MODES: { mode: MagnetMode; label: string; cost: string }[] = [
   },
 ];
 /** A competitor as typed: a domain, like rival.com. */
-const DOMAIN = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/.*)?$/i;
+const DOMAIN = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+([/?#].*)?$/i; // a path, query or #fragment may follow
 
 function when(iso: string): string {
   const d = new Date(iso);
@@ -99,6 +99,7 @@ export function MagnetSection({ companyId, website }: { companyId: string; websi
   const remove = useDeleteMagnet(companyId);
   const [site, setSite] = useState(website);
   const [rivals, setRivals] = useState("");
+  const [rivalsTouched, setRivalsTouched] = useState(false); // judged once they leave the field, not per keystroke
   const siteId = useId();
   const rivalsId = useId();
   const building = magnets.data?.some((m) => m.status === "running") ?? false;
@@ -148,15 +149,14 @@ export function MagnetSection({ companyId, website }: { companyId: string; websi
             className="rounded-lg border border-line px-3 py-2"
             value={rivals}
             onChange={(e) => setRivals(e.target.value)}
+            onBlur={() => setRivalsTouched(true)}
             placeholder="rival.com, other.com"
-            aria-invalid={rivalProblem ? true : undefined}
-            aria-describedby={rivalProblem ? rivalsErrorId : undefined}
+            aria-invalid={rivalProblem && rivalsTouched ? true : undefined}
+            aria-describedby={rivalsErrorId}
           />
-          {rivalProblem && (
-            <span id={rivalsErrorId} role="alert" className="text-bad">
-              {rivalProblem}
-            </span>
-          )}
+          <span id={rivalsErrorId} aria-live="polite" className="text-bad">
+            {rivalsTouched ? rivalProblem : ""}
+          </span>
         </label>
       </div>
       <div className="flex flex-wrap gap-2">

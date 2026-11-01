@@ -105,11 +105,28 @@ describe("the lead magnet section", () => {
     const calls = mockApi({ ...SIGNED_IN, [LIST]: { body: [] } });
     renderApp(<MagnetSection companyId="c1" website="northwind.example" />);
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText(/Competitors you know/), "rival.example, a");
-    expect(screen.getByRole("alert")).toHaveTextContent('"a" doesn\'t look like a website');
-    expect(screen.getByLabelText(/Competitors you know/)).toHaveAttribute("aria-invalid", "true");
+    const field = screen.getByLabelText(/Competitors you know/);
+    await user.type(field, "rival.example, a");
+    expect(screen.queryByText(/doesn't look like a website/)).not.toBeInTheDocument(); // not while typing
+    await user.tab();
+    expect(
+      screen.getByText("\"a\" doesn't look like a website. Type competitors' domains, like rival.com."),
+    ).toHaveAttribute("aria-live", "polite");
+    expect(field).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByRole("button", { name: "Build a teaser" })).toBeDisabled();
     expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("takes competitor links with a query string or a path", async () => {
+    mockApi({ ...SIGNED_IN, [LIST]: { body: [] } });
+    renderApp(<MagnetSection companyId="c1" website="northwind.example" />);
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByLabelText(/Competitors you know/),
+      "https://rival.example?ref=share, other.example/pricing",
+    );
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Build a teaser" })).toBeEnabled();
   });
 
   it("can't build without a website", async () => {
