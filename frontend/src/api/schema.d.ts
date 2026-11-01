@@ -700,7 +700,8 @@ export interface paths {
         };
         /**
          * Report
-         * @description The finished report, for whoever has the link. A teaser shows its first few leads.
+         * @description The finished report, for whoever has the link. A teaser shows its first few leads. The row is locked while the
+         *     view is counted, so two people opening it at once both count.
          */
         get: operations["report_api_public_magnets__magnet_id___token__get"];
         put?: never;

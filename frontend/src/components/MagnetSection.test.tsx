@@ -85,6 +85,7 @@ describe("the lead magnet section", () => {
     expect(screen.getByText(/Opened 2 times/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open report/ })).toHaveAttribute("href", "/m/g1/tok");
     expect(screen.getByRole("button", { name: /Copy link/ })).toBeInTheDocument();
+    expect(screen.getAllByText("Ready")[0]?.closest("[aria-live]")).toHaveAttribute("aria-live", "polite");
     expect(screen.getByText("None of the competitors has a LinkedIn page.")).toBeInTheDocument();
   });
 
@@ -96,8 +97,19 @@ describe("the lead magnet section", () => {
     });
     renderApp(<MagnetSection companyId="c1" website="northwind.example" />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Delete this teaser and turn its link off" }));
+    await user.click(await screen.findByRole("button", { name: /^Delete Teaser, .+ and turn its link off$/ }));
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.path === "/api/magnets/g1")).toBe(true));
+  });
+
+  it("says which competitor isn't a website instead of sending it", async () => {
+    const calls = mockApi({ ...SIGNED_IN, [LIST]: { body: [] } });
+    renderApp(<MagnetSection companyId="c1" website="northwind.example" />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Competitors you know/), "rival.example, a");
+    expect(screen.getByRole("alert")).toHaveTextContent('"a" doesn\'t look like a website');
+    expect(screen.getByLabelText(/Competitors you know/)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("button", { name: "Build a teaser" })).toBeDisabled();
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
   });
 
   it("can't build without a website", async () => {

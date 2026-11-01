@@ -217,8 +217,9 @@ def delete(magnet_id: str, session: DbSession) -> Response:
 
 @public.get("/magnets/{magnet_id}/{token}")
 def report(magnet_id: str, token: str, session: DbSession) -> PublicMagnet:
-    """The finished report, for whoever has the link. A teaser shows its first few leads."""
-    m = session.get(Magnet, magnet_id)
+    """The finished report, for whoever has the link. A teaser shows its first few leads. The row is locked while the
+    view is counted, so two people opening it at once both count."""
+    m = session.get(Magnet, magnet_id, with_for_update=True)
     stored = (m.data or {}).get("token") if m else None
     if m is None or not isinstance(stored, str) or not hmac.compare_digest(stored.encode(), token.encode()):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "This link doesn't work any more.")

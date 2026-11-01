@@ -2010,7 +2010,7 @@
      "magnets"
     ],
     "summary": "Report",
-    "description": "The finished report, for whoever has the link. A teaser shows its first few leads.",
+    "description": "The finished report, for whoever has the link. A teaser shows its first few leads. The row is locked while the\nview is counted, so two people opening it at once both count.",
     "operationId": "report_api_public_magnets__magnet_id___token__get",
     "parameters": [
      {

@@ -6,9 +6,26 @@ import { notify } from "@/components/Toast";
 import { Button, Chip } from "@/components/ui";
 
 const MODES: { mode: MagnetMode; label: string; cost: string }[] = [
-  { mode: "teaser", label: "Build a teaser", cost: "1 competitor, a few examples, about $0.40" },
-  { mode: "full", label: "Build the full list", cost: "up to 3 competitors, work emails where found, up to about $2" },
+  {
+    mode: "teaser",
+    label: "Build a teaser",
+    cost: "1 competitor, a few examples; up to $0.40 of Apify, plus a few cents of Claude and an Apollo credit or two",
+  },
+  {
+    mode: "full",
+    label: "Build the full list",
+    cost: "up to 3 competitors, work emails where found; up to $2 of Apify, plus a few cents of Claude and an Apollo credit per email",
+  },
 ];
+/** A competitor as typed: a domain, like rival.com. */
+const DOMAIN = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+(\/.*)?$/i;
+
+function when(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
 
 function absolute(link: string): string {
   return new URL(link, window.location.origin).toString();
@@ -26,13 +43,17 @@ async function copyLink(link: string) {
 function MagnetRow({ magnet, onDelete, deleting }: { magnet: Magnet; onDelete: () => void; deleting: boolean }) {
   const s = magnet.summary;
   const link = magnet.link;
+  const name = `${magnet.mode === "full" ? "Full list" : "Teaser"}${when(magnet.created) ? `, ${when(magnet.created)}` : ""}`;
   return (
     <li className="flex flex-col gap-2 rounded-lg border border-line p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-medium">{magnet.mode === "full" ? "Full list" : "Teaser"}</span>
-        {magnet.status === "running" && <Chip tone="accent">Building: {magnet.step || "starting"}</Chip>}
-        {magnet.status === "ready" && <Chip tone="good">Ready</Chip>}
-        {magnet.status === "failed" && <Chip tone="bad">Didn't finish</Chip>}
+        <span className="font-medium">{name}</span>
+        {/* progress and the end of a build are announced to screen readers as they happen */}
+        <span aria-live="polite">
+          {magnet.status === "running" && <Chip tone="accent">Building: {magnet.step || "starting"}</Chip>}
+          {magnet.status === "ready" && <Chip tone="good">Ready</Chip>}
+          {magnet.status === "failed" && <Chip tone="bad">Didn't finish</Chip>}
+        </span>
       </div>
       {magnet.status === "failed" && magnet.error && <p className="text-bad">{magnet.error}</p>}
       {s && (
@@ -62,7 +83,7 @@ function MagnetRow({ magnet, onDelete, deleting }: { magnet: Magnet; onDelete: (
           variant="quiet"
           onClick={onDelete}
           disabled={deleting}
-          aria-label={`Delete this ${magnet.mode === "full" ? "full list" : "teaser"}${link ? " and turn its link off" : ""}`}
+          aria-label={`Delete ${name}${link ? " and turn its link off" : ""}`}
         >
           <Trash2 size={14} aria-hidden /> Delete
         </Button>
@@ -81,13 +102,19 @@ export function MagnetSection({ companyId, website }: { companyId: string; websi
   const siteId = useId();
   const rivalsId = useId();
   const building = magnets.data?.some((m) => m.status === "running") ?? false;
+  const competitors = rivals
+    .split(/[\s,]+/)
+    .map((r) => r.trim())
+    .filter(Boolean);
+  const badRival = competitors.find((r) => !DOMAIN.test(r) || r.length > 200);
+  const rivalProblem = badRival
+    ? `"${badRival}" doesn't look like a website. Type competitors' domains, like rival.com.`
+    : competitors.length > 5
+      ? "Name up to 5 competitors."
+      : "";
+  const rivalsErrorId = useId();
 
   function start(mode: MagnetMode) {
-    const competitors = rivals
-      .split(/[\s,]+/)
-      .map((r) => r.trim())
-      .filter(Boolean)
-      .slice(0, 5);
     build.mutate(
       { mode, website: site.trim() || undefined, competitors },
       {
@@ -122,7 +149,14 @@ export function MagnetSection({ companyId, website }: { companyId: string; websi
             value={rivals}
             onChange={(e) => setRivals(e.target.value)}
             placeholder="rival.com, other.com"
+            aria-invalid={rivalProblem ? true : undefined}
+            aria-describedby={rivalProblem ? rivalsErrorId : undefined}
           />
+          {rivalProblem && (
+            <span id={rivalsErrorId} role="alert" className="text-bad">
+              {rivalProblem}
+            </span>
+          )}
         </label>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -130,7 +164,7 @@ export function MagnetSection({ companyId, website }: { companyId: string; websi
           <Button
             key={mode}
             variant={mode === "teaser" ? "primary" : "secondary"}
-            disabled={building || build.isPending || !site.trim()}
+            disabled={building || build.isPending || !site.trim() || Boolean(rivalProblem)}
             onClick={() => start(mode)}
             title={cost}
           >
