@@ -1,5 +1,7 @@
 from datetime import date
+from typing import Any
 
+import httpx2
 import pytest
 
 from app.magnet import linkedin as li
@@ -88,3 +90,23 @@ def test_a_run_that_failed_with_nothing_saved_is_an_error_but_a_stopped_one_keep
     stopped = FakeRunner(status="ABORTED", reactions={P1: [reaction("ACoAAana", "Ana E.", "VP Sales", P1)]})
     found, _ = LinkedIn(stopped).engagers(a_post(comments=0), 30, 15, 1.0)
     assert [e.key for e in found] == ["ACoAAana"]
+
+
+def test_a_timeout_is_a_linkedin_error() -> None:
+    class Slow(FakeRunner):
+        def run(self, *_: Any, **__: Any) -> Any:
+            raise httpx2.ReadTimeout("slow", request=httpx2.Request("GET", "https://api.apify.com/v2/x"))
+
+    with pytest.raises(LinkedInError, match="ReadTimeout"):
+        LinkedIn(Slow()).posts([RIVAL_PAGE], 5, 1.0)
+
+
+def test_what_a_failed_run_cost_is_still_counted() -> None:
+    with pytest.raises(LinkedInError) as failed:
+        LinkedIn(FakeRunner(status="FAILED", charged=0.03)).engagers(a_post(), 30, 15, 1.0)
+    assert failed.value.spent == pytest.approx(0.03)
+
+    likes = [reaction(f"ACoAA{n}", "X", "VP Sales", P1) for n in range(10)]
+    with pytest.raises(LinkedInError) as comments_failed:
+        LinkedIn(FakeRunner(reactions={P1: likes}, fail={li.COMMENTS})).engagers(a_post(), 30, 15, 1.0)
+    assert comments_failed.value.spent == pytest.approx(10 * 0.002)  # the likes read before the comments failed

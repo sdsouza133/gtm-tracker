@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+import httpx2
+
 from app.magnet.touch import Kind
 from app.radar.apify import MIN_CHARGE_USD
 from app.radar.sources import Runner
@@ -23,7 +25,11 @@ CAP_SLACK = 1.25  # Apify's cap sits a little above the list price, so a run isn
 
 
 class LinkedInError(RuntimeError):
-    pass
+    """A run that failed. `spent` is what was charged before it failed, so the budget still counts it."""
+
+    def __init__(self, message: str, spent: float = 0.0) -> None:
+        super().__init__(message)
+        self.spent = spent
 
 
 @dataclass(frozen=True)
@@ -76,11 +82,11 @@ class LinkedIn:
         cap = min(max_usd, expected * PRICE[actor] * CAP_SLACK + 0.01)
         try:
             result = self.runner.run(actor, actor_input, cap, partial_ok=True)
-        except RuntimeError as e:  # ApifyError and network failures alike
-            raise LinkedInError(f"{name}: {e}") from e
+        except (RuntimeError, httpx2.HTTPError) as e:  # ApifyError, and timeouts or dropped connections
+            raise LinkedInError(f"{name}: {type(e).__name__} {e}") from e
         items = [i for i in result.items if isinstance(i, dict)]
         if result.status != "SUCCEEDED" and not items:  # a run stopped at its cap still keeps what it saved
-            raise LinkedInError(f"{name} ended {result.status}.")
+            raise LinkedInError(f"{name} ended {result.status}.", spent=result.charged_usd)
         return items, max(result.charged_usd, len(items) * PRICE[actor])
 
     def posts(
@@ -111,9 +117,12 @@ class LinkedIn:
             out += [e for e in (parse_engager(i, "reaction", post) for i in items) if e]
         comments = min(comments, affordable(COMMENTS, max_usd - spent))
         if comments and post.comments:
-            items, cost = self._run(
-                COMMENTS, {"posts": [post.url], "maxItems": comments}, min(comments, post.comments), max_usd - spent
-            )
+            try:
+                items, cost = self._run(
+                    COMMENTS, {"posts": [post.url], "maxItems": comments}, min(comments, post.comments), max_usd - spent
+                )
+            except LinkedInError as e:  # the likes already read were still paid for
+                raise LinkedInError(str(e), spent=spent + e.spent) from e
             spent += cost
             out += [e for e in (parse_engager(i, "comment", post) for i in items) if e]
         return out, spent

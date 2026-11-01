@@ -85,8 +85,10 @@ class FakeRunner:
         profiles: list[dict[str, Any]] | None = None,
         fail: set[str] | None = None,
         status: str = "SUCCEEDED",
+        charged: float = 0.0,
     ) -> None:
         self.status = status
+        self.charged = charged
         self.posts = posts or []
         self.people_posts = people_posts or []
         self.reactions = reactions or {}
@@ -118,7 +120,7 @@ class FakeRunner:
         else:
             wanted = {u.rstrip("/").rsplit("/", 1)[-1] for u in actor_input["urls"]}
             items = [p for p in self.profiles if p["id"] in wanted or p["publicIdentifier"] in wanted]
-        return RunResult(items=items, status=self.status, charged_usd=0.0)
+        return RunResult(items=items, status=self.status, charged_usd=self.charged)
 
     def actors(self) -> list[str]:
         return [actor for actor, _, _ in self.runs]
