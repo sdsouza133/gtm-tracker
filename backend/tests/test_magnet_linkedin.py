@@ -68,3 +68,23 @@ def test_profiles_give_the_public_url_country_and_current_job() -> None:
     )
     assert runner.runs[0][1]["profileScraperMode"] == li.PROFILE_MODE
     assert parse_profile({"firstName": "No", "lastName": "Id"}) is None
+
+
+def test_a_run_never_costs_more_than_the_budget_left() -> None:
+    runner = FakeRunner(reactions={P1: [reaction(f"ACoAA{n}", "X", "VP Sales", P1) for n in range(40)]})
+    LinkedIn(runner).engagers(a_post(likes=40, comments=0), reactions=30, comments=15, max_usd=0.05)
+    assert runner.runs[0][1]["maxItems"] == 25  # $0.05 buys 25 likes, not 30
+    assert runner.runs[0][2] <= 0.05
+
+    runner = FakeRunner()
+    assert LinkedIn(runner).engagers(a_post(), 30, 15, max_usd=0.04) == ([], 0.0)  # under Apify's minimum cap
+    assert LinkedIn(runner).profiles(["https://www.linkedin.com/in/ACoAAana"], max_usd=0.04) == ({}, 0.0)
+    assert runner.runs == []
+
+
+def test_a_run_that_failed_with_nothing_saved_is_an_error_but_a_stopped_one_keeps_its_items() -> None:
+    with pytest.raises(LinkedInError, match="ended FAILED"):
+        LinkedIn(FakeRunner(status="FAILED")).engagers(a_post(), 30, 15, 1.0)
+    stopped = FakeRunner(status="ABORTED", reactions={P1: [reaction("ACoAAana", "Ana E.", "VP Sales", P1)]})
+    found, _ = LinkedIn(stopped).engagers(a_post(comments=0), 30, 15, 1.0)
+    assert [e.key for e in found] == ["ACoAAana"]

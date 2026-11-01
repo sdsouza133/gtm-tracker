@@ -216,3 +216,37 @@ def test_an_apollo_error_stops_the_email_lookups_and_says_why() -> None:
     assert report["stats"]["emails"]["asked"] == 1
     assert "credits" in report["stats"]["emails"]["error"]
     assert report["leads"]  # the leads are still there, without emails
+
+
+def test_the_decision_makers_posts_failing_still_leaves_the_company_pages() -> None:
+    ria = {"id": "apollo-ria", "name": "Ria Example", "linkedin_url": "http://www.linkedin.com/in/ria-example"}
+    apollo = FakeApollo(ORGS, people={"rivalco.example": [ria]})
+    report = build(spec("full"), tools(runner(fail={li.PROFILE_POSTS}), apollo), TODAY)
+    assert R1 not in report["competitors"][0]["posts"]
+    assert report["leads"]
+
+
+def test_a_post_is_matched_to_its_author_even_without_the_query_echoed_back() -> None:
+    bare = post(R1, RIA, likes=3, comments=0)
+    del bare["query"]
+    bare["author"] = {
+        "linkedinUrl": "https://www.linkedin.com/in/ria-example?miniProfileUrn=urn%3Ali%3Afs_miniProfile%3A1"
+    }
+    ria = {"id": "apollo-ria", "name": "Ria Example", "linkedin_url": "http://www.linkedin.com/in/ria-example"}
+    report = build(
+        spec("full"), tools(runner(people_posts=[bare]), FakeApollo(ORGS, people={"rivalco.example": [ria]})), TODAY
+    )
+    assert R1 in report["competitors"][0]["posts"]
+
+
+def test_recruiters_are_kept_for_a_prospect_that_sells_to_recruiters() -> None:
+    class SellsToRecruiters(FakeBrain):
+        def icp(self, site: dict[str, Any], competitors: list[str]) -> Any:
+            found = super().icp(site, competitors)
+            found.titles = ["Head of Talent Acquisition", "Recruiting Manager"]
+            return found
+
+    brain = SellsToRecruiters("rivalco.example")
+    build(spec(), tools(runner(), brain=brain), TODAY)
+    assert "Technical Recruiter" in brain.screened[0]  # Claude judges them instead of the rule dropping them
+    assert "Account Executive at RivalCo" not in brain.screened[0]  # the competitor's own staff still go

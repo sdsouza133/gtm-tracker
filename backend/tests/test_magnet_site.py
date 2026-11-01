@@ -111,3 +111,21 @@ def test_fetching_follows_redirects_only_to_public_hosts_and_reads_web_pages_onl
     ]:
         with pytest.raises(SiteError, match=message):
             site._get(f"https://prospect.example{path}")
+
+
+def test_a_malformed_address_is_a_site_error_not_a_crash(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(SiteError, match="website address"):
+        public_url("http://[abc")
+
+    def bad_label(host: str, *_: Any, **__: Any) -> list[Any]:
+        raise UnicodeError("label empty or too long")
+
+    monkeypatch.setattr(socket, "getaddrinfo", bad_label)
+    with pytest.raises(SiteError, match="doesn't resolve"):
+        public_url("a..example")
+
+
+def test_a_malformed_link_on_the_home_page_is_skipped() -> None:
+    home = '<a href="http://[bad/about">Broken</a> <a href="/about">About</a>'
+    pages = {"https://prospect.example": home, "https://prospect.example/about": "<p>About us</p>"}
+    assert read_site("prospect.example", get=pages.__getitem__)["pages"] == list(pages)

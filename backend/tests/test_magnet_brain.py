@@ -4,6 +4,7 @@ from typing import Any
 import anthropic
 import httpx2
 import pytest
+from pydantic import ValidationError
 
 from app.magnet import brain
 from app.magnet.brain import Brain, BrainError, Screen, Verdict
@@ -79,3 +80,14 @@ def test_screening_goes_in_batches_to_the_small_model(monkeypatch: pytest.Monkey
 def test_no_key_and_no_client_is_an_error() -> None:
     with pytest.raises(BrainError, match="ANTHROPIC_API_KEY"):
         Brain("", "a", "b")
+
+
+def test_a_reply_that_does_not_parse_is_a_brain_error() -> None:
+    try:
+        Screen.model_validate_json('{"people": [{"i": 0, "fit": tr')  # cut off mid-answer
+    except ValidationError as e:
+        cut_off = e
+    with pytest.raises(BrainError, match="incomplete"):
+        make(FakeClient(cut_off)).icp({"text": "x"}, [])
+    with pytest.raises(BrainError, match="incomplete"):
+        make(FakeClient(cut_off)).screen(["VP Sales"], icp(), [])
