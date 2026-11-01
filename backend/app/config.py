@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     apify_token: SecretStr | None = None
     # Apollo finds work emails and what a company does. It only runs once sign-in is on (not OPEN_ACCESS).
     apollo_api_key: SecretStr | None = None
+    # Claude works out a lead magnet's ICP from the prospect's website (the strong model, once per build) and screens
+    # the people found against it (the small model, in batches).
+    anthropic_api_key: SecretStr | None = None
+    magnet_icp_model: str = "claude-opus-5-5"
+    magnet_screen_model: str = "claude-haiku-5-5"
     # Run the radar every morning (at radar_config.hour, local time). Off in tests and one-off scripts.
     radar_schedule: bool = True
 

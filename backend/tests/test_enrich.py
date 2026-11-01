@@ -204,3 +204,25 @@ def test_the_client_turns_timeouts_and_garbage_into_apollo_errors(reply: Any) ->
     client = Apollo("test-key", transport=httpx2.MockTransport(reply))
     with pytest.raises(ApolloError):
         client.organization("acme.example")
+
+
+def test_the_client_searches_by_title_free_and_reveals_one_person_by_id() -> None:
+    sent: list[httpx2.Request] = []
+
+    def api(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        if request.url.path.endswith("/mixed_people/api_search"):
+            return httpx2.Response(200, json={"people": [{"id": "p1", "first_name": "Ria"}, {"first_name": "No id"}]})
+        return httpx2.Response(
+            200, json={"person": {"id": "p1", "linkedin_url": "http://www.linkedin.com/in/ria-example"}}
+        )
+
+    client = Apollo("test-key", transport=httpx2.MockTransport(api))
+    assert client.search_people("rival.example", ["CEO"], 2) == [{"id": "p1", "first_name": "Ria"}]
+    search = sent[0].read().decode().replace(" ", "")
+    assert '"q_organization_domains_list":["rival.example"]' in search
+    assert '"person_titles":["CEO"]' in search
+    person = client.match_id("p1")
+    assert person is not None
+    assert person["linkedin_url"].endswith("/ria-example")
+    assert '"reveal_personal_emails":false' in sent[1].read().decode().replace(" ", "")
