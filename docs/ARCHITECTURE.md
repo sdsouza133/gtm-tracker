@@ -26,10 +26,19 @@ sits in one JSONB column per table, so research can grow without migrations and 
 | `radar_items` | roles the radar found, waiting to be added or dismissed |
 | `prospects` | Fractional prospects: the research, and separately what the user did (never overwritten) |
 | `magnets` | lead magnets built for a company |
+| `ev_*` | the events tool: runs, the post, label and people caches, leads, its job queue and spend ([docs/events](events/README.md)) |
 | `settings` | small key/value settings (the candidate's name, snippets, goals) |
 | `login_sessions`, `login_attempts` | sign-in |
 
 Research written by automation never overwrites what the user changed: stage, notes, ticks and emails stay the user's.
+
+## Background work
+
+- **The radar** runs once every morning on a scheduler thread (`RADAR_SCHEDULE`).
+- **Lead magnet builds** run on a thread each.
+- **The events tool** runs its jobs on one worker thread from a Postgres queue (`ev_jobs`), with spend caps and
+  30-day deletion. See [docs/events](events/README.md).
+- All three run inside the web process, so the tracker stays one service.
 
 ## Rules worth knowing
 

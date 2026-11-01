@@ -8,6 +8,7 @@ dependencies = [
     "alembic>=1.13",
     "anthropic>=2.3.0",
     "argon2-cffi>=23.1",
+    "beautifulsoup4>=4.15.0",
     "fastapi>=0.115",
     "google-auth>=2.40",
     "httpx2>=1.0",
@@ -16,6 +17,7 @@ dependencies = [
     "pydantic-settings>=2.7",
     "requests>=2.32",
     "sqlalchemy>=2.0.30",
+    "tldextract>=5.4.0",
     "uvicorn[standard]>=0.30",
 ]
 

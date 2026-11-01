@@ -17,6 +17,8 @@ from sqlalchemy import text
 from app.api import auth_routes, backup, companies, enrich, fractional, magnets, moves, people, radar, today
 from app.config import get_settings
 from app.db import get_engine, session_factory
+from app.events import worker as events_worker
+from app.events.config import get_events_settings
 from app.radar import run as radar_run
 from app.services.outreach import NotFoundError, RuleError
 
@@ -60,9 +62,13 @@ def create_app() -> FastAPI:
             if settings.radar_schedule
             else None
         )
+        events = get_events_settings()
+        worker = events_worker.start(events) if events.worker else None  # the events tool's background jobs
         yield
         if stop is not None:
             stop.set()
+        if worker is not None:
+            worker.stop()  # after the job it's running; a job about to make a paid call goes back to the queue
 
     app = FastAPI(title="GTM Tracker", docs_url=None, openapi_url=None, redoc_url=None, lifespan=lifespan)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
