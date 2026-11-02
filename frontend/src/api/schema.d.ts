@@ -670,6 +670,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/magnets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List All
+         * @description Every lead magnet, newest first: those built for a tracker company and those built for any website.
+         */
+        get: operations["list_all_api_magnets_get"];
+        put?: never;
+        /**
+         * Start Any
+         * @description Start one for any website, without a company in the tracker. One such build at a time (a lock held until the
+         *     new magnet is saved, so two quick clicks can't both start one).
+         */
+        post: operations["start_any_api_magnets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/magnets/{magnet_id}": {
         parameters: {
             query?: never;
@@ -1622,6 +1647,24 @@ export interface components {
             /** Views */
             views: number;
             summary: components["schemas"]["MagnetSummary"] | null;
+        };
+        /**
+         * MagnetStart
+         * @description A lead magnet for any website, without a company in the tracker.
+         */
+        MagnetStart: {
+            /**
+             * Mode
+             * @default teaser
+             * @enum {string}
+             */
+            mode?: "teaser" | "full";
+            /** Website */
+            website: string;
+            /** Name */
+            name?: string | null;
+            /** Competitors */
+            competitors?: string[];
         };
         /** MagnetSummary */
         MagnetSummary: {
@@ -3939,6 +3982,59 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["MagnetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MagnetOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_all_api_magnets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MagnetOut"][];
+                };
+            };
+        };
+    };
+    start_any_api_magnets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MagnetStart"];
             };
         };
         responses: {

@@ -97,6 +97,52 @@ def test_a_teaser_builds_in_the_background_and_shares_by_a_private_link(magnet_c
     assert seen.updated_at == long_ago  # so it can't make a stopped build look alive
 
 
+def test_one_can_be_built_for_any_website_without_a_company(magnet_client: TestClient, db: Session) -> None:
+    linked = a_company(db)
+    magnet_client.post(f"/api/companies/{linked.id}/magnets", json={"mode": "teaser"})
+    # the test runs in one transaction, where now() never moves: date the first one earlier so "newest first" can show
+    db.execute(update(Magnet).where(Magnet.company_id == linked.id).values(created_at=datetime(2026, 1, 1, tzinfo=UTC)))
+    r = magnet_client.post(
+        "/api/magnets",
+        json={"mode": "teaser", "website": "https://www.prospect.example/about", "competitors": ["rivalco.example"]},
+    )
+    assert r.status_code == 202
+    m = r.json()
+    assert (m["company_id"], m["title"], m["website"]) == (
+        None,
+        "prospect.example: teaser",
+        "https://www.prospect.example/about",
+    )
+
+    every = magnet_client.get("/api/magnets").json()  # newest first, with or without a company
+    assert [(x["company_id"], x["status"]) for x in every] == [(None, "ready"), (linked.id, "ready")]
+    assert every[0]["summary"]["leads"] == 3
+    assert every[0]["link"].startswith(f"/m/{m['id']}/")
+    assert [x["id"] for x in magnet_client.get(f"/api/companies/{linked.id}/magnets").json()] == [every[1]["id"]]
+
+    named = magnet_client.post("/api/magnets", json={"website": "prospect.example", "name": "Prospect Inc"}).json()
+    assert named["title"] == "Prospect Inc: teaser"
+    link = magnet_client.get(f"/api/magnets/{named['id']}").json()["link"]
+    assert magnet_client.get(f"/api/public{link.replace('/m/', '/magnets/', 1)}").json()["company"] == "Prospect Inc"
+
+
+@pytest.mark.parametrize("website", ["not a site", "localhost", "  "])
+def test_a_build_for_any_website_needs_a_website(magnet_client: TestClient, db: Session, website: str) -> None:
+    r = magnet_client.post("/api/magnets", json={"website": website})
+    assert r.status_code == 422
+    assert db.query(Magnet).count() == 0
+
+
+def test_one_build_for_a_website_outside_the_tracker_at_a_time(magnet_client: TestClient, db: Session) -> None:
+    db.add(Magnet(company_id=None, kind="engagement", status="running", title="x: teaser", data={}))
+    db.flush()
+    r = magnet_client.post("/api/magnets", json={"website": "prospect.example"})
+    assert r.status_code == 409
+    assert r.json()["detail"] == "A lead magnet is already building for a website outside the tracker."
+    c = a_company(db)  # a company's own build doesn't wait on it
+    assert magnet_client.post(f"/api/companies/{c.id}/magnets", json={"mode": "teaser"}).status_code == 202
+
+
 def test_the_full_build_carries_emails(magnet_client: TestClient, db: Session) -> None:
     c = a_company(db)
     magnet_client.post(

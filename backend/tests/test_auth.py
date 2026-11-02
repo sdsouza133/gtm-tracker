@@ -154,6 +154,8 @@ PROTECTED = [
     ("POST", "/api/restore"),
     ("GET", "/api/companies/c1/magnets"),
     ("POST", "/api/companies/c1/magnets"),
+    ("GET", "/api/magnets"),
+    ("POST", "/api/magnets"),
     ("GET", "/api/magnets/g1"),
     ("DELETE", "/api/magnets/g1"),
     ("GET", "/api/events"),
