@@ -354,9 +354,13 @@ export type PublicMagnet = S["PublicMagnet"];
 export type PublicLead = S["PublicLead"];
 const BUILDING_POLL_MS = 3000;
 const magnetKeys = {
-  forCompany: (companyId: string) => ["magnets", companyId] as const,
+  any: ["magnets"] as const, // both lists below
+  forCompany: (companyId: string) => ["magnets", "company", companyId] as const,
+  all: ["magnets", "all"] as const,
   report: (id: string, token: string) => ["magnet-report", id, token] as const,
 };
+const buildingPoll = (magnets: Magnet[] | undefined) =>
+  magnets?.some((m) => m.status === "running") ? BUILDING_POLL_MS : false;
 
 export function useMagnets(companyId: string) {
   return useQuery({
@@ -364,7 +368,25 @@ export function useMagnets(companyId: string) {
     queryFn: async () =>
       unwrap(await api.GET("/api/companies/{company_id}/magnets", { params: { path: { company_id: companyId } } })),
     // while one builds, follow its steps
-    refetchInterval: (query) => (query.state.data?.some((m) => m.status === "running") ? BUILDING_POLL_MS : false),
+    refetchInterval: (query) => buildingPoll(query.state.data),
+  });
+}
+
+/** Every lead magnet, newest first: built for a tracker company or for any website. */
+export function useAllMagnets() {
+  return useQuery({
+    queryKey: magnetKeys.all,
+    queryFn: async () => unwrap(await api.GET("/api/magnets")),
+    refetchInterval: (query) => buildingPoll(query.state.data),
+  });
+}
+
+/** Build one for any website, without a company in the tracker. */
+export function useStartMagnet() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: S["MagnetStart"]) => unwrap(await api.POST("/api/magnets", { body })),
+    onSettled: () => client.invalidateQueries({ queryKey: magnetKeys.any }),
   });
 }
 
@@ -378,18 +400,18 @@ export function useBuildMagnet(companyId: string) {
           body,
         }),
       ),
-    onSettled: () => client.invalidateQueries({ queryKey: magnetKeys.forCompany(companyId) }),
+    onSettled: () => client.invalidateQueries({ queryKey: magnetKeys.any }),
   });
 }
 
-export function useDeleteMagnet(companyId: string) {
+export function useDeleteMagnet() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
       const result = await api.DELETE("/api/magnets/{magnet_id}", { params: { path: { magnet_id: id } } });
       if (!result.response.ok) unwrap(result);
     },
-    onSettled: () => client.invalidateQueries({ queryKey: magnetKeys.forCompany(companyId) }),
+    onSettled: () => client.invalidateQueries({ queryKey: magnetKeys.any }),
   });
 }
 

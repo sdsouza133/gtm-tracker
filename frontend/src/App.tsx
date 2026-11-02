@@ -6,6 +6,7 @@ import { Layout } from "@/components/Layout";
 import { Button, EmptyState, PageHeader } from "@/components/ui";
 import { CompanyPage } from "@/pages/Company";
 import { EventRunPage } from "@/pages/EventRun";
+import { MagnetsPage } from "@/pages/Magnets";
 import { EventsPage } from "@/pages/Events";
 import { FractionalPage } from "@/pages/Fractional";
 import { LoginPage } from "@/pages/Login";
@@ -64,6 +65,7 @@ export function App() {
         <Route path="fractional" element={<FractionalPage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="events/:runId" element={<EventRunPage />} />
+        <Route path="magnets" element={<MagnetsPage />} />
         <Route path="*" element={<Placeholder title="Not found" />} />
       </Route>
     </Routes>

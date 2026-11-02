@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import exists, select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.auth import AppSettings, DbSession, SignedIn
@@ -32,6 +32,7 @@ from app.radar.fit import domain_of
 from app.schemas import (
     MagnetCreate,
     MagnetOut,
+    MagnetStart,
     MagnetSummary,
     PublicCompetitor,
     PublicIcp,
@@ -47,6 +48,8 @@ public = APIRouter(prefix="/api/public", tags=["magnets"])
 
 KIND = "engagement"
 LIST_LIMIT = 20
+ALL_LIMIT = 50
+UNLINKED_LOCK = "magnets:no-company"  # one build at a time for websites outside the tracker
 TEASER_SHOWN = 5
 STALE_AFTER = timedelta(minutes=30)  # a build reports every step and every post; this quiet, it died with the app
 STOPPED = "The build stopped before it finished (the app restarted). Build it again."
@@ -156,6 +159,13 @@ def list_for_company(company_id: str, session: DbSession) -> list[MagnetOut]:
     return [_out(m) for m in rows]
 
 
+@router.get("/magnets")
+def list_all(session: DbSession) -> list[MagnetOut]:
+    """Every lead magnet, newest first: those built for a tracker company and those built for any website."""
+    rows = session.scalars(select(Magnet).order_by(Magnet.created_at.desc(), Magnet.id).limit(ALL_LIMIT)).all()
+    return [_out(m) for m in rows]
+
+
 @router.post("/companies/{company_id}/magnets", status_code=status.HTTP_202_ACCEPTED)
 def start(
     company_id: str, body: MagnetCreate, session: DbSession, settings: AppSettings, today: Today, runtime: MagnetRuntime
@@ -163,24 +173,56 @@ def start(
     """Start building, in the background. The magnet shows each step; one build per company at a time (the company
     row stays locked until the new magnet is saved, so two quick clicks can't both start one)."""
     company = _company(session, company_id, lock=True)
-    problem = missing_setup(settings, body.mode)
-    if problem:
-        raise HTTPException(status.HTTP_409_CONFLICT, problem)
     website = (body.website or company.website or company.domain or "").strip()
     if not website:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Add the company's website first.")
-    running = (Magnet.company_id == company_id) & (Magnet.status == "running")
+    return _begin(session, settings, today, runtime, body, company=company, name=company.name, website=website)
+
+
+@router.post("/magnets", status_code=status.HTTP_202_ACCEPTED)
+def start_any(
+    body: MagnetStart, session: DbSession, settings: AppSettings, today: Today, runtime: MagnetRuntime
+) -> MagnetOut:
+    """Start one for any website, without a company in the tracker. One such build at a time (a lock held until the
+    new magnet is saved, so two quick clicks can't both start one)."""
+    website = body.website.strip()
+    host = domain_of(website)
+    if "." not in host or any(ch.isspace() for ch in host):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Type the company's website, like acme.com.")
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtext(UNLINKED_LOCK))))
+    name = (body.name or "").strip() or host
+    return _begin(session, settings, today, runtime, body, company=None, name=name, website=website)
+
+
+def _begin(
+    session: Session,
+    settings: Settings,
+    today: date,
+    runtime: Runtime,
+    body: MagnetCreate | MagnetStart,
+    *,
+    company: Company | None,
+    name: str,
+    website: str,
+) -> MagnetOut:
+    """Save the new magnet as running and start its build. The caller holds the lock that makes this the only one."""
+    problem = missing_setup(settings, body.mode)
+    if problem:
+        raise HTTPException(status.HTTP_409_CONFLICT, problem)
+    owner = Magnet.company_id == company.id if company else Magnet.company_id.is_(None)
+    running = owner & (Magnet.status == "running")
     cutoff = _now() - STALE_AFTER
     if session.scalar(select(exists().where(running, Magnet.updated_at >= cutoff))):
-        raise HTTPException(status.HTTP_409_CONFLICT, "A lead magnet is already building for this company.")
+        busy = "for this company" if company else "for a website outside the tracker"
+        raise HTTPException(status.HTTP_409_CONFLICT, f"A lead magnet is already building {busy}.")
     # any left behind by a restart stop counting as running; their workers, if still alive, stop at their next step
     session.execute(update(Magnet).where(running, Magnet.updated_at < cutoff).values(status="failed"))
     competitors = tuple(dict.fromkeys(d for d in (domain_of(c) for c in body.competitors) if d))
     magnet = Magnet(
-        company_id=company.id,
+        company_id=company.id if company else None,
         kind=KIND,
         status="running",
-        title=f"{company.name}: {'full list' if body.mode == 'full' else 'teaser'}"[:300],
+        title=f"{name}: {'full list' if body.mode == 'full' else 'teaser'}"[:300],
         data={
             "mode": body.mode,
             "website": website,
@@ -191,7 +233,7 @@ def start(
     )
     session.add(magnet)
     session.commit()
-    spec = Spec(mode=body.mode, company=company.name, website=website, competitors=competitors)
+    spec = Spec(mode=body.mode, company=name, website=website, competitors=competitors)
     magnet_id = magnet.id
     runtime.spawn(lambda: run(runtime, magnet_id, spec, today))
     return _out(magnet)

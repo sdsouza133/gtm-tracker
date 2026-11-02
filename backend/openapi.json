@@ -1928,6 +1928,72 @@
     }
    }
   },
+  "/api/magnets": {
+   "get": {
+    "tags": [
+     "magnets"
+    ],
+    "summary": "List All",
+    "description": "Every lead magnet, newest first: those built for a tracker company and those built for any website.",
+    "operationId": "list_all_api_magnets_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/MagnetOut"
+         },
+         "type": "array",
+         "title": "Response List All Api Magnets Get"
+        }
+       }
+      }
+     }
+    }
+   },
+   "post": {
+    "tags": [
+     "magnets"
+    ],
+    "summary": "Start Any",
+    "description": "Start one for any website, without a company in the tracker. One such build at a time (a lock held until the\nnew magnet is saved, so two quick clicks can't both start one).",
+    "operationId": "start_any_api_magnets_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/MagnetStart"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/MagnetOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/magnets/{magnet_id}": {
    "get": {
     "tags": [
@@ -4845,6 +4911,54 @@
      "summary"
     ],
     "title": "MagnetOut"
+   },
+   "MagnetStart": {
+    "properties": {
+     "mode": {
+      "type": "string",
+      "enum": [
+       "teaser",
+       "full"
+      ],
+      "title": "Mode",
+      "default": "teaser"
+     },
+     "website": {
+      "type": "string",
+      "maxLength": 300,
+      "minLength": 3,
+      "title": "Website"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 120
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "competitors": {
+      "items": {
+       "type": "string",
+       "maxLength": 200,
+       "minLength": 3
+      },
+      "type": "array",
+      "maxItems": 5,
+      "title": "Competitors"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "website"
+    ],
+    "title": "MagnetStart",
+    "description": "A lead magnet for any website, without a company in the tracker."
    },
    "MagnetSummary": {
     "properties": {

@@ -1,118 +1,23 @@
-import { Copy, ExternalLink, Trash2 } from "lucide-react";
 import { useId, useState } from "react";
 
-import { type Magnet, type MagnetMode, useBuildMagnet, useDeleteMagnet, useMagnets } from "@/api/hooks";
+import { type MagnetMode, useBuildMagnet, useDeleteMagnet, useMagnets } from "@/api/hooks";
+import { MagnetRow } from "@/components/MagnetRow";
 import { notify } from "@/components/Toast";
-import { Button, Chip } from "@/components/ui";
-
-const MODES: { mode: MagnetMode; label: string; cost: string }[] = [
-  {
-    mode: "teaser",
-    label: "Build a teaser",
-    cost: "1 competitor, a few examples; up to $0.40 of Apify, plus a few cents of Claude and an Apollo credit or two",
-  },
-  {
-    mode: "full",
-    label: "Build the full list",
-    cost: "up to 3 competitors, work emails where found; up to $2 of Apify, plus a few cents of Claude and an Apollo credit per email",
-  },
-];
-/** A competitor as typed: a domain, like rival.com. */
-const DOMAIN = /^(https?:\/\/)?[a-z0-9-]+(\.[a-z0-9-]+)+([/?#].*)?$/i; // a path, query or #fragment may follow
-
-function when(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-function absolute(link: string): string {
-  return new URL(link, window.location.origin).toString();
-}
-
-async function copyLink(link: string) {
-  try {
-    await navigator.clipboard.writeText(absolute(link));
-    notify("Link copied");
-  } catch {
-    notify("Couldn't copy. Open the report and copy its address instead.", "error");
-  }
-}
-
-function MagnetRow({ magnet, onDelete, deleting }: { magnet: Magnet; onDelete: () => void; deleting: boolean }) {
-  const s = magnet.summary;
-  const link = magnet.link;
-  const name = `${magnet.mode === "full" ? "Full list" : "Teaser"}${when(magnet.created) ? `, ${when(magnet.created)}` : ""}`;
-  return (
-    <li className="flex flex-col gap-2 rounded-lg border border-line p-3 text-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-medium">{name}</span>
-        {/* progress and the end of a build are announced to screen readers as they happen */}
-        <span aria-live="polite">
-          {magnet.status === "running" && <Chip tone="accent">Building: {magnet.step || "starting"}</Chip>}
-          {magnet.status === "ready" && <Chip tone="good">Ready</Chip>}
-          {magnet.status === "failed" && <Chip tone="bad">Didn't finish</Chip>}
-        </span>
-      </div>
-      {magnet.status === "failed" && magnet.error && <p className="text-bad">{magnet.error}</p>}
-      {s && (
-        <p className="text-muted">
-          {s.leads} in the US or Canada ({s.hot} hot, {s.warm} warm, {s.touch} single touch) out of {s.fit} who fit the
-          ICP{magnet.mode === "full" ? `, ${s.emails} with emails` : ""}. Apify ${s.apify_usd.toFixed(2)}.
-          {magnet.views ? ` Opened ${magnet.views} time${magnet.views === 1 ? "" : "s"}.` : ""}
-        </p>
-      )}
-      <div className="flex flex-wrap gap-2">
-        {link && (
-          <>
-            <Button onClick={() => void copyLink(link)}>
-              <Copy size={14} aria-hidden /> Copy link
-            </Button>
-            <a
-              className="inline-flex min-h-[38px] items-center gap-2 rounded-lg px-3 text-sm font-medium text-accent-ink hover:bg-chip"
-              href={link}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink size={14} aria-hidden /> Open report
-            </a>
-          </>
-        )}
-        <Button
-          variant="quiet"
-          onClick={onDelete}
-          disabled={deleting}
-          aria-label={`Delete ${name}${link ? " and turn its link off" : ""}`}
-        >
-          <Trash2 size={14} aria-hidden /> Delete
-        </Button>
-      </div>
-    </li>
-  );
-}
+import { Button } from "@/components/ui";
+import { competitors as readCompetitors, MODES } from "@/lib/magnets";
 
 /** Build a lead magnet for this company: people in their ICP who engage with their competitors on LinkedIn. */
 export function MagnetSection({ companyId, website }: { companyId: string; website: string }) {
   const magnets = useMagnets(companyId);
   const build = useBuildMagnet(companyId);
-  const remove = useDeleteMagnet(companyId);
+  const remove = useDeleteMagnet();
   const [site, setSite] = useState(website);
   const [rivals, setRivals] = useState("");
   const [rivalsTouched, setRivalsTouched] = useState(false); // judged once they leave the field, not per keystroke
   const siteId = useId();
   const rivalsId = useId();
   const building = magnets.data?.some((m) => m.status === "running") ?? false;
-  const competitors = rivals
-    .split(/[\s,]+/)
-    .map((r) => r.trim())
-    .filter(Boolean);
-  const badRival = competitors.find((r) => !DOMAIN.test(r) || r.length > 200);
-  const rivalProblem = badRival
-    ? `"${badRival}" doesn't look like a website. Type competitors' domains, like rival.com.`
-    : competitors.length > 5
-      ? "Name up to 5 competitors."
-      : "";
+  const { list: competitors, problem: rivalProblem } = readCompetitors(rivals);
   const rivalsErrorId = useId();
 
   function start(mode: MagnetMode) {

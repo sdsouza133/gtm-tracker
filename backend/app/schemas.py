@@ -685,6 +685,17 @@ class MagnetCreate(BaseModel):
     competitors: list[CompetitorDomain] = Field(default_factory=list, max_length=5)
 
 
+class MagnetStart(BaseModel):
+    """A lead magnet for any website, without a company in the tracker."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: MagnetMode = "teaser"
+    website: str = Field(min_length=3, max_length=300)
+    name: str | None = Field(default=None, max_length=120)  # the company's name; its domain when left out
+    competitors: list[CompetitorDomain] = Field(default_factory=list, max_length=5)
+
+
 class MagnetSummary(BaseModel):
     leads: int
     hot: int
