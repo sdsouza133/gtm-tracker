@@ -31,6 +31,7 @@ from app.schemas import (
     EventRunSummary,
     EventsHome,
     EventsQueue,
+    EventsStatus,
     EventsSwitch,
     EventsToday,
     PlanEvent,
@@ -39,6 +40,9 @@ from app.schemas import (
 log = logging.getLogger("gtm_tracker.events")
 
 router = APIRouter(prefix="/api/events", tags=["events"], dependencies=[SignedIn])
+# Open on purpose: whether the tool is set up, so it can be checked without signing in. It names missing keys and
+# nothing else: no runs, no lists, no spend, and nothing it answers can start paid work.
+public = APIRouter(prefix="/api/public/events", tags=["events"])
 
 LIST_LIMIT = 50
 OFF_WITHOUT_SIGN_IN = "The events tool is off while the tracker has no sign-in (OPEN_ACCESS): its lists hold emails."
@@ -123,6 +127,16 @@ def _out(session: Session, run: Run, settings: EventsSettings, now: datetime) ->
         else None,
         plan=plan,
         expires=run.results_expire_at,
+    )
+
+
+@public.get("/status", response_model=EventsStatus)
+def status_check(settings: AppSettings, events: Events) -> EventsStatus:
+    """Whether the tool can run: the names of any keys still missing, whether the worker runs, and whether sign-in
+    is on (the tool is off without it)."""
+    missing = events.missing()
+    return EventsStatus(
+        ready=not missing and events.worker and not settings.open_access, missing=missing, worker=events.worker
     )
 
 

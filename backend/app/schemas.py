@@ -891,6 +891,14 @@ class EventsQueue(BaseModel):
     failed: int
 
 
+class EventsStatus(BaseModel):
+    """Whether the events tool can run, for anyone: names of missing keys only, never their values or any data."""
+
+    ready: bool  # keys set, the worker on, and sign-in on (the tool is off without it)
+    missing: list[str]  # names of the keys the tool needs that aren't set
+    worker: bool  # the background worker runs in this process (EVENTS_WORKER)
+
+
 class EventsHome(BaseModel):
     missing: list[str]  # keys the tool needs that aren't set
     open_access: bool  # the tool is off while the tracker has no sign-in: its lists hold work emails
