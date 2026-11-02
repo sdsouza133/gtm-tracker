@@ -101,6 +101,7 @@ export function bodyOf(draft: Draft, approve: boolean): S["EventPlanSave"] {
 const SHORT = 120;
 const SENTENCE = 600;
 const QUERY = 300;
+const QUERY_MIN = 2;
 
 /** What's wrong with the plan as it would be sent, in words, or "" when the server will take it. The same limits as
  * the server's Icp: a refusal from its schema check would only say "something went wrong". */
@@ -132,6 +133,8 @@ export function planProblem(body: S["EventPlanSave"]): string {
     body.events.some((e) => (e.picked || searches(e).length > 0) && (searches(e).length < 1 || searches(e).length > 4))
   )
     return "Give each picked event 1 to 4 searches, one per line.";
+  if (body.events.some((e) => searches(e).some((q) => q.length < QUERY_MIN)))
+    return "Make each search at least 2 characters long.";
   if (body.events.some((e) => searches(e).some((q) => q.length > QUERY))) return "Keep each search to 300 characters.";
   return "";
 }

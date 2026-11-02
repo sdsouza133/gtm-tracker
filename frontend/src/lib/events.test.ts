@@ -78,6 +78,9 @@ describe("the events helpers", () => {
       "Give each picked event 1 to 4 searches, one per line.",
     );
     expect(planProblem({ ...ok, events: [{ picked: false, queries: [] }] })).toBe(""); // not searched, so none needed
+    expect(planProblem({ ...ok, events: [{ picked: true, queries: ["x"] }] })).toBe(
+      "Make each search at least 2 characters long.",
+    );
     expect(planProblem({ ...ok, events: [{ picked: true, queries: ["x".repeat(301)] }] })).toBe(
       "Keep each search to 300 characters.",
     );
