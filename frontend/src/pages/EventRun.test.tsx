@@ -156,7 +156,7 @@ describe("an events run's page", () => {
     const user = userEvent.setup();
     await user.clear(await screen.findByLabelText(/^Industries/));
     await user.click(screen.getByRole("button", { name: "Save the plan" }));
-    expect(await screen.findByText("List 1 to 12 industries, separated by commas.")).toBeInTheDocument();
+    expect(await screen.findByText("List 1 to 12 industries, one per line.")).toBeInTheDocument();
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
   });
 

@@ -36,10 +36,11 @@ export function blocked(home: EventsHome): string {
   return "";
 }
 
-/** 'Software, SaaS ,software' -> ['Software', 'SaaS']: comma- or line-separated, each once. */
+/** 'Software\nSaaS \nsoftware' -> ['Software', 'SaaS']: one per line, each once. Only a line break separates two, so
+ * a value with a comma in it ('Washington, DC') comes back as it was. */
 export function items(text: string): string[] {
   const seen = new Map<string, string>();
-  for (const raw of text.split(/[,\n]/)) {
+  for (const raw of text.split("\n")) {
     const clean = raw.split(/\s+/).filter(Boolean).join(" ");
     if (clean && !seen.has(clean.toLowerCase())) seen.set(clean.toLowerCase(), clean);
   }
@@ -68,13 +69,13 @@ export function draftOf(plan: EventPlan): Draft {
   const icp = plan.icp;
   return {
     summary: icp.summary,
-    industries: icp.industries.join(", "),
-    regions: icp.regions.join(", "),
-    exclude: (icp.exclude_title_keywords ?? []).join(", "),
+    industries: icp.industries.join("\n"),
+    regions: icp.regions.join("\n"),
+    exclude: (icp.exclude_title_keywords ?? []).join("\n"),
     sizes: [...icp.company_sizes],
     buyers: icp.personas.map((p) => ({
       label: p.label,
-      keywords: p.title_keywords.join(", "),
+      keywords: p.title_keywords.join("\n"),
       seniorities: [...(p.seniorities ?? [])],
     })),
     events: plan.events.map((e) => ({ picked: e.picked, queries: e.queries.join("\n") })),
@@ -109,9 +110,8 @@ export function planProblem(body: S["EventPlanSave"]): string {
   const { icp } = body;
   const tooLong = (items: string[]) => items.find((item) => item.length > SHORT);
   if (!icp.summary || icp.summary.length > SENTENCE) return "Describe who they sell to in up to 600 characters.";
-  if (icp.industries.length < 1 || icp.industries.length > 12) return "List 1 to 12 industries, separated by commas.";
-  if (icp.regions.length < 1 || icp.regions.length > 12)
-    return "List 1 to 12 countries or regions, separated by commas.";
+  if (icp.industries.length < 1 || icp.industries.length > 12) return "List 1 to 12 industries, one per line.";
+  if (icp.regions.length < 1 || icp.regions.length > 12) return "List 1 to 12 countries or regions, one per line.";
   if (icp.company_sizes.length < 1) return "Pick at least one company size.";
   if (icp.personas.length < 1 || icp.personas.length > 5) return "Describe 1 to 5 kinds of buyer.";
   const buyer = icp.personas.findIndex(

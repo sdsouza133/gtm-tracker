@@ -125,15 +125,17 @@ function IcpEditor({ draft, set }: { draft: Draft; set: (d: Draft) => void }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           label="Industries"
+          rows={4}
           value={draft.industries}
           onChange={(industries) => set({ ...draft, industries })}
-          hint="Separated by commas, up to 12."
+          hint="One per line, up to 12."
         />
         <TextField
           label="Countries or regions"
+          rows={4}
           value={draft.regions}
           onChange={(regions) => set({ ...draft, regions })}
-          hint="Separated by commas, up to 12."
+          hint="One per line, up to 12."
         />
       </div>
       <Toggle
@@ -150,9 +152,10 @@ function IcpEditor({ draft, set }: { draft: Draft; set: (d: Draft) => void }) {
               <TextField label={`Buyer ${i + 1}`} value={b.label} onChange={(label) => buyer(i, { label })} />
               <TextField
                 label="Words in their job titles"
+                rows={3}
                 value={b.keywords}
                 onChange={(keywords) => buyer(i, { keywords })}
-                hint="Separated by commas."
+                hint="One per line."
               />
             </div>
             <Toggle
@@ -183,9 +186,10 @@ function IcpEditor({ draft, set }: { draft: Draft; set: (d: Draft) => void }) {
       </div>
       <TextField
         label="Titles that rule someone out"
+        rows={3}
         value={draft.exclude}
         onChange={(exclude) => set({ ...draft, exclude })}
-        hint="Separated by commas, up to 20 (recruiter, student, …)."
+        hint="One per line, up to 20 (recruiter, student, …)."
       />
     </Card>
   );

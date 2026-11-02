@@ -2,8 +2,12 @@ import { bodyOf, draftOf, items, planProblem } from "@/lib/events";
 import { toEventCsv } from "@/lib/leads";
 
 describe("the events helpers", () => {
-  it("reads a typed list once each, comma- or line-separated", () => {
-    expect(items("Software, SaaS ,software\n  Fin   tech ,")).toEqual(["Software", "SaaS", "Fin tech"]);
+  it("reads a typed list one per line, once each", () => {
+    expect(items("Software\n SaaS \nsoftware\n\n  Fin   tech ")).toEqual(["Software", "SaaS", "Fin tech"]);
+    expect(items("Washington, DC\nBanking, Financial Services")).toEqual([
+      "Washington, DC",
+      "Banking, Financial Services",
+    ]);
   });
 
   it("sends the plan back as the server keeps it", () => {
@@ -16,8 +20,8 @@ describe("the events helpers", () => {
         summary: "B2B teams.",
         industries: ["Software"],
         company_sizes: ["201-500", "51-200"],
-        regions: ["United States"],
-        personas: [{ label: "RevOps", title_keywords: ["revops"], seniorities: ["vp"] }],
+        regions: ["United States", "Washington, DC"],
+        personas: [{ label: "RevOps", title_keywords: ["revops", "revenue operations, sales"], seniorities: ["vp"] }],
       },
       events: [{ index: 0, name: "A", own: false, past: false, picked: true, queries: ['"A" going', "#A"] }],
     });
@@ -25,7 +29,10 @@ describe("the events helpers", () => {
     draft.events[0] = { picked: true, queries: '"A" going\n\n #A ' };
     const body = bodyOf(draft, true);
     expect(body.icp.company_sizes).toEqual(["51-200", "201-500"]); // in size order
-    expect(body.icp.personas).toEqual([{ label: "RevOps", title_keywords: ["revops"], seniorities: ["vp"] }]);
+    expect(body.icp.regions).toEqual(["United States", "Washington, DC"]); // a comma stays inside its value
+    expect(body.icp.personas).toEqual([
+      { label: "RevOps", title_keywords: ["revops", "revenue operations, sales"], seniorities: ["vp"] },
+    ]);
     expect(body.icp.exclude_title_keywords).toEqual([]);
     expect(body.events).toEqual([{ picked: true, queries: ['"A" going', "#A"] }]);
     expect(body.approve).toBe(true);
@@ -64,9 +71,7 @@ describe("the events helpers", () => {
     };
     const ok = { icp, events: [{ picked: true, queries: ['"A" going'] }], approve: false };
     expect(planProblem(ok)).toBe("");
-    expect(planProblem({ ...ok, icp: { ...icp, industries: [] } })).toBe(
-      "List 1 to 12 industries, separated by commas.",
-    );
+    expect(planProblem({ ...ok, icp: { ...icp, industries: [] } })).toBe("List 1 to 12 industries, one per line.");
     expect(planProblem({ ...ok, icp: { ...icp, company_sizes: [] } })).toBe("Pick at least one company size.");
     expect(planProblem({ ...ok, icp: { ...icp, personas: [{ label: "RevOps", title_keywords: [] }] } })).toBe(
       "Give buyer 1 a name and 1 to 15 words from their job titles.",
