@@ -165,9 +165,8 @@ PROTECTED = [
     ("GET", f"/api/events/runs/{RUN}/leads"),
     ("PUT", "/api/events/new-runs"),
 ]
-# Open on purpose: a lead magnet report, for whoever holds its link (the token in it is checked), and whether the
-# events tool is set up (key names only).
-PUBLIC = {("GET", "/api/public/magnets/{magnet_id}/{token}"), ("GET", "/api/public/events/status")}
+# Open on purpose: a lead magnet report, for whoever holds its link (the token in it is checked).
+PUBLIC = {("GET", "/api/public/magnets/{magnet_id}/{token}")}
 
 
 @pytest.mark.parametrize(("method", "path"), PROTECTED)

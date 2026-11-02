@@ -897,6 +897,7 @@ class EventsStatus(BaseModel):
     ready: bool  # keys set, the worker on, and sign-in on (the tool is off without it)
     missing: list[str]  # names of the keys the tool needs that aren't set
     worker: bool  # the background worker runs in this process (EVENTS_WORKER)
+    open_access: bool  # the tracker runs without sign-in (OPEN_ACCESS), which turns the tool off
 
 
 class EventsHome(BaseModel):

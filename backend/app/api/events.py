@@ -40,9 +40,10 @@ from app.schemas import (
 log = logging.getLogger("gtm_tracker.events")
 
 router = APIRouter(prefix="/api/events", tags=["events"], dependencies=[SignedIn])
-# Open on purpose: whether the tool is set up, so it can be checked without signing in. It names missing keys and
-# nothing else: no runs, no lists, no spend, and nothing it answers can start paid work.
-public = APIRouter(prefix="/api/public/events", tags=["events"])
+# Open on purpose, like /healthz and /readyz (and outside /api like them): whether the tool is set up, so it can be
+# checked without signing in. It names missing keys and nothing else: no runs, no lists, no spend, and nothing it
+# answers can start paid work.
+health = APIRouter(tags=["events"], include_in_schema=False)
 
 LIST_LIMIT = 50
 OFF_WITHOUT_SIGN_IN = "The events tool is off while the tracker has no sign-in (OPEN_ACCESS): its lists hold emails."
@@ -130,13 +131,16 @@ def _out(session: Session, run: Run, settings: EventsSettings, now: datetime) ->
     )
 
 
-@public.get("/status", response_model=EventsStatus)
+@health.get("/healthz/events", response_model=EventsStatus)
 def status_check(settings: AppSettings, events: Events) -> EventsStatus:
-    """Whether the tool can run: the names of any keys still missing, whether the worker runs, and whether sign-in
-    is on (the tool is off without it)."""
+    """Whether the tool can run: the names of any keys still missing, whether the worker runs, and whether the
+    tracker runs without sign-in (the tool is off then)."""
     missing = events.missing()
     return EventsStatus(
-        ready=not missing and events.worker and not settings.open_access, missing=missing, worker=events.worker
+        ready=not missing and events.worker and not settings.open_access,
+        missing=missing,
+        worker=events.worker,
+        open_access=settings.open_access,
     )
 
 

@@ -124,7 +124,7 @@ def create_app() -> FastAPI:
     for module in (auth_routes, companies, people, moves, today, fractional, backup, radar, enrich, magnets, events):
         app.include_router(module.router)
     app.include_router(magnets.public)
-    app.include_router(events.public)
+    app.include_router(events.health)
 
     static = Path(settings.static_dir)
     if (static / "index.html").is_file():

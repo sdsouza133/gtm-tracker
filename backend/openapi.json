@@ -2425,28 +2425,6 @@
      }
     }
    }
-  },
-  "/api/public/events/status": {
-   "get": {
-    "tags": [
-     "events"
-    ],
-    "summary": "Status Check",
-    "description": "Whether the tool can run: the names of any keys still missing, whether the worker runs, and whether sign-in\nis on (the tool is off without it).",
-    "operationId": "status_check_api_public_events_status_get",
-    "responses": {
-     "200": {
-      "description": "Successful Response",
-      "content": {
-       "application/json": {
-        "schema": {
-         "$ref": "#/components/schemas/EventsStatus"
-        }
-       }
-      }
-     }
-    }
-   }
   }
  },
  "components": {
@@ -4089,33 +4067,6 @@
      "failed"
     ],
     "title": "EventsQueue"
-   },
-   "EventsStatus": {
-    "properties": {
-     "ready": {
-      "type": "boolean",
-      "title": "Ready"
-     },
-     "missing": {
-      "items": {
-       "type": "string"
-      },
-      "type": "array",
-      "title": "Missing"
-     },
-     "worker": {
-      "type": "boolean",
-      "title": "Worker"
-     }
-    },
-    "type": "object",
-    "required": [
-     "ready",
-     "missing",
-     "worker"
-    ],
-    "title": "EventsStatus",
-    "description": "Whether the events tool can run, for anyone: names of missing keys only, never their values or any data."
    },
    "EventsSwitch": {
     "properties": {

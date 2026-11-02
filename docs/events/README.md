@@ -49,8 +49,8 @@ The worker claims jobs from `ev_jobs` and runs them (see [ADR 0002](adr-0002-pos
 - **The worker needs three keys:** `ANTHROPIC_API_KEY`, `APIFY_TOKEN` and `APOLLO_API_KEY`, the same keys the rest of
   the tracker uses (and `EVENTS_REOON_API_KEY` with `EVENTS_REOON_ENABLED`). Without them it runs only its
   housekeeping and the 30-day deletion, and the Events page says which keys are missing. A run whose job it gives
-  up on still fails. `GET /api/public/events/status` says the same without sign-in: `ready`, the names of any
-  missing keys, and whether the worker runs. It shows nothing else.
+  up on still fails. `GET /healthz/events` says the same without sign-in, like `/healthz`: `ready`, the names of
+  any missing keys, whether the worker runs, and whether the tracker runs without sign-in. It shows nothing else.
 - **`EVENTS_WORKER=false`** turns the worker off. The tests do this.
 - **A redeploy** stops the worker. It takes no new job, and waits up to 20 seconds for the one it's running. A job about
   to make a paid call goes back to the queue, and a job cut off mid-way is picked up again once its heartbeat goes

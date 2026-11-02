@@ -112,24 +112,29 @@ def test_without_its_keys_no_run_starts(events_client: TestClient) -> None:
 
 def test_whether_the_tool_is_set_up_can_be_checked_without_signing_in(client: TestClient, db: Session) -> None:
     make_run(db)
+    url = "/healthz/events"
+    # As the app started: the tests run it with EVENTS_WORKER=false, so no worker, and so not ready.
+    assert client.get(url).json()["worker"] is False
+    assert client.get(url).json()["ready"] is False
+
     overrides = client.app.dependency_overrides  # type: ignore[attr-defined]
     overrides[get_events_settings] = lambda: EventsSettings(providers="fake", worker=True)
-    status = client.get("/api/public/events/status")
+    status = client.get(url)
     assert status.status_code == 200
-    assert status.json() == {"ready": True, "missing": [], "worker": True}  # key names only: no runs, no spend
+    # key names only: no runs, no spend, no values
+    assert status.json() == {"ready": True, "missing": [], "worker": True, "open_access": False}
 
     overrides[get_events_settings] = lambda: EventsSettings(providers="real", anthropic_api_key="a-key", worker=True)
-    assert client.get("/api/public/events/status").json() == {
+    assert client.get(url).json() == {
         "ready": False,
         "missing": ["APIFY_TOKEN", "APOLLO_API_KEY"],
         "worker": True,
+        "open_access": False,
     }
-    overrides[get_events_settings] = lambda: EventsSettings(providers="fake", worker=False)
-    assert client.get("/api/public/events/status").json()["ready"] is False
 
     overrides[get_events_settings] = lambda: EventsSettings(providers="fake", worker=True)
     overrides[get_settings] = lambda: get_settings().model_copy(update={"open_access": True})
-    assert client.get("/api/public/events/status").json()["ready"] is False  # the tool is off without sign-in
+    assert client.get(url).json() == {"ready": False, "missing": [], "worker": True, "open_access": True}
     del overrides[get_settings]
     assert client.get("/api/events").status_code == 401  # everything else still needs sign-in
 

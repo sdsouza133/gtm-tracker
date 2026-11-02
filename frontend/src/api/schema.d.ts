@@ -871,27 +871,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/public/events/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Status Check
-         * @description Whether the tool can run: the names of any keys still missing, whether the worker runs, and whether sign-in
-         *     is on (the tool is off without it).
-         */
-        get: operations["status_check_api_public_events_status_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1369,18 +1348,6 @@ export interface components {
             running: number;
             /** Failed */
             failed: number;
-        };
-        /**
-         * EventsStatus
-         * @description Whether the events tool can run, for anyone: names of missing keys only, never their values or any data.
-         */
-        EventsStatus: {
-            /** Ready */
-            ready: boolean;
-            /** Missing */
-            missing: string[];
-            /** Worker */
-            worker: boolean;
         };
         /** EventsSwitch */
         EventsSwitch: {
@@ -4341,26 +4308,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    status_check_api_public_events_status_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EventsStatus"];
                 };
             };
         };
