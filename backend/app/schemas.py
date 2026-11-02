@@ -14,6 +14,7 @@ from pydantic import (
     field_validator,
 )
 
+from app.events.schemas import Icp
 from app.models import MoveStatus, MoveType, ParkedWhy, PersonStatus, RoleInHire, Stage, Sureness
 from app.services.reach import Step
 
@@ -757,3 +758,145 @@ class PublicMagnet(BaseModel):
     fit: int  # everyone in the ICP who engaged, anywhere
     in_region: int  # of those looked up, in the US or Canada
     more: int  # leads found but not shown (a teaser shows a few)
+
+
+# ----------------------------------------------------------------------------- the events tool
+
+MAX_PLAN_EVENTS = 40  # the events a plan can list: those found, and up to 3 added by hand
+
+
+class EventRunCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    website: str = Field(min_length=1, max_length=300)
+    company_id: str | None = Field(default=None, max_length=40)  # the tracker company it's for, if any
+
+
+class EventPick(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    picked: bool
+    queries: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list, max_length=10)
+
+
+class EventPlanSave(BaseModel):
+    """The plan as edited: the ICP, and each event's pick and searches in the order the run lists its events."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    icp: Icp
+    events: list[EventPick] = Field(max_length=MAX_PLAN_EVENTS)
+    approve: bool = False
+
+
+class EventAdd(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=200)
+    day: date | None = None  # when it starts, if known
+    url: str | None = Field(default=None, max_length=2048)
+
+
+class EventsSwitch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paused: bool
+
+
+class EventProgress(BaseModel):
+    steps: list[str]
+    step: int
+    note: str
+
+
+class EventFound(BaseModel):
+    posts: int
+    people: int
+    emails: int
+    percent: int
+
+
+class PlanEvent(BaseModel):
+    index: int
+    name: str
+    start_date: date | None = None
+    end_date: date | None = None
+    location: str | None = None
+    url: str | None = None
+    why: str | None = None  # why it was suggested; none for an event added by hand
+    own: bool  # added by hand
+    past: bool  # over already: the search looks for the people who went
+    picked: bool
+    queries: list[str]
+
+
+class EventPlan(BaseModel):
+    company_name: str
+    offering: str
+    icp: Icp
+    events: list[PlanEvent]
+    max_picked: int
+    max_queries: int
+
+
+class EventRunSummary(BaseModel):
+    id: str
+    website: str
+    domain: str
+    company_id: str | None
+    company_name: str | None
+    status: str
+    label: str
+    detail: str
+    created: datetime
+    completed: datetime | None
+    leads: int
+    spent_usd: float
+    budget_usd: float
+
+
+class EventRunOut(EventRunSummary):
+    error: str  # the technical reason a step failed, if one did
+    working: bool  # the page checks back every few seconds while this is true
+    progress: EventProgress | None
+    found: EventFound | None
+    plan: EventPlan | None
+    expires: datetime | None
+
+
+class EventLeadOut(BaseModel):
+    name: str
+    title: str
+    company: str
+    email: str
+    linkedin: str
+    event: str
+    attendance: str  # Speaking, Exhibiting, Going or Went
+    post: str
+    score: int
+    reasons: list[str]
+
+
+class EventsToday(BaseModel):
+    spent_usd: float
+    reserved_usd: float
+    cap_usd: float
+    runs_started: int
+
+
+class EventsQueue(BaseModel):
+    due: int
+    later: int
+    running: int
+    failed: int
+
+
+class EventsHome(BaseModel):
+    missing: list[str]  # keys the tool needs that aren't set
+    open_access: bool  # the tool is off while the tracker has no sign-in: its lists hold work emails
+    paused: bool  # new runs are held (the switch, or EVENTS_PAUSE_NEW_RUNS)
+    paused_by_setting: bool  # EVENTS_PAUSE_NEW_RUNS is set, so the switch alone can't start them again
+    run_budget_usd: float
+    today: EventsToday
+    queue: EventsQueue
+    runs: list[EventRunSummary]

@@ -402,3 +402,93 @@ export function usePublicMagnet(id: string, token: string) {
     staleTime: Infinity, // each load counts as a view; don't refetch on focus
   });
 }
+
+// ----------------------------------------------------------------------------- the events tool
+
+export type EventsHome = S["EventsHome"];
+export type EventRun = S["EventRunOut"];
+export type EventRunSummary = S["EventRunSummary"];
+export type EventPlan = S["EventPlan"];
+export type PlanEvent = S["PlanEvent"];
+export type Icp = S["Icp"];
+export type EventLead = S["EventLeadOut"];
+
+const eventKeys = {
+  home: (companyId?: string) => ["events", companyId ?? "all"] as const,
+  run: (id: string) => ["event-run", id] as const,
+  leads: (id: string) => ["event-leads", id] as const,
+};
+const POLL_MS = 3000;
+
+/** The tool's state, today's spend and the latest runs (for one company, given its id). */
+export function useEventsHome(companyId?: string) {
+  return useQuery({
+    queryKey: eventKeys.home(companyId),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/events", { params: { query: companyId ? { company_id: companyId } : {} } })),
+    refetchInterval: (query) => (query.state.data?.runs.some((r) => WORKING.has(r.status)) ? POLL_MS : false),
+  });
+}
+
+/** What a run's page shows while the worker is on it; it checks back every few seconds. */
+export const WORKING = new Set(["analyzing", "collecting", "waiting_for_budget", "qualifying", "enriching"]);
+
+export function useEventRun(id: string) {
+  return useQuery({
+    queryKey: eventKeys.run(id),
+    queryFn: async () => unwrap(await api.GET("/api/events/runs/{run_id}", { params: { path: { run_id: id } } })),
+    refetchInterval: (query) => (query.state.data?.working ? POLL_MS : false),
+  });
+}
+
+export function useEventLeads(id: string, ready: boolean) {
+  return useQuery({
+    queryKey: eventKeys.leads(id),
+    queryFn: async () => unwrap(await api.GET("/api/events/runs/{run_id}/leads", { params: { path: { run_id: id } } })),
+    enabled: ready,
+  });
+}
+
+function useEventsChange<TVars>(fn: (vars: TVars) => Promise<EventRun>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (run) => client.setQueryData(eventKeys.run(run.id), run),
+    onSettled: () => client.invalidateQueries({ queryKey: ["events"] }),
+  });
+}
+
+export function useStartEventRun() {
+  return useEventsChange(async (body: { website: string; company_id?: string }) =>
+    unwrap(await api.POST("/api/events/runs", { body })),
+  );
+}
+
+export function useSavePlan(id: string) {
+  return useEventsChange(async (body: S["EventPlanSave"]) =>
+    unwrap(await api.PUT("/api/events/runs/{run_id}/plan", { params: { path: { run_id: id } }, body })),
+  );
+}
+
+export function useAddEvent(id: string) {
+  return useEventsChange(async (body: S["EventAdd"]) =>
+    unwrap(await api.POST("/api/events/runs/{run_id}/events", { params: { path: { run_id: id } }, body })),
+  );
+}
+
+export function useCancelEventRun(id: string) {
+  return useEventsChange(async () =>
+    unwrap(await api.POST("/api/events/runs/{run_id}/cancel", { params: { path: { run_id: id } } })),
+  );
+}
+
+export function useHoldNewRuns() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (paused: boolean) => {
+      const result = await api.PUT("/api/events/new-runs", { body: { paused } });
+      if (!result.response.ok) unwrap(result);
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: ["events"] }),
+  });
+}

@@ -691,6 +691,165 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Overview
+         * @description Whether the tool can run, today's spend against the daily cap, the queue, and the latest runs (for one
+         *     company, given its id).
+         */
+        get: operations["overview_api_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Run
+         * @description Start a run: it reads the site and suggests a plan, which waits for you to approve it before any search.
+         */
+        post: operations["start_run_api_events_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_events_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/runs/{run_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Plan
+         * @description Save the plan as edited, and with `approve`, start searching (the only step that spends beyond reading the
+         *     site).
+         */
+        put: operations["save_plan_api_events_runs__run_id__plan_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Event
+         * @description Add an event you know to the plan; its searches are written for you, and it's picked if there's room.
+         */
+        post: operations["add_event_api_events_runs__run_id__events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Run
+         * @description Stop a run that hasn't finished. A call already under way finishes, and its cost counts.
+         */
+        post: operations["cancel_run_api_events_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/runs/{run_id}/leads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Leads
+         * @description A finished run's list, best first.
+         */
+        get: operations["leads_api_events_runs__run_id__leads_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/new-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch New Runs
+         * @description Hold new runs (runs already started carry on), or let them start again.
+         */
+        put: operations["switch_new_runs_api_events_new_runs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/public/magnets/{magnet_id}/{token}": {
         parameters: {
             query?: never;
@@ -995,6 +1154,217 @@ export interface components {
             /** Companies */
             companies: number;
         };
+        /** EventAdd */
+        EventAdd: {
+            /** Name */
+            name: string;
+            /** Day */
+            day?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /** EventFound */
+        EventFound: {
+            /** Posts */
+            posts: number;
+            /** People */
+            people: number;
+            /** Emails */
+            emails: number;
+            /** Percent */
+            percent: number;
+        };
+        /** EventLeadOut */
+        EventLeadOut: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Company */
+            company: string;
+            /** Email */
+            email: string;
+            /** Linkedin */
+            linkedin: string;
+            /** Event */
+            event: string;
+            /** Attendance */
+            attendance: string;
+            /** Post */
+            post: string;
+            /** Score */
+            score: number;
+            /** Reasons */
+            reasons: string[];
+        };
+        /** EventPick */
+        EventPick: {
+            /** Picked */
+            picked: boolean;
+            /** Queries */
+            queries?: string[];
+        };
+        /** EventPlan */
+        EventPlan: {
+            /** Company Name */
+            company_name: string;
+            /** Offering */
+            offering: string;
+            icp: components["schemas"]["Icp"];
+            /** Events */
+            events: components["schemas"]["PlanEvent"][];
+            /** Max Picked */
+            max_picked: number;
+            /** Max Queries */
+            max_queries: number;
+        };
+        /**
+         * EventPlanSave
+         * @description The plan as edited: the ICP, and each event's pick and searches in the order the run lists its events.
+         */
+        EventPlanSave: {
+            icp: components["schemas"]["Icp"];
+            /** Events */
+            events: components["schemas"]["EventPick"][];
+            /**
+             * Approve
+             * @default false
+             */
+            approve?: boolean;
+        };
+        /** EventProgress */
+        EventProgress: {
+            /** Steps */
+            steps: string[];
+            /** Step */
+            step: number;
+            /** Note */
+            note: string;
+        };
+        /** EventRunCreate */
+        EventRunCreate: {
+            /** Website */
+            website: string;
+            /** Company Id */
+            company_id?: string | null;
+        };
+        /** EventRunOut */
+        EventRunOut: {
+            /** Id */
+            id: string;
+            /** Website */
+            website: string;
+            /** Domain */
+            domain: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name: string | null;
+            /** Status */
+            status: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Created
+             * Format: date-time
+             */
+            created: string;
+            /** Completed */
+            completed: string | null;
+            /** Leads */
+            leads: number;
+            /** Spent Usd */
+            spent_usd: number;
+            /** Budget Usd */
+            budget_usd: number;
+            /** Error */
+            error: string;
+            /** Working */
+            working: boolean;
+            progress: components["schemas"]["EventProgress"] | null;
+            found: components["schemas"]["EventFound"] | null;
+            plan: components["schemas"]["EventPlan"] | null;
+            /** Expires */
+            expires: string | null;
+        };
+        /** EventRunSummary */
+        EventRunSummary: {
+            /** Id */
+            id: string;
+            /** Website */
+            website: string;
+            /** Domain */
+            domain: string;
+            /** Company Id */
+            company_id: string | null;
+            /** Company Name */
+            company_name: string | null;
+            /** Status */
+            status: string;
+            /** Label */
+            label: string;
+            /** Detail */
+            detail: string;
+            /**
+             * Created
+             * Format: date-time
+             */
+            created: string;
+            /** Completed */
+            completed: string | null;
+            /** Leads */
+            leads: number;
+            /** Spent Usd */
+            spent_usd: number;
+            /** Budget Usd */
+            budget_usd: number;
+        };
+        /** EventsHome */
+        EventsHome: {
+            /** Missing */
+            missing: string[];
+            /** Open Access */
+            open_access: boolean;
+            /** Paused */
+            paused: boolean;
+            /** Paused By Setting */
+            paused_by_setting: boolean;
+            /** Run Budget Usd */
+            run_budget_usd: number;
+            today: components["schemas"]["EventsToday"];
+            queue: components["schemas"]["EventsQueue"];
+            /** Runs */
+            runs: components["schemas"]["EventRunSummary"][];
+        };
+        /** EventsQueue */
+        EventsQueue: {
+            /** Due */
+            due: number;
+            /** Later */
+            later: number;
+            /** Running */
+            running: number;
+            /** Failed */
+            failed: number;
+        };
+        /** EventsSwitch */
+        EventsSwitch: {
+            /** Paused */
+            paused: boolean;
+        };
+        /** EventsToday */
+        EventsToday: {
+            /** Spent Usd */
+            spent_usd: number;
+            /** Reserved Usd */
+            reserved_usd: number;
+            /** Cap Usd */
+            cap_usd: number;
+            /** Runs Started */
+            runs_started: number;
+        };
         /** FollowUpOut */
         FollowUpOut: {
             /** Step */
@@ -1111,6 +1481,24 @@ export interface components {
             recruiter: boolean;
             /** Text */
             text: string;
+        };
+        /** Icp */
+        Icp: {
+            /** Summary */
+            summary: string;
+            /** Industries */
+            industries: string[];
+            /** Company Sizes */
+            company_sizes: components["schemas"]["SizeBand"][];
+            /**
+             * Regions
+             * @description Countries or regions
+             */
+            regions: string[];
+            /** Personas */
+            personas: components["schemas"]["Persona"][];
+            /** Exclude Title Keywords */
+            exclude_title_keywords?: string[];
         };
         /** LevelOut */
         LevelOut: {
@@ -1515,6 +1903,21 @@ export interface components {
          * @enum {string}
          */
         PersonStatus: "none" | "requested" | "connected" | "replied" | "no_response" | "declined";
+        /** Persona */
+        Persona: {
+            /**
+             * Label
+             * @description Who this is, e.g. 'Demand generation leaders'
+             */
+            label: string;
+            /**
+             * Title Keywords
+             * @description Words that appear in their job titles, e.g. 'demand gen', 'growth'
+             */
+            title_keywords: string[];
+            /** Seniorities */
+            seniorities?: components["schemas"]["Seniority"][];
+        };
         /** PlanDay */
         PlanDay: {
             /**
@@ -1524,6 +1927,31 @@ export interface components {
             day: string;
             /** Moves */
             moves: components["schemas"]["MoveCard"][];
+        };
+        /** PlanEvent */
+        PlanEvent: {
+            /** Index */
+            index: number;
+            /** Name */
+            name: string;
+            /** Start Date */
+            start_date?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Url */
+            url?: string | null;
+            /** Why */
+            why?: string | null;
+            /** Own */
+            own: boolean;
+            /** Past */
+            past: boolean;
+            /** Picked */
+            picked: boolean;
+            /** Queries */
+            queries: string[];
         };
         /** Promote */
         Promote: {
@@ -2029,6 +2457,12 @@ export interface components {
          * @enum {string}
          */
         RoleInHire: "hiring manager" | "approver" | "manager's boss" | "boss" | "both" | "founder" | "recruiter" | "poster" | "peer or stakeholder";
+        /**
+         * Seniority
+         * @description Apollo's seniority values, so ICP checks compare like with like.
+         * @enum {string}
+         */
+        Seniority: "owner" | "founder" | "c_suite" | "partner" | "vp" | "head" | "director" | "manager" | "senior" | "entry";
         /** Sequence */
         Sequence: {
             /** Day0 */
@@ -2071,6 +2505,11 @@ export interface components {
                 [key: string]: number;
             } | null;
         };
+        /**
+         * SizeBand
+         * @enum {string}
+         */
+        SizeBand: "1-10" | "11-50" | "51-200" | "201-500" | "501-1000" | "1001-5000" | "5001-10000" | "10001+";
         /** Snippets */
         Snippets: {
             /**
@@ -3564,6 +4003,264 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    overview_api_events_get: {
+        parameters: {
+            query?: {
+                company_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventsHome"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_run_api_events_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventRunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_events_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_plan_api_events_runs__run_id__plan_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventPlanSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_event_api_events_runs__run_id__events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_api_events_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventRunOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    leads_api_events_runs__run_id__leads_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventLeadOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    switch_new_runs_api_events_new_runs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventsSwitch"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {

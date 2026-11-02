@@ -2004,6 +2004,376 @@
     }
    }
   },
+  "/api/events": {
+   "get": {
+    "tags": [
+     "events"
+    ],
+    "summary": "Overview",
+    "description": "Whether the tool can run, today's spend against the daily cap, the queue, and the latest runs (for one\ncompany, given its id).",
+    "operationId": "overview_api_events_get",
+    "parameters": [
+     {
+      "name": "company_id",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Company Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventsHome"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/events/runs": {
+   "post": {
+    "tags": [
+     "events"
+    ],
+    "summary": "Start Run",
+    "description": "Start a run: it reads the site and suggests a plan, which waits for you to approve it before any search.",
+    "operationId": "start_run_api_events_runs_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EventRunCreate"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventRunOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/events/runs/{run_id}": {
+   "get": {
+    "tags": [
+     "events"
+    ],
+    "summary": "Get Run",
+    "operationId": "get_run_api_events_runs__run_id__get",
+    "parameters": [
+     {
+      "name": "run_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Run Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventRunOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/events/runs/{run_id}/plan": {
+   "put": {
+    "tags": [
+     "events"
+    ],
+    "summary": "Save Plan",
+    "description": "Save the plan as edited, and with `approve`, start searching (the only step that spends beyond reading the\nsite).",
+    "operationId": "save_plan_api_events_runs__run_id__plan_put",
+    "parameters": [
+     {
+      "name": "run_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Run Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EventPlanSave"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventRunOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/events/runs/{run_id}/events": {
+   "post": {
+    "tags": [
+     "events"
+    ],
+    "summary": "Add Event",
+    "description": "Add an event you know to the plan; its searches are written for you, and it's picked if there's room.",
+    "operationId": "add_event_api_events_runs__run_id__events_post",
+    "parameters": [
+     {
+      "name": "run_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Run Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EventAdd"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventRunOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/events/runs/{run_id}/cancel": {
+   "post": {
+    "tags": [
+     "events"
+    ],
+    "summary": "Cancel Run",
+    "description": "Stop a run that hasn't finished. A call already under way finishes, and its cost counts.",
+    "operationId": "cancel_run_api_events_runs__run_id__cancel_post",
+    "parameters": [
+     {
+      "name": "run_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Run Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EventRunOut"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/events/runs/{run_id}/leads": {
+   "get": {
+    "tags": [
+     "events"
+    ],
+    "summary": "Leads",
+    "description": "A finished run's list, best first.",
+    "operationId": "leads_api_events_runs__run_id__leads_get",
+    "parameters": [
+     {
+      "name": "run_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "format": "uuid",
+       "title": "Run Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "type": "array",
+         "items": {
+          "$ref": "#/components/schemas/EventLeadOut"
+         },
+         "title": "Response Leads Api Events Runs  Run Id  Leads Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/events/new-runs": {
+   "put": {
+    "tags": [
+     "events"
+    ],
+    "summary": "Switch New Runs",
+    "description": "Hold new runs (runs already started carry on), or let them start again.",
+    "operationId": "switch_new_runs_api_events_new_runs_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/EventsSwitch"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/public/magnets/{magnet_id}/{token}": {
    "get": {
     "tags": [
@@ -3096,6 +3466,650 @@
     ],
     "title": "EnrichOut"
    },
+   "EventAdd": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name"
+     },
+     "day": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Day"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 2048
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "name"
+    ],
+    "title": "EventAdd"
+   },
+   "EventFound": {
+    "properties": {
+     "posts": {
+      "type": "integer",
+      "title": "Posts"
+     },
+     "people": {
+      "type": "integer",
+      "title": "People"
+     },
+     "emails": {
+      "type": "integer",
+      "title": "Emails"
+     },
+     "percent": {
+      "type": "integer",
+      "title": "Percent"
+     }
+    },
+    "type": "object",
+    "required": [
+     "posts",
+     "people",
+     "emails",
+     "percent"
+    ],
+    "title": "EventFound"
+   },
+   "EventLeadOut": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "company": {
+      "type": "string",
+      "title": "Company"
+     },
+     "email": {
+      "type": "string",
+      "title": "Email"
+     },
+     "linkedin": {
+      "type": "string",
+      "title": "Linkedin"
+     },
+     "event": {
+      "type": "string",
+      "title": "Event"
+     },
+     "attendance": {
+      "type": "string",
+      "title": "Attendance"
+     },
+     "post": {
+      "type": "string",
+      "title": "Post"
+     },
+     "score": {
+      "type": "integer",
+      "title": "Score"
+     },
+     "reasons": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Reasons"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "title",
+     "company",
+     "email",
+     "linkedin",
+     "event",
+     "attendance",
+     "post",
+     "score",
+     "reasons"
+    ],
+    "title": "EventLeadOut"
+   },
+   "EventPick": {
+    "properties": {
+     "picked": {
+      "type": "boolean",
+      "title": "Picked"
+     },
+     "queries": {
+      "items": {
+       "type": "string",
+       "maxLength": 300
+      },
+      "type": "array",
+      "maxItems": 10,
+      "title": "Queries"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "picked"
+    ],
+    "title": "EventPick"
+   },
+   "EventPlan": {
+    "properties": {
+     "company_name": {
+      "type": "string",
+      "title": "Company Name"
+     },
+     "offering": {
+      "type": "string",
+      "title": "Offering"
+     },
+     "icp": {
+      "$ref": "#/components/schemas/Icp"
+     },
+     "events": {
+      "items": {
+       "$ref": "#/components/schemas/PlanEvent"
+      },
+      "type": "array",
+      "title": "Events"
+     },
+     "max_picked": {
+      "type": "integer",
+      "title": "Max Picked"
+     },
+     "max_queries": {
+      "type": "integer",
+      "title": "Max Queries"
+     }
+    },
+    "type": "object",
+    "required": [
+     "company_name",
+     "offering",
+     "icp",
+     "events",
+     "max_picked",
+     "max_queries"
+    ],
+    "title": "EventPlan"
+   },
+   "EventPlanSave": {
+    "properties": {
+     "icp": {
+      "$ref": "#/components/schemas/Icp"
+     },
+     "events": {
+      "items": {
+       "$ref": "#/components/schemas/EventPick"
+      },
+      "type": "array",
+      "maxItems": 40,
+      "title": "Events"
+     },
+     "approve": {
+      "type": "boolean",
+      "title": "Approve",
+      "default": false
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "icp",
+     "events"
+    ],
+    "title": "EventPlanSave",
+    "description": "The plan as edited: the ICP, and each event's pick and searches in the order the run lists its events."
+   },
+   "EventProgress": {
+    "properties": {
+     "steps": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Steps"
+     },
+     "step": {
+      "type": "integer",
+      "title": "Step"
+     },
+     "note": {
+      "type": "string",
+      "title": "Note"
+     }
+    },
+    "type": "object",
+    "required": [
+     "steps",
+     "step",
+     "note"
+    ],
+    "title": "EventProgress"
+   },
+   "EventRunCreate": {
+    "properties": {
+     "website": {
+      "type": "string",
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Website"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 40
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "website"
+    ],
+    "title": "EventRunCreate"
+   },
+   "EventRunOut": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "website": {
+      "type": "string",
+      "title": "Website"
+     },
+     "domain": {
+      "type": "string",
+      "title": "Domain"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     },
+     "company_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Name"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "detail": {
+      "type": "string",
+      "title": "Detail"
+     },
+     "created": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created"
+     },
+     "completed": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Completed"
+     },
+     "leads": {
+      "type": "integer",
+      "title": "Leads"
+     },
+     "spent_usd": {
+      "type": "number",
+      "title": "Spent Usd"
+     },
+     "budget_usd": {
+      "type": "number",
+      "title": "Budget Usd"
+     },
+     "error": {
+      "type": "string",
+      "title": "Error"
+     },
+     "working": {
+      "type": "boolean",
+      "title": "Working"
+     },
+     "progress": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EventProgress"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "found": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EventFound"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "plan": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/EventPlan"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "expires": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expires"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "website",
+     "domain",
+     "company_id",
+     "company_name",
+     "status",
+     "label",
+     "detail",
+     "created",
+     "completed",
+     "leads",
+     "spent_usd",
+     "budget_usd",
+     "error",
+     "working",
+     "progress",
+     "found",
+     "plan",
+     "expires"
+    ],
+    "title": "EventRunOut"
+   },
+   "EventRunSummary": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "website": {
+      "type": "string",
+      "title": "Website"
+     },
+     "domain": {
+      "type": "string",
+      "title": "Domain"
+     },
+     "company_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Id"
+     },
+     "company_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Company Name"
+     },
+     "status": {
+      "type": "string",
+      "title": "Status"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "detail": {
+      "type": "string",
+      "title": "Detail"
+     },
+     "created": {
+      "type": "string",
+      "format": "date-time",
+      "title": "Created"
+     },
+     "completed": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date-time"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Completed"
+     },
+     "leads": {
+      "type": "integer",
+      "title": "Leads"
+     },
+     "spent_usd": {
+      "type": "number",
+      "title": "Spent Usd"
+     },
+     "budget_usd": {
+      "type": "number",
+      "title": "Budget Usd"
+     }
+    },
+    "type": "object",
+    "required": [
+     "id",
+     "website",
+     "domain",
+     "company_id",
+     "company_name",
+     "status",
+     "label",
+     "detail",
+     "created",
+     "completed",
+     "leads",
+     "spent_usd",
+     "budget_usd"
+    ],
+    "title": "EventRunSummary"
+   },
+   "EventsHome": {
+    "properties": {
+     "missing": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Missing"
+     },
+     "open_access": {
+      "type": "boolean",
+      "title": "Open Access"
+     },
+     "paused": {
+      "type": "boolean",
+      "title": "Paused"
+     },
+     "paused_by_setting": {
+      "type": "boolean",
+      "title": "Paused By Setting"
+     },
+     "run_budget_usd": {
+      "type": "number",
+      "title": "Run Budget Usd"
+     },
+     "today": {
+      "$ref": "#/components/schemas/EventsToday"
+     },
+     "queue": {
+      "$ref": "#/components/schemas/EventsQueue"
+     },
+     "runs": {
+      "items": {
+       "$ref": "#/components/schemas/EventRunSummary"
+      },
+      "type": "array",
+      "title": "Runs"
+     }
+    },
+    "type": "object",
+    "required": [
+     "missing",
+     "open_access",
+     "paused",
+     "paused_by_setting",
+     "run_budget_usd",
+     "today",
+     "queue",
+     "runs"
+    ],
+    "title": "EventsHome"
+   },
+   "EventsQueue": {
+    "properties": {
+     "due": {
+      "type": "integer",
+      "title": "Due"
+     },
+     "later": {
+      "type": "integer",
+      "title": "Later"
+     },
+     "running": {
+      "type": "integer",
+      "title": "Running"
+     },
+     "failed": {
+      "type": "integer",
+      "title": "Failed"
+     }
+    },
+    "type": "object",
+    "required": [
+     "due",
+     "later",
+     "running",
+     "failed"
+    ],
+    "title": "EventsQueue"
+   },
+   "EventsSwitch": {
+    "properties": {
+     "paused": {
+      "type": "boolean",
+      "title": "Paused"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "paused"
+    ],
+    "title": "EventsSwitch"
+   },
+   "EventsToday": {
+    "properties": {
+     "spent_usd": {
+      "type": "number",
+      "title": "Spent Usd"
+     },
+     "reserved_usd": {
+      "type": "number",
+      "title": "Reserved Usd"
+     },
+     "cap_usd": {
+      "type": "number",
+      "title": "Cap Usd"
+     },
+     "runs_started": {
+      "type": "integer",
+      "title": "Runs Started"
+     }
+    },
+    "type": "object",
+    "required": [
+     "spent_usd",
+     "reserved_usd",
+     "cap_usd",
+     "runs_started"
+    ],
+    "title": "EventsToday"
+   },
    "FollowUpOut": {
     "properties": {
      "step": {
@@ -3399,6 +4413,77 @@
      "text"
     ],
     "title": "HiringPost"
+   },
+   "Icp": {
+    "properties": {
+     "summary": {
+      "type": "string",
+      "maxLength": 600,
+      "minLength": 1,
+      "title": "Summary"
+     },
+     "industries": {
+      "items": {
+       "type": "string",
+       "maxLength": 120,
+       "minLength": 1
+      },
+      "type": "array",
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Industries"
+     },
+     "company_sizes": {
+      "items": {
+       "$ref": "#/components/schemas/SizeBand"
+      },
+      "type": "array",
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Company Sizes"
+     },
+     "regions": {
+      "items": {
+       "type": "string",
+       "maxLength": 120,
+       "minLength": 1
+      },
+      "type": "array",
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Regions",
+      "description": "Countries or regions"
+     },
+     "personas": {
+      "items": {
+       "$ref": "#/components/schemas/Persona"
+      },
+      "type": "array",
+      "maxItems": 5,
+      "minItems": 1,
+      "title": "Personas"
+     },
+     "exclude_title_keywords": {
+      "items": {
+       "type": "string",
+       "maxLength": 120,
+       "minLength": 1
+      },
+      "type": "array",
+      "maxItems": 20,
+      "title": "Exclude Title Keywords"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "summary",
+     "industries",
+     "company_sizes",
+     "regions",
+     "personas"
+    ],
+    "title": "Icp"
    },
    "LevelOut": {
     "properties": {
@@ -4784,6 +5869,44 @@
     ],
     "title": "PersonStatus"
    },
+   "Persona": {
+    "properties": {
+     "label": {
+      "type": "string",
+      "maxLength": 120,
+      "minLength": 1,
+      "title": "Label",
+      "description": "Who this is, e.g. 'Demand generation leaders'"
+     },
+     "title_keywords": {
+      "items": {
+       "type": "string",
+       "maxLength": 120,
+       "minLength": 1
+      },
+      "type": "array",
+      "maxItems": 15,
+      "minItems": 1,
+      "title": "Title Keywords",
+      "description": "Words that appear in their job titles, e.g. 'demand gen', 'growth'"
+     },
+     "seniorities": {
+      "items": {
+       "$ref": "#/components/schemas/Seniority"
+      },
+      "type": "array",
+      "maxItems": 10,
+      "title": "Seniorities"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "label",
+     "title_keywords"
+    ],
+    "title": "Persona"
+   },
    "PlanDay": {
     "properties": {
      "day": {
@@ -4805,6 +5928,104 @@
      "moves"
     ],
     "title": "PlanDay"
+   },
+   "PlanEvent": {
+    "properties": {
+     "index": {
+      "type": "integer",
+      "title": "Index"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "start_date": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start Date"
+     },
+     "end_date": {
+      "anyOf": [
+       {
+        "type": "string",
+        "format": "date"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End Date"
+     },
+     "location": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Location"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     },
+     "why": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Why"
+     },
+     "own": {
+      "type": "boolean",
+      "title": "Own"
+     },
+     "past": {
+      "type": "boolean",
+      "title": "Past"
+     },
+     "picked": {
+      "type": "boolean",
+      "title": "Picked"
+     },
+     "queries": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Queries"
+     }
+    },
+    "type": "object",
+    "required": [
+     "index",
+     "name",
+     "own",
+     "past",
+     "picked",
+     "queries"
+    ],
+    "title": "PlanEvent"
    },
    "Promote": {
     "properties": {
@@ -6256,6 +7477,23 @@
     ],
     "title": "RoleInHire"
    },
+   "Seniority": {
+    "type": "string",
+    "enum": [
+     "owner",
+     "founder",
+     "c_suite",
+     "partner",
+     "vp",
+     "head",
+     "director",
+     "manager",
+     "senior",
+     "entry"
+    ],
+    "title": "Seniority",
+    "description": "Apollo's seniority values, so ICP checks compare like with like."
+   },
    "Sequence": {
     "properties": {
      "day0": {
@@ -6442,6 +7680,20 @@
     "type": "object",
     "title": "SettingsOut",
     "description": "The settings the app uses. Only these can be written."
+   },
+   "SizeBand": {
+    "type": "string",
+    "enum": [
+     "1-10",
+     "11-50",
+     "51-200",
+     "201-500",
+     "501-1000",
+     "1001-5000",
+     "5001-10000",
+     "10001+"
+    ],
+    "title": "SizeBand"
    },
    "Snippets": {
     "properties": {

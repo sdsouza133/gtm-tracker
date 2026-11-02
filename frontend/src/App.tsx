@@ -5,6 +5,8 @@ import { useAuth } from "@/auth";
 import { Layout } from "@/components/Layout";
 import { Button, EmptyState, PageHeader } from "@/components/ui";
 import { CompanyPage } from "@/pages/Company";
+import { EventRunPage } from "@/pages/EventRun";
+import { EventsPage } from "@/pages/Events";
 import { FractionalPage } from "@/pages/Fractional";
 import { LoginPage } from "@/pages/Login";
 import { MagnetReportPage } from "@/pages/MagnetReport";
@@ -60,6 +62,8 @@ export function App() {
         <Route path="plan" element={<PlanPage />} />
         <Route path="radar" element={<RadarPage />} />
         <Route path="fractional" element={<FractionalPage />} />
+        <Route path="events" element={<EventsPage />} />
+        <Route path="events/:runId" element={<EventRunPage />} />
         <Route path="*" element={<Placeholder title="Not found" />} />
       </Route>
     </Routes>

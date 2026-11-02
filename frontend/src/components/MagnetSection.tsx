@@ -120,7 +120,6 @@ export function MagnetSection({ companyId, website }: { companyId: string; websi
       { mode, website: site.trim() || undefined, competitors },
       {
         onSuccess: () => notify(mode === "full" ? "Building the full list" : "Building the teaser"),
-        onError: (e) => notify(e.message, "error"),
       },
     );
   }
@@ -191,7 +190,6 @@ export function MagnetSection({ companyId, website }: { companyId: string; websi
               onDelete={() =>
                 remove.mutate(m.id, {
                   onSuccess: () => notify("Deleted"),
-                  onError: (e) => notify(e.message, "error"),
                 })
               }
             />

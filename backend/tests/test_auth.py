@@ -113,6 +113,7 @@ def test_no_public_api_docs(client: TestClient) -> None:
     assert client.get("/api/openapi.json").status_code == 404
 
 
+RUN = "00000000-0000-4000-8000-000000000001"  # an events run id (a UUID)
 PROTECTED = [
     ("GET", "/api/companies"),
     ("POST", "/api/companies"),
@@ -155,6 +156,14 @@ PROTECTED = [
     ("POST", "/api/companies/c1/magnets"),
     ("GET", "/api/magnets/g1"),
     ("DELETE", "/api/magnets/g1"),
+    ("GET", "/api/events"),
+    ("POST", "/api/events/runs"),
+    ("GET", f"/api/events/runs/{RUN}"),
+    ("PUT", f"/api/events/runs/{RUN}/plan"),
+    ("POST", f"/api/events/runs/{RUN}/events"),
+    ("POST", f"/api/events/runs/{RUN}/cancel"),
+    ("GET", f"/api/events/runs/{RUN}/leads"),
+    ("PUT", "/api/events/new-runs"),
 ]
 # Open on purpose: a lead magnet report, for whoever holds its link (the token in it is checked).
 PUBLIC = {("GET", "/api/public/magnets/{magnet_id}/{token}")}
@@ -185,6 +194,7 @@ def test_every_api_route_is_covered_above() -> None:
         "x1": "{prospect_id}",
         "r1": "{item_id}",
         "g1": "{magnet_id}",
+        RUN: "{run_id}",
     }
     covered = {(m, "/".join(ids.get(part, part) for part in p.split("/"))) for m, p in PROTECTED}
     assert routes == covered | PUBLIC
