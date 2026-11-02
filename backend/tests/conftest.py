@@ -25,6 +25,7 @@ os.environ["SECURE_COOKIES"] = "false"
 os.environ["STATIC_DIR"] = "/nonexistent"
 os.environ["API_TOKEN"] = "automation-token-for-tests"
 os.environ["RADAR_SCHEDULE"] = "false"
+os.environ["EVENTS_WORKER"] = "false"  # tests run the events jobs themselves
 os.environ["APIFY_TOKEN"] = ""  # overrides a token in .env; an empty token means "no Apify"
 
 from app.auth import hash_password  # noqa: E402  (the environment above must be set first)

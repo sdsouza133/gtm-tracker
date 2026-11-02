@@ -257,6 +257,7 @@ def test_a_backup_restores_into_an_empty_database(db: Session) -> None:
     assert backup["version"] == 1
     assert {len(backup[t]) for t in ("companies", "people", "moves")} == {3, 2, 4}
     assert "login_sessions" not in backup
+    assert not [name for name in backup if name.startswith("ev_")]  # the events tool's 30-day data isn't kept
     with pytest.raises(RestoreRefusedError):
         restore(db, backup)
     for table in reversed(tables()):  # empty the database, children first

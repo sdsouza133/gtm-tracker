@@ -1,7 +1,9 @@
 """A full backup as one JSON document, and loading one back into an empty database.
 
-Every table is included except sign-in state. Rows are written column by column, so a backup made today restores
-into the same schema version; restore runs the tables in foreign-key order inside one transaction.
+Every table is included except sign-in state and the events tool's (ev_*): those hold LinkedIn posts and Apollo
+lookups that are deleted after 30 days, and a restored backup would bring them back. Rows are written column by column,
+so a backup made today restores into the same schema version; restore runs the tables in foreign-key order inside one
+transaction.
 """
 
 import json
@@ -16,11 +18,12 @@ from app.models import Base
 
 VERSION = 1
 SKIP = frozenset({"login_sessions", "login_attempts"})
+EVENTS_TOOL = "ev_"
 BATCH = 500
 
 
 def tables() -> list[Table]:
-    return [t for t in Base.metadata.sorted_tables if t.name not in SKIP]
+    return [t for t in Base.metadata.sorted_tables if t.name not in SKIP and not t.name.startswith(EVENTS_TOOL)]
 
 
 def _plain(value: Any) -> Any:

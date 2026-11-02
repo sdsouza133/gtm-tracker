@@ -1,0 +1,271 @@
+"""The background worker (ADR 0002): claims jobs from the queue and runs them, on a thread in the tracker's web process
+(`start`, from the app's lifespan).
+
+A worker runs one job at a time. While a job runs, a heartbeat thread keeps its claim fresh, so `release_stale` hands a
+job to another worker only when its worker has really stopped (a redeploy that cut it off, say). Between jobs the
+worker does the housekeeping: it puts back jobs whose worker died, closes the spend reservations such workers left
+open, and queues the hourly job that deletes old personal data (`app/events/pipeline/retention.py`).
+
+Stopping the app (a redeploy) stops the worker: it takes no new job and waits up to STOP_WAIT_SECONDS for the one it
+is running, which starts no new paid call meanwhile (a job about to make one is put back for the next worker). A job
+still running then is picked up again once its heartbeat goes quiet.
+"""
+
+import dataclasses
+import logging
+import os
+import random
+import socket
+import threading
+import time
+import uuid
+from collections.abc import Mapping
+from datetime import timedelta
+from types import TracebackType
+from typing import Any
+
+from pydantic import ValidationError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
+from sqlalchemy.orm import Session
+
+from app.db import session_factory
+from app.events import budget, queue
+from app.events.config import EventsSettings
+from app.events.db import session_scope
+from app.events.models import JobStatus
+from app.events.pipeline.base import Defer, GiveUp, JobContext, JobKind, Payload
+from app.events.pipeline.jobs import JOBS
+from app.events.pipeline.paid import SpendingPausedError
+from app.events.pipeline.retention import RETENTION, schedule
+from app.events.providers.registry import build_providers
+from app.events.providers.types import ProviderError
+
+log = logging.getLogger(__name__)
+
+MAINTENANCE_EVERY_SECONDS = 60.0
+STOP_WAIT_SECONDS = 20.0  # well inside the time a platform gives a stopping app
+RESERVATIONS_OPEN_AT_MOST = timedelta(hours=1)
+
+
+def worker_name() -> str:
+    """Unique per process, as the queue requires: host, process and a random suffix (process ids get reused)."""
+    return f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
+
+
+def describe(exc: BaseException) -> str:
+    """A failure, for the job's last_error and the logs, without the personal data some messages quote: a validation
+    error's names the input it rejected, so only where it failed is kept; a database error's detail names the values
+    involved (which email already exists, say), so only its first line and SQLSTATE are kept."""
+    if isinstance(exc, ValidationError):
+        where = ", ".join(".".join(str(part) for part in error["loc"]) or "(root)" for error in exc.errors())
+        return f"ValidationError: {exc.error_count()} problem(s) at {where}"
+    if isinstance(exc, DBAPIError):
+        primary = getattr(getattr(exc.orig, "diag", None), "message_primary", None)
+        if primary:
+            return f"{type(exc).__name__}: {primary} ({getattr(exc.orig, 'sqlstate', None)})"
+        first_line = str(exc.orig).strip().splitlines()[:1]  # a client-side error: connection refused, say
+        return f"{type(exc).__name__}: {first_line[0] if first_line else type(exc.orig).__name__}"
+    return f"{type(exc).__name__}: {exc}"
+
+
+class Worker:
+    def __init__(
+        self,
+        ctx: JobContext,
+        kinds: Mapping[str, JobKind],
+        *,
+        hooks: Mapping[str, JobKind] | None = None,
+        name: str | None = None,
+    ) -> None:
+        """`kinds` are the jobs this worker runs. `hooks` (all of `kinds` unless given) are the kinds whose give-up
+        hook housekeeping runs when it gives up on a stale job, which may be of a kind this worker doesn't run."""
+        self._stop = threading.Event()
+        self.ctx = dataclasses.replace(ctx, stopping=self._stop.is_set)  # a stopping worker starts no paid call
+        self._thread: threading.Thread | None = None
+        self.kinds = dict(kinds)
+        self.hooks = dict(kinds if hooks is None else hooks)
+        self.name = name or worker_name()
+        self._last_maintenance: float | None = None
+
+    def stop(self, timeout: float | None = None) -> None:
+        """Take no more jobs and, given a timeout, wait up to that long for the one running to finish. A job still
+        running after it is picked up again once its heartbeat goes quiet (WORKER_STALE_AFTER_SECONDS)."""
+        self._stop.set()
+        thread = self._thread
+        if timeout is not None and thread is not None and thread is not threading.current_thread():
+            thread.join(timeout)
+
+    def run_forever(self) -> None:
+        log.info("worker started", extra={"worker": self.name, "kinds": sorted(self.kinds)})
+        while not self._stop.is_set():
+            try:
+                self.maintain_if_due()
+                worked = self.run_once()
+            except SQLAlchemyError as exc:  # no traceback: a database error's can quote the values involved
+                log.error("database unavailable, waiting before trying again", extra=self._failure(exc))
+                worked = False
+            except Exception:  # a bug outside any job (in housekeeping, say): keep the worker running
+                log.exception("unexpected error in the worker loop", extra={"worker": self.name})
+                worked = False
+            if not worked:
+                self._stop.wait(self.ctx.settings.worker_poll_seconds)
+        log.info("worker stopped", extra={"worker": self.name})
+
+    def run_once(self) -> bool:
+        """Claim one job and run it. False when no job was due."""
+        with session_scope() as session:
+            job = queue.claim(session, self.name, kinds=list(self.kinds), now=self.ctx.now())
+            if job is None:
+                return False
+            job_id, kind_name, payload = job.id, job.kind, dict(job.payload)
+        context = {"job_id": job_id, "kind": kind_name, "run_id": payload.get("run_id"), "worker": self.name}
+        log.info("job started", extra=context)
+        started = time.monotonic()
+        with _Heartbeat(job_id, self.name, self.ctx.settings.worker_heartbeat_seconds):
+            self._run(job_id, self.kinds[kind_name], payload, context)
+        log.info("job ended", extra={**context, "ms": round((time.monotonic() - started) * 1000)})
+        return True
+
+    def _run(self, job_id: int, kind: JobKind, payload: dict[str, Any], context: dict[str, Any]) -> None:
+        session = session_factory()()
+        try:
+            outcome = kind.handle(self.ctx, session, payload)
+            if isinstance(outcome, Defer):
+                kept = queue.defer(session, job_id, self.name, outcome.delay, now=self.ctx.now())
+            else:
+                kept = queue.complete(session, job_id, self.name)
+            if kept:
+                session.commit()
+            else:  # released as stale and claimed by another worker, which redoes the work
+                session.rollback()
+                log.warning("job was taken over by another worker; this attempt's writes were dropped", extra=context)
+        except SpendingPausedError as exc:  # nothing billed may start now: the job waits, attempt not used up
+            session.rollback()
+            self._wait(job_id, exc.retry_after, "job paused", {**context, "reason": str(exc)})
+        except Exception as exc:  # any failure is recorded on the job, and the worker keeps going
+            session.rollback()
+            self._fail(job_id, kind, payload, exc, context)
+        finally:
+            session.close()
+
+    def _wait(self, job_id: int, delay: timedelta, message: str, context: dict[str, Any]) -> None:
+        """Put the job back for later: it isn't failing, it's waiting."""
+        with session_scope() as session:
+            queue.defer(session, job_id, self.name, delay, now=self.ctx.now())
+        log.info(message, extra=context)
+
+    def _fail(
+        self, job_id: int, kind: JobKind, payload: dict[str, Any], exc: Exception, context: dict[str, Any]
+    ) -> None:
+        retryable = exc.retryable if isinstance(exc, ProviderError) else True
+        error = describe(exc)
+        log.warning("job failed", extra={**context, "error": error, "retryable": retryable})
+        if not isinstance(exc, ProviderError | ValidationError | SQLAlchemyError):  # our own bug: keep the traceback
+            log.error("unexpected error in a job", exc_info=True, extra=context)
+        with session_scope() as session:
+            jitter = random.Random()  # noqa: S311 (spreads retries out; nothing secret)
+            status = queue.fail(
+                session, job_id, self.name, error, retryable=retryable, now=self.ctx.now(), jitter=jitter
+            )
+            if status == JobStatus.FAILED and kind.on_give_up is not None:
+                self._give_up(kind.on_give_up, session, payload, context)
+
+    def _give_up(self, hook: GiveUp, session: Session, payload: Payload, context: dict[str, Any]) -> None:
+        """Run a give-up hook in a savepoint of its own: if it fails, the job is still recorded as failed, and the
+        other jobs housekeeping is releasing still are."""
+        try:
+            with session.begin_nested():
+                hook(self.ctx, session, payload)
+        except Exception as exc:
+            database = isinstance(exc, SQLAlchemyError)
+            log.error("a give-up hook failed", exc_info=not database, extra={**context, "error": describe(exc)})
+
+    def _failure(self, exc: BaseException) -> dict[str, Any]:
+        return {"worker": self.name, "error": describe(exc)}
+
+    def maintain_if_due(self) -> None:
+        now = time.monotonic()
+        if self._last_maintenance is not None and now - self._last_maintenance < MAINTENANCE_EVERY_SECONDS:
+            return
+        self._last_maintenance = now
+        self.maintain()
+
+    def maintain(self) -> None:
+        """Put back jobs whose worker stopped answering, close reservations nobody came back for, and make sure the
+        retention job is queued (when this worker runs it)."""
+        stale_after = timedelta(seconds=self.ctx.settings.worker_stale_after_seconds)
+        with session_scope() as session:
+            released = queue.release_stale(session, stale_after, now=self.ctx.now())
+            for job in released.given_up:
+                kind = self.hooks.get(job.kind)  # its run fails even when only housekeeping runs
+                if kind is not None and kind.on_give_up is not None:
+                    context = {"job_id": job.id, "kind": job.kind, "worker": self.name}
+                    self._give_up(kind.on_give_up, session, job.payload, context)
+        with session_scope() as session:
+            closed = budget.sweep(session, RESERVATIONS_OPEN_AT_MOST, now=self.ctx.now())
+        if RETENTION in self.kinds:
+            with session_scope() as session:
+                schedule(session, now=self.ctx.now())
+        if released.requeued or released.given_up or closed:
+            log.info(
+                "housekeeping",
+                extra={
+                    "requeued_jobs": released.requeued,
+                    "given_up_jobs": len(released.given_up),
+                    "closed_reservations": closed,
+                },
+            )
+
+
+class _Heartbeat:
+    """Keeps a running job's claim fresh from a background thread, on a connection of its own."""
+
+    def __init__(self, job_id: int, worker: str, every_seconds: float) -> None:
+        self._job_id = job_id
+        self._worker = worker
+        self._every = every_seconds
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._beat, name=f"heartbeat-{job_id}", daemon=True)
+
+    def __enter__(self) -> "_Heartbeat":
+        self._thread.start()
+        return self
+
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None
+    ) -> None:
+        self._stop.set()
+        self._thread.join(timeout=self._every + 5)
+
+    def _beat(self) -> None:
+        while not self._stop.wait(self._every):
+            try:
+                with session_scope() as session:
+                    alive = queue.heartbeat(session, self._job_id, self._worker)
+            except SQLAlchemyError as exc:
+                log.warning("heartbeat failed", extra={"job_id": self._job_id, "error": describe(exc)})
+                continue
+            if not alive:
+                log.warning("job is no longer held by this worker", extra={"job_id": self._job_id})
+                return
+
+
+def start(settings: EventsSettings) -> Worker:
+    """Start the worker on a daemon thread; stop it with `stop()`.
+
+    Without the keys a real run needs (the Events page says which), it still runs its housekeeping and the job that
+    deletes personal data after 30 days, so data from earlier runs is never kept longer because a key went missing.
+    No other job can run then: it's given fakes that nothing calls. Its housekeeping still runs every kind's give-up
+    hook (none calls a provider), so a run whose job it gives up on fails rather than waits for good.
+    """
+    missing = settings.missing()
+    if missing:
+        log.warning("events worker running housekeeping only", extra={"missing": missing})
+        providers = build_providers(settings.model_copy(update={"providers": "fake"}))
+        kinds = {RETENTION: JOBS[RETENTION]}
+    else:
+        providers, kinds = build_providers(settings), JOBS
+    worker = Worker(JobContext(settings=settings, providers=providers), kinds, hooks=JOBS)
+    worker._thread = threading.Thread(target=worker.run_forever, name="events-worker", daemon=True)
+    worker._thread.start()
+    return worker
