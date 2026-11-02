@@ -69,11 +69,21 @@ def describe(exc: BaseException) -> str:
 
 
 class Worker:
-    def __init__(self, ctx: JobContext, kinds: Mapping[str, JobKind], *, name: str | None = None) -> None:
+    def __init__(
+        self,
+        ctx: JobContext,
+        kinds: Mapping[str, JobKind],
+        *,
+        hooks: Mapping[str, JobKind] | None = None,
+        name: str | None = None,
+    ) -> None:
+        """`kinds` are the jobs this worker runs. `hooks` (all of `kinds` unless given) are the kinds whose give-up
+        hook housekeeping runs when it gives up on a stale job, which may be of a kind this worker doesn't run."""
         self._stop = threading.Event()
         self.ctx = dataclasses.replace(ctx, stopping=self._stop.is_set)  # a stopping worker starts no paid call
         self._thread: threading.Thread | None = None
         self.kinds = dict(kinds)
+        self.hooks = dict(kinds if hooks is None else hooks)
         self.name = name or worker_name()
         self._last_maintenance: float | None = None
 
@@ -187,7 +197,7 @@ class Worker:
         with session_scope() as session:
             released = queue.release_stale(session, stale_after, now=self.ctx.now())
             for job in released.given_up:
-                kind = self.kinds.get(job.kind)
+                kind = self.hooks.get(job.kind)  # its run fails even when only housekeeping runs
                 if kind is not None and kind.on_give_up is not None:
                     context = {"job_id": job.id, "kind": job.kind, "worker": self.name}
                     self._give_up(kind.on_give_up, session, job.payload, context)
@@ -245,7 +255,8 @@ def start(settings: EventsSettings) -> Worker:
 
     Without the keys a real run needs (the Events page says which), it still runs its housekeeping and the job that
     deletes personal data after 30 days, so data from earlier runs is never kept longer because a key went missing.
-    No other job can run then: it's given fakes that nothing calls.
+    No other job can run then: it's given fakes that nothing calls. Its housekeeping still runs every kind's give-up
+    hook (none calls a provider), so a run whose job it gives up on fails rather than waits for good.
     """
     missing = settings.missing()
     if missing:
@@ -254,7 +265,7 @@ def start(settings: EventsSettings) -> Worker:
         kinds = {RETENTION: JOBS[RETENTION]}
     else:
         providers, kinds = build_providers(settings), JOBS
-    worker = Worker(JobContext(settings=settings, providers=providers), kinds)
+    worker = Worker(JobContext(settings=settings, providers=providers), kinds, hooks=JOBS)
     worker._thread = threading.Thread(target=worker.run_forever, name="events-worker", daemon=True)
     worker._thread.start()
     return worker
