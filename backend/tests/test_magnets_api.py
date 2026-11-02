@@ -100,6 +100,8 @@ def test_a_teaser_builds_in_the_background_and_shares_by_a_private_link(magnet_c
 def test_one_can_be_built_for_any_website_without_a_company(magnet_client: TestClient, db: Session) -> None:
     linked = a_company(db)
     magnet_client.post(f"/api/companies/{linked.id}/magnets", json={"mode": "teaser"})
+    # the test runs in one transaction, where now() never moves: date the first one earlier so "newest first" can show
+    db.execute(update(Magnet).where(Magnet.company_id == linked.id).values(created_at=datetime(2026, 1, 1, tzinfo=UTC)))
     r = magnet_client.post(
         "/api/magnets",
         json={"mode": "teaser", "website": "https://www.prospect.example/about", "competitors": ["rivalco.example"]},
