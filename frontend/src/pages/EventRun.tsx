@@ -189,7 +189,7 @@ function IcpEditor({ draft, set }: { draft: Draft; set: (d: Draft) => void }) {
         rows={3}
         value={draft.exclude}
         onChange={(exclude) => set({ ...draft, exclude })}
-        hint="One per line, up to 20 (recruiter, student, …)."
+        hint="One per line, up to 20: recruiter on one line, student on the next."
       />
     </Card>
   );
