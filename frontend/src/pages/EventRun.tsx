@@ -191,17 +191,26 @@ function IcpEditor({ draft, set }: { draft: Draft; set: (d: Draft) => void }) {
   );
 }
 
-function AddEventForm({ onAdd, busy }: { onAdd: (body: S["EventAdd"]) => void; busy: boolean }) {
+function AddEventForm({ onAdd, busy }: { onAdd: (body: S["EventAdd"]) => Promise<boolean>; busy: boolean }) {
   const [name, setName] = useState("");
   const [day, setDay] = useState("");
   const [url, setUrl] = useState("");
   const dayId = useId();
-  function submit(e: FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault();
-    onAdd({ name: name.trim(), day: day || null, url: url.trim() || null });
+    const added = await onAdd({ name: name.trim(), day: day || null, url: url.trim() || null });
+    if (added) {
+      // cleared once it's in the plan, so a second click can't add it again; kept as typed when it wasn't added
+      setName("");
+      setDay("");
+      setUrl("");
+    }
   }
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-dashed border-line p-3">
+    <form
+      onSubmit={(e) => void submit(e)}
+      className="flex flex-col gap-3 rounded-lg border border-dashed border-line p-3"
+    >
       <h3 className="text-sm font-medium">Add an event you know</h3>
       <div className="grid gap-3 sm:grid-cols-3">
         <TextField label="Name" value={name} onChange={setName} />
@@ -248,16 +257,17 @@ function PlanEditor({ run, plan }: { run: EventRun; plan: EventPlan }) {
     });
   }
 
-  async function addEvent(body: S["EventAdd"]) {
+  async function addEvent(body: S["EventAdd"]): Promise<boolean> {
     try {
       const typed = checked(false); // keep what's typed in the plan
-      if (!typed) return;
+      if (!typed) return false;
       await save.mutateAsync(typed);
       const added = await add.mutateAsync(body);
       if (added.plan) setDraft(draftOf(added.plan));
       notify("Event added");
+      return true;
     } catch {
-      // the failed change has said why already (every failed change does, in queryClient.ts)
+      return false; // the failed change has said why already (every failed change does, in queryClient.ts)
     }
   }
 
@@ -335,7 +345,7 @@ function PlanEditor({ run, plan }: { run: EventRun; plan: EventPlan }) {
             );
           })}
         </ul>
-        <AddEventForm onAdd={(body) => void addEvent(body)} busy={busy} />
+        <AddEventForm onAdd={addEvent} busy={busy} />
       </Card>
       <div className="flex flex-wrap gap-2">
         <Button

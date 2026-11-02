@@ -186,6 +186,7 @@ describe("an events run's page", () => {
     await user.type(within(form).getByLabelText("Name"), "Demand Gen Live");
     await user.click(within(form).getByRole("button", { name: "Add this event" }));
     expect(await screen.findByRole("checkbox", { name: /Search Demand Gen Live/ })).toBeInTheDocument();
+    expect(within(form).getByLabelText("Name")).toHaveValue(""); // cleared, so a second click can't add it again
     expect(calls.filter((c) => c.method !== "GET").map((c) => c.method)).toEqual(["PUT", "POST"]);
     expect(calls.find((c) => c.method === "POST")?.body).toEqual({ name: "Demand Gen Live", day: null, url: null });
   });

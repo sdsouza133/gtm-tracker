@@ -71,6 +71,13 @@ describe("the events helpers", () => {
     expect(planProblem({ ...ok, icp: { ...icp, personas: [{ label: "RevOps", title_keywords: [] }] } })).toBe(
       "Give buyer 1 a name and 1 to 15 words from their job titles.",
     );
+    expect(planProblem({ ...ok, events: [{ picked: true, queries: [] }] })).toBe(
+      "Give each picked event 1 to 4 searches, one per line.",
+    );
+    expect(planProblem({ ...ok, events: [{ picked: false, queries: ["a", "b", "c", "d", "e"] }] })).toBe(
+      "Give each picked event 1 to 4 searches, one per line.",
+    );
+    expect(planProblem({ ...ok, events: [{ picked: false, queries: [] }] })).toBe(""); // not searched, so none needed
     expect(planProblem({ ...ok, events: [{ picked: true, queries: ["x".repeat(301)] }] })).toBe(
       "Keep each search to 300 characters.",
     );

@@ -126,7 +126,12 @@ export function planProblem(body: S["EventPlanSave"]): string {
     ...icp.personas.flatMap((p) => p.title_keywords),
   ]);
   if (long) return `"${long.slice(0, 40)}…" is too long: keep each item to 120 characters.`;
-  if (body.events.some((e) => (e.queries ?? []).length > 10 || (e.queries ?? []).some((q) => q.length > QUERY)))
-    return "Keep each search to 300 characters.";
+  const searches = (e: S["EventPick"]) => e.queries ?? [];
+  // a picked event needs 1 to 4 searches; an unpicked one may have none (it isn't searched)
+  if (
+    body.events.some((e) => (e.picked || searches(e).length > 0) && (searches(e).length < 1 || searches(e).length > 4))
+  )
+    return "Give each picked event 1 to 4 searches, one per line.";
+  if (body.events.some((e) => searches(e).some((q) => q.length > QUERY))) return "Keep each search to 300 characters.";
   return "";
 }
