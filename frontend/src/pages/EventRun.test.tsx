@@ -144,6 +144,24 @@ describe("an events run's page", () => {
     expect(screen.getByLabelText("In a sentence or two")).toHaveValue("Revenue teams at B2B software companies.");
   });
 
+  it("locks the plan while a save is under way, so nothing typed meanwhile is lost", async () => {
+    let answer = () => {};
+    mockApi({
+      ...SIGNED_IN,
+      [RUN]: { body: run() },
+      "PUT /api/events/runs/r1/plan": {
+        body: () => new Promise((resolve) => (answer = () => resolve(run()))),
+      },
+    });
+    renderApp(page(), { path: "/events/r1" });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Save the plan" }));
+    await waitFor(() => expect(screen.getByLabelText("In a sentence or two")).toBeDisabled());
+    expect(screen.getByRole("checkbox", { name: /Search Summit 1/ })).toBeDisabled();
+    answer();
+    await waitFor(() => expect(screen.getByLabelText("In a sentence or two")).toBeEnabled());
+  });
+
   it("names what to fix in the plan before sending it", async () => {
     const calls = mockApi({ ...SIGNED_IN, [RUN]: { body: run() } });
     renderApp(

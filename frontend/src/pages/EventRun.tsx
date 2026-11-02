@@ -16,7 +16,7 @@ import {
 } from "@/api/hooks";
 import { notify } from "@/components/Toast";
 import { Button, Card, Chip, EmptyState, PageHeader } from "@/components/ui";
-import { formatDay } from "@/lib/format";
+import { formatDateTimeDay, formatDay } from "@/lib/format";
 import { toEventCsv } from "@/lib/leads";
 import { safeUrl } from "@/lib/safe";
 import {
@@ -285,72 +285,78 @@ function PlanEditor({ run, plan }: { run: EventRun; plan: EventPlan }) {
           LinkedIn searches, one per line.
         </p>
       </Card>
-      <IcpEditor draft={draft} set={setDraft} />
-      <Card className="flex flex-col gap-3 p-4">
-        <h2 className="text-[17px] font-semibold">
-          Events{" "}
-          <span className="text-sm font-normal text-muted">
-            ({picked} of {plan.max_picked} picked)
-          </span>
-        </h2>
-        {plan.events.length === 0 && <p className="text-sm text-muted">No events were found. Add the ones you know.</p>}
-        <ul className="flex flex-col gap-3">
-          {plan.events.map((event, i) => {
-            const state = draft.events[i] ?? { picked: false, queries: "" };
-            const link = safeUrl(event.url);
-            const full = !state.picked && picked >= plan.max_picked;
-            const setEvent = (change: Partial<typeof state>) =>
-              setDraft({ ...draft, events: draft.events.map((e, j) => (j === i ? { ...e, ...change } : e)) });
-            return (
-              <li key={event.index} className="flex flex-col gap-2 rounded-lg border border-line p-3 text-sm">
-                <label className="flex items-start gap-2">
-                  <input
-                    type="checkbox"
-                    className="mt-1"
-                    checked={state.picked}
-                    disabled={full}
-                    onChange={(e) => setEvent({ picked: e.target.checked })}
-                  />
-                  <span className="min-w-0">
-                    <span className="font-medium">Search {event.name}</span>
-                    <span className="block text-[13px] text-muted">
-                      {[when(event.start_date, event.end_date), event.location].filter(Boolean).join(" · ")}
+      {/* Locked while a save or an add is under way: its answer replaces the draft, so anything typed meanwhile
+          would be lost. */}
+      <fieldset disabled={busy} aria-busy={busy} className="flex min-w-0 flex-col gap-4">
+        <IcpEditor draft={draft} set={setDraft} />
+        <Card className="flex flex-col gap-3 p-4">
+          <h2 className="text-[17px] font-semibold">
+            Events{" "}
+            <span className="text-sm font-normal text-muted">
+              ({picked} of {plan.max_picked} picked)
+            </span>
+          </h2>
+          {plan.events.length === 0 && (
+            <p className="text-sm text-muted">No events were found. Add the ones you know.</p>
+          )}
+          <ul className="flex flex-col gap-3">
+            {plan.events.map((event, i) => {
+              const state = draft.events[i] ?? { picked: false, queries: "" };
+              const link = safeUrl(event.url);
+              const full = !state.picked && picked >= plan.max_picked;
+              const setEvent = (change: Partial<typeof state>) =>
+                setDraft({ ...draft, events: draft.events.map((e, j) => (j === i ? { ...e, ...change } : e)) });
+              return (
+                <li key={event.index} className="flex flex-col gap-2 rounded-lg border border-line p-3 text-sm">
+                  <label className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={state.picked}
+                      disabled={full}
+                      onChange={(e) => setEvent({ picked: e.target.checked })}
+                    />
+                    <span className="min-w-0">
+                      <span className="font-medium">Search {event.name}</span>
+                      <span className="block text-[13px] text-muted">
+                        {[when(event.start_date, event.end_date), event.location].filter(Boolean).join(" · ")}
+                      </span>
                     </span>
-                  </span>
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {event.own && <Chip tone="accent">Added by you</Chip>}
-                  {event.past && <Chip>Over: looks for people who went</Chip>}
-                  {link && (
-                    <a
-                      className="inline-flex items-center gap-1 text-accent-ink hover:underline"
-                      href={link}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Event page <ExternalLink size={12} aria-hidden="true" />
-                    </a>
-                  )}
-                </div>
-                {event.why && <p className="text-muted">{event.why}</p>}
-                <details>
-                  <summary className="cursor-pointer text-[13px] text-muted">
-                    Searches ({lines(state.queries).length})
-                  </summary>
-                  <TextField
-                    label={`LinkedIn searches for ${event.name}`}
-                    rows={4}
-                    value={state.queries}
-                    onChange={(queries) => setEvent({ queries })}
-                    hint="One per line."
-                  />
-                </details>
-              </li>
-            );
-          })}
-        </ul>
-        <AddEventForm onAdd={addEvent} busy={busy} />
-      </Card>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {event.own && <Chip tone="accent">Added by you</Chip>}
+                    {event.past && <Chip>Over: looks for people who went</Chip>}
+                    {link && (
+                      <a
+                        className="inline-flex items-center gap-1 text-accent-ink hover:underline"
+                        href={link}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Event page <ExternalLink size={12} aria-hidden="true" />
+                      </a>
+                    )}
+                  </div>
+                  {event.why && <p className="text-muted">{event.why}</p>}
+                  <details>
+                    <summary className="cursor-pointer text-[13px] text-muted">
+                      Searches ({lines(state.queries).length})
+                    </summary>
+                    <TextField
+                      label={`LinkedIn searches for ${event.name}`}
+                      rows={4}
+                      value={state.queries}
+                      onChange={(queries) => setEvent({ queries })}
+                      hint="One per line."
+                    />
+                  </details>
+                </li>
+              );
+            })}
+          </ul>
+          <AddEventForm onAdd={addEvent} busy={busy} />
+        </Card>
+      </fieldset>
       <div className="flex flex-wrap gap-2">
         <Button
           variant="primary"
@@ -487,7 +493,7 @@ function List({ run }: { run: EventRun }) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3 text-sm">
         <p>
           {leads.data.length} lead{leads.data.length === 1 ? "" : "s"}, best fit first
-          {run.expires ? <span className="text-muted"> · kept until {formatDay(run.expires.slice(0, 10))}</span> : null}
+          {run.expires ? <span className="text-muted"> · kept until {formatDateTimeDay(run.expires)}</span> : null}
         </p>
         <Button onClick={() => download(run, leads.data)}>
           <Download size={14} aria-hidden="true" /> Download CSV
