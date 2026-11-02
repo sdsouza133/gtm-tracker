@@ -21,6 +21,7 @@ from app.events.config import EventsSettings
 from app.events.db import session_scope
 from app.events.models import Job, JobStatus, Person, Run, SpendEntry, SpendStatus
 from app.events.pipeline.base import DONE, Defer, JobContext, JobKind, Outcome, Payload
+from app.events.pipeline.jobs import JOBS
 from app.events.pipeline.paid import PAUSED_RECHECK, check_not_paused
 from app.events.pipeline.retention import RETENTION
 from app.events.providers.registry import build_providers
@@ -228,6 +229,22 @@ def test_housekeeping_requeues_stale_jobs_and_gives_up_on_exhausted_ones(db: Ses
     assert run.status_detail == "worker died"
 
 
+def test_housekeeping_gives_up_on_stale_jobs_of_kinds_this_worker_does_not_run(db: Session) -> None:
+    run = make_run(db)
+    last_try_id = one_job(db, run=run, max_attempts=1)
+    queue.claim(db, "dead-worker", now=NOW)
+    db.commit()
+
+    later = NOW + timedelta(seconds=EventsSettings().worker_stale_after_seconds + 1)
+    hooks = {"test": JobKind(note_on_run("x"), on_give_up=write_note("worker died"))}
+    w = Worker(context(now=later), {}, hooks=hooks)  # a worker without the keys runs no "test" job
+    w.maintain()
+    assert job(db, last_try_id).status == JobStatus.FAILED
+    db.refresh(run)
+    assert run.status_detail == "worker died"  # the run fails rather than waits for good
+    assert w.run_once() is False
+
+
 def broken_hook(ctx: JobContext, session: Session, payload: Payload) -> None:
     raise KeyError("run_id")  # e.g. a payload the hook didn't expect
 
@@ -401,6 +418,7 @@ def test_without_its_keys_only_housekeeping_and_deletion_run(
     with caplog.at_level(logging.WARNING, logger="app.events.worker"):
         w = worker.start(EventsSettings(providers="real", anthropic_api_key="a"))
     assert set(w.kinds) == {RETENTION}  # personal data is still deleted after 30 days
+    assert set(w.hooks) == set(JOBS)  # and a run whose job it gives up on still fails
     [record] = [r for r in caplog.records if r.getMessage() == "events worker running housekeeping only"]
     assert record.missing == ["APIFY_TOKEN", "APOLLO_API_KEY"]  # type: ignore[attr-defined]
 

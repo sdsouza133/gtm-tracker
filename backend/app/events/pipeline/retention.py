@@ -8,7 +8,9 @@ other caller too.
 A round deletes, in one transaction (if anything fails, nothing is deleted and the job tries again):
 
 1. A run's list once its results expire, EVENTS_RESULTS_DAYS (at most 30) after it was ready: the run is marked
-   expired and its leads are deleted. A run that failed or was canceled loses its leads 30 days after it stopped.
+   expired and its leads are deleted. A run that failed or was canceled loses its leads 30 days after it stopped. A
+   run still under way that hasn't moved for 30 days (its jobs can't run, say, while a key is missing) is stopped,
+   and loses its leads in the same round.
 2. Shared data that no list holds: posts fetched more than 30 days ago (their links to events and their labels go
    with them), and people whose Apollo lookup and email check are more than 30 days old or never happened. The
    database refuses to delete a lead's person or post while the lead exists, so a list that is still shown keeps
@@ -47,7 +49,16 @@ RETENTION = "retention"
 EVERY = timedelta(hours=1)
 KEPT_FOR = timedelta(days=30)
 EXPIRED = "This list has expired, and the personal data in it has been deleted."
+STALLED = "This run stopped: nothing happened on it for 30 days, so the personal data it held has been deleted."
 STOPPED = (RunStatus.FAILED, RunStatus.CANCELED)
+UNDER_WAY = (
+    RunStatus.ANALYZING,
+    RunStatus.AWAITING_APPROVAL,
+    RunStatus.COLLECTING,
+    RunStatus.WAITING_FOR_BUDGET,
+    RunStatus.QUALIFYING,
+    RunStatus.ENRICHING,
+)
 FINISHED_JOBS = (JobStatus.DONE, JobStatus.FAILED)
 
 
@@ -64,7 +75,8 @@ def retention(ctx: JobContext, session: Session, _payload: Payload) -> Outcome:
 
 
 def forget(session: Session, *, now: datetime) -> dict[str, int]:
-    """Delete what has been kept long enough. Returns how many rows of each kind went (runs: how many expired)."""
+    """Delete what has been kept long enough. Returns how many rows of each kind went (runs: how many expired or
+    were stopped)."""
     session.execute(select(func.pg_advisory_xact_lock(func.hashtext(RETENTION))))
     cutoff = now - KEPT_FOR
     expired = session.execute(
@@ -73,12 +85,21 @@ def forget(session: Session, *, now: datetime) -> dict[str, int]:
         .values(status=RunStatus.EXPIRED, status_detail=EXPIRED)
         .execution_options(synchronize_session=False)
     )
+    stalled = session.scalars(
+        update(Run)
+        .where(Run.status.in_(UNDER_WAY), Run.updated_at < cutoff)
+        .values(status=RunStatus.FAILED, status_detail=STALLED, error="no progress for 30 days", completed_at=now)
+        .returning(Run.id)
+        .execution_options(synchronize_session=False)
+    ).all()
     ended = or_(
         Run.status == RunStatus.EXPIRED,
         and_(Run.status.in_(STOPPED), func.coalesce(Run.completed_at, Run.updated_at) < cutoff),
+        Run.id.in_(stalled),
     )
     return {
         "expired_runs": rowcount(expired),
+        "stalled_runs": len(stalled),
         # Lists first, so the people and posts only they held go in this same round.
         "leads": _delete(session, Lead, Lead.run_id.in_(select(Run.id).where(ended))),
         "labels": _delete(session, PostLabel, PostLabel.created_at < cutoff),

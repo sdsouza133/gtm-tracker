@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -163,6 +163,31 @@ def test_a_run_that_stopped_loses_its_list_30_days_later(db: Session) -> None:
     assert [leads_of(db, run) for run in (failed, canceled, working)] == [0, 1, 1]
     db.refresh(failed)
     assert failed.status == RunStatus.FAILED
+
+
+def test_a_run_that_hasnt_moved_for_30_days_is_stopped_and_loses_its_list(db: Session) -> None:
+    stuck = a_run(db, RunStatus.ENRICHING)  # its job can't run: a key went missing, say
+    waiting = a_run(db, RunStatus.AWAITING_APPROVAL)
+    moving = a_run(db, RunStatus.QUALIFYING)
+    stuck_lead = on_list(db, stuck)
+    on_list(db, moving)
+    db.commit()
+    db.execute(update(Run).where(Run.id.in_([stuck.id, waiting.id])).values(updated_at=OLD))
+    db.execute(update(Run).where(Run.id == moving.id).values(updated_at=RECENT))
+    db.commit()
+
+    deleted = forget(db)
+
+    for run in (stuck, waiting, moving):
+        db.refresh(run)
+    assert (stuck.status, stuck.status_detail, stuck.completed_at) == (RunStatus.FAILED, retention.STALLED, NOW)
+    assert waiting.status == RunStatus.FAILED
+    assert moving.status == RunStatus.QUALIFYING
+    assert [leads_of(db, run) for run in (stuck, moving)] == [0, 1]
+    assert not exists(db, Person, stuck_lead.person_id)  # nothing else held them
+    assert not exists(db, Post, stuck_lead.post_id)
+    assert (deleted["stalled_runs"], deleted["leads"]) == (2, 1)
+    assert forget(db)["stalled_runs"] == 0  # stopped now, so the next round leaves it be
 
 
 def test_shared_data_no_list_holds_is_deleted_after_30_days(db: Session) -> None:
