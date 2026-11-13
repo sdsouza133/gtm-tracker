@@ -21,13 +21,13 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
 
 from sqlalchemy import Connection, Engine, func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.models import Company, Move, MoveStatus, MoveType, ParkedWhy, RadarItem, Setting, Stage
 from app.radar import boards, sources
 from app.radar.apify import Apify
@@ -148,23 +148,36 @@ def started(session: Session, company_id: str) -> bool:
 
 
 UNTOUCHED = (Stage.NOT_STARTED, Stage.BENCH)
+TTL_BATCH = 200
 
 
-def company_age(c: Company, today: date) -> tuple[int | None, str]:
-    """Days since the company's role was posted, or since it was added when it has no role; and which it was."""
+def company_age(c: Company, today: date, tz: tzinfo) -> tuple[int | None, str]:
+    """Days since the company's role was posted, or since it was added (a local date, like `today`) when it has no
+    role; and which it was."""
     age = role_age(c, today)
     if age is not None:
         return age, f"Role posted {job_date(c)[:10]} ({age} days ago)"
-    added = c.created_at.date()
+    added = c.created_at.astimezone(tz).date()
     return (today - added).days, f"Added {added.isoformat()} with no role ({(today - added).days} days ago)"
 
 
-def park_untouched(session: Session, today: date, ttl_days: int) -> list[str]:
+def _companies(session: Session, where: Any, size: int = TTL_BATCH) -> Iterator[Company]:
+    """Every company matching `where`, read a batch at a time (keyset on id), so no pass loads the whole table."""
+    last = ""
+    while batch := session.scalars(
+        select(Company).where(where, Company.id > last).order_by(Company.id).limit(size)
+    ).all():
+        yield from batch
+        last = batch[-1].id
+
+
+def park_untouched(session: Session, today: date, ttl_days: int, tz: tzinfo | None = None) -> list[str]:
     """Rolling TTL: park every not-started or bench company where nothing has been done once it's older than
     `ttl_days`, and bring back one parked for its age whose role is fresh again (re-posted, say)."""
+    tz = tz or get_settings().tz
     parked = []
-    for c in session.scalars(select(Company).where(Company.stage.in_(UNTOUCHED)).order_by(Company.name)):
-        age, since = company_age(c, today)
+    for c in _companies(session, Company.stage.in_(UNTOUCHED)):
+        age, since = company_age(c, today, tz)
         if age is None or age <= ttl_days or started(session, c.id):
             continue
         c.stage = Stage.PARKED
@@ -174,8 +187,8 @@ def park_untouched(session: Session, today: date, ttl_days: int) -> list[str]:
             "new role."
         )
         parked.append(f"{c.name} ({age}d)")
-    stale = select(Company).where(Company.stage == Stage.PARKED, Company.parked_why == ParkedWhy.STALE_ROLE)
-    for c in session.scalars(stale.order_by(Company.name)):
+    parked.sort()
+    for c in _companies(session, (Company.stage == Stage.PARKED) & (Company.parked_why == ParkedWhy.STALE_ROLE)):
         age = role_age(c, today)
         if age is not None and age <= ttl_days:
             _unpark(session, c, f"its role is {age} days old")
@@ -408,6 +421,12 @@ def _apply_board_checks(
                     move.notes = f"{warning} {move.notes}".strip()
 
 
+def _relisted(c: Company, job: dict[str, Any], today: date) -> None:
+    """Record a role found for the company, keeping the latest date seen."""
+    day = (job.get("posted") or today.isoformat())[:10]
+    c.research = {**c.research, "relisted": max(c.research.get("relisted") or "", day)}
+
+
 def _apply_found_jobs(session: Session, found: Searches, today: date, summary: dict[str, Any]) -> None:
     index = Index(session)
     have = set(session.scalars(select(RadarItem.id)))
@@ -415,11 +434,12 @@ def _apply_found_jobs(session: Session, found: Searches, today: date, summary: d
     for j in found.linkedin.jobs + [j for j in found.ats.jobs if j["url"] not in linkedin_urls]:
         c = index.match(j)
         if c and c.stage is Stage.PARKED and c.parked_why in (ParkedWhy.STALE_ROLE, ParkedWhy.NOT_A_FIT):
-            relisted = max(c.research.get("relisted") or "", (j.get("posted") or today.isoformat())[:10])
-            c.research = {**c.research, "relisted": relisted}
+            _relisted(c, j, today)
             _unpark(session, c, f"they re-listed a role: {j['title']}")
         if c and c.stage in (Stage.REJECTED, Stage.PARKED):
             continue
+        if c:  # a fresh role keeps the company in play: the TTL counts from it, so this pass won't park it
+            _relisted(c, j, today)
         if c and c.stage is not Stage.BENCH:
             why = APPLY_WHY_LINKEDIN.format(posted=f"on {j['posted']}" if j.get("posted") else "recently")
             if apply_if_new(session, c, j["title"], j["url"], today, why):
@@ -648,7 +668,7 @@ def expire_untouched(factory: sessionmaker[Session], settings: Settings) -> list
             return None
         today = datetime.now(settings.tz).date()
         with factory() as session:
-            parked = park_untouched(session, today, config(session).ttl_days)
+            parked = park_untouched(session, today, config(session).ttl_days, settings.tz)
             put_setting(session, TTL_LAST_RUN, today.isoformat())
             session.commit()
         return parked

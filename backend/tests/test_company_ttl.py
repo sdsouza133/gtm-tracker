@@ -1,6 +1,7 @@
 """The rolling 15-day TTL: untouched companies are parked once their role (or, with no role, their entry) is too old."""
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import Connection
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import get_settings
 from app.models import Activity, Company, MoveStatus, MoveType, ParkedWhy, Setting, Stage
 from app.radar import run as radar
+from app.radar.fit import RadarConfig
+from app.radar.sources import Found
 from tests import factories as f
 
 TODAY = date(2026, 11, 13)
@@ -20,7 +23,7 @@ def factory(connection: Connection) -> sessionmaker[Session]:
 
 
 def added(db: Session, c: Company, days_ago: int) -> Company:
-    c.created_at = datetime.combine(TODAY - timedelta(days=days_ago), datetime.min.time(), UTC)
+    c.created_at = datetime.combine(TODAY - timedelta(days=days_ago), time(12), UTC)  # midday: the same date locally
     db.flush()
     return c
 
@@ -93,3 +96,47 @@ def test_the_daily_check_runs_once_a_day(db: Session, factory: sessionmaker[Sess
     ran = db.get(Setting, radar.TTL_LAST_RUN)
     assert ran is not None
     assert ran.value == today.isoformat()  # the scheduler skips the rest of the day
+
+
+def found_job(company: str, job_id: str, posted: date) -> dict[str, object]:
+    return {
+        "id": f"li-{job_id}",
+        "job_id": job_id,
+        "title": "GTM Engineer",
+        "company": company,
+        "company_linkedin": "",
+        "website": "",
+        "location": "United States (Remote)",
+        "posted": posted.isoformat(),
+        "url": f"https://www.linkedin.com/jobs/view/{job_id}",
+        "fit": 3,
+        "flags": ["remote"],
+    }
+
+
+def test_a_role_found_for_a_company_keeps_it_in_play(db: Session) -> None:
+    bench = added(db, f.company(db, name="Bench Co", stage=Stage.BENCH), 30)
+    stale = f.company(db, name="Stale Co", posted=TODAY - timedelta(days=30))
+    yesterday = TODAY - timedelta(days=1)
+    found = radar.Searches(
+        linkedin=Found([found_job("Bench Co", "1", yesterday), found_job("Stale Co", "2", yesterday)])
+    )
+
+    radar.apply_results(db, RadarConfig(), {}, found, TODAY)
+
+    assert (bench.stage, bench.research["relisted"]) == (Stage.BENCH, yesterday.isoformat())  # its role is in the inbox
+    assert (stale.stage, stale.research["relisted"]) == (Stage.NOT_STARTED, yesterday.isoformat())  # with an Apply move
+
+
+def test_the_day_a_company_was_added_is_a_local_date() -> None:
+    late_evening_in_toronto = datetime(2026, 10, 28, 3, 30, tzinfo=UTC)  # Oct 27, 11:30 pm in Toronto
+    c = Company(name="Late Add", created_at=late_evening_in_toronto, research={})
+    assert radar.company_age(c, date(2026, 11, 12), ZoneInfo("America/Toronto"))[0] == 16
+    assert radar.company_age(c, date(2026, 11, 12), UTC)[0] == 15
+
+
+def test_companies_are_read_in_batches(db: Session) -> None:
+    for n in range(5):
+        f.company(db, name=f"Batch {n}", stage=Stage.BENCH)
+    seen = [c.name for c in radar._companies(db, Company.stage == Stage.BENCH, size=2)]
+    assert sorted(seen) == [f"Batch {n}" for n in range(5)]
