@@ -58,12 +58,18 @@ class TregPostSearch:
                     cost = spent + Decimal(str(exc.spent))
                     raise ProviderError(f"{SERVICE}: {exc}", retryable=exc.retryable, cost_usd=cost) from exc
                 spent += Decimal(str(answer.cost_usd))
-                body = answer.body if isinstance(answer.body, dict) else {}
-                items = [i for i in body.get("elements") or [] if isinstance(i, dict)]
+                body = answer.body
+                elements = body.get("elements") if isinstance(body, dict) else None
+                if not isinstance(elements, list):
+                    # Not a page of posts: an empty result here would be cached as "nothing found" for days.
+                    raise ProviderError(f"{SERVICE}: the answer wasn't a page of posts", retryable=True, cost_usd=spent)
+                items = [i for i in elements if isinstance(i, dict)]
                 found += [p for p in (parse_post(i, query) for i in items[: max_posts_per_query - got]) if p]
                 got += len(items)
-                token = str((body.get("pagination") or {}).get("paginationToken") or "")
-                if len(items) < POST_SEARCH_PAGE or got >= max_posts_per_query:
+                paging = body.get("pagination")
+                paging = paging if isinstance(paging, dict) else {}
+                token = str(paging.get("paginationToken") or "")
+                if got >= max_posts_per_query or not _more(paging, page, len(items)):
                     break
         return SearchRun(
             id=f"treg-{uuid.uuid4().hex}", status=SearchStatus.SUCCEEDED, cost_usd=spent, posts=tuple(found)
@@ -76,6 +82,15 @@ class TregPostSearch:
 
     def posts(self, run: SearchRun) -> list[SearchedPost]:
         return list(run.posts)
+
+
+def _more(paging: dict[str, Any], page: int, items: int) -> bool:
+    """Whether the search has another page. HarvestAPI trims older windows after reading LinkedIn, so a short page
+    isn't the last one: the page count says, or failing that a continuation token, or failing both a full page."""
+    total = paging.get("totalPages")
+    if isinstance(total, int) and not isinstance(total, bool):
+        return page < total
+    return bool(paging.get("paginationToken")) or items >= POST_SEARCH_PAGE
 
 
 def parse_post(item: dict[str, Any], query: str) -> SearchedPost | None:

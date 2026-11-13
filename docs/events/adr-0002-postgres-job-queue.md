@@ -33,6 +33,10 @@ the rules below. It must also have a test that runs it twice.
    - **Reservation never marked started.** The call never happened. Release the reservation and start over.
    - **Handle stored.** Resume that call (poll that search) instead of starting a new one. Settle the reservation
      from the provider's own record of what it charged.
+     - treg is the exception: it answers a post search at once and keeps nothing to come back to, so its stored
+       `search_run_id` resumes nothing. `TregPostSearch.get` reports the search failed with its cost unknown, the
+       reservation is settled at its full amount, and the search runs again (paid for again). The window for this is
+       short: a finished search's posts are stored as soon as it returns.
    - **Started, but no handle** (the worker stopped during the call). Settle at the reserved amount, which is the
      most the call could cost, then start over. An unknown outcome counts as spent, never as freed.
      - A post search reads no page its reservation can't cover.

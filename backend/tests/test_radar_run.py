@@ -162,6 +162,16 @@ def test_stale_roles_are_parked_and_errors_are_reported(
     assert "last_linkedin_at" not in status.value  # the window stays open until a good run
 
 
+def test_a_post_search_that_stopped_early_keeps_its_window_open(db: Session, factory: sessionmaker[Session]) -> None:
+    treg = FakeTreg({LINKEDIN_JOBS: {"elements": []}}, fail={POST_SEARCH})
+    radar.run_once(factory, get_settings(), radar.Tools(web=FakeWeb(), treg=treg), "test")
+    status = db.get(Setting, "radar_status")
+    assert status is not None
+    assert "Hiring-post search failed" in status.value["error"]
+    assert "last_posts_at" not in status.value  # searched again, over the same days, on the next run
+    assert "last_linkedin_at" not in status.value
+
+
 def test_only_one_pass_at_a_time(db: Session, factory: sessionmaker[Session], connection: Connection) -> None:
     connection.execute(text("SELECT pg_advisory_lock(:k)"), {"k": radar.LOCK_KEY})
     try:

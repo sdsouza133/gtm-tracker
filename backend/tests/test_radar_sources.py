@@ -9,6 +9,7 @@ from app.radar.sources import (
     GOOGLE_SEARCH,
     JOB_DETAILS,
     LINKEDIN_JOBS,
+    POST_QUERIES,
     POST_SEARCH,
     parse_job,
     search_ats,
@@ -17,6 +18,7 @@ from app.radar.sources import (
     search_posts,
     window_seconds,
 )
+from app.treg import TregError
 from tests.radar_fakes import FakeWeb, ashby, ashby_job, job_details, linkedin_item
 from tests.treg_fakes import FakeTreg, pages
 
@@ -61,6 +63,22 @@ def test_job_boards_found_through_google_are_read_from_the_board() -> None:
     assert (found.meta["boards"], found.meta["read"], found.meta["kept"]) == (1, 2, 1)
     assert len(treg.calls) == 5  # one Google search per job-board site
     assert found.meta["charged_usd"] == pytest.approx(0.005)
+
+
+def test_a_failed_google_search_still_reads_the_boards_already_found() -> None:
+    def google(_query: object, body: dict[str, str] | None) -> dict[str, object]:
+        assert body is not None
+        if "ashbyhq" not in body["q"]:
+            raise TregError("serper is down")
+        return {"organic": [{"link": f"https://jobs.ashbyhq.com/acme/{UUID_FIT}"}]}
+
+    web = FakeWeb(json_by_url=ashby("acme", ashby_job("GTM Engineer", UUID_FIT, posted="2026-10-24")))
+    found = search_ats(
+        FakeTreg({GOOGLE_SEARCH: google}), web, RadarConfig(keywords=["GTM Engineer"]), 2, date(2026, 10, 26)
+    )
+    assert found.error == "serper is down"
+    assert [j["job_id"] for j in found.jobs] == [UUID_FIT]
+    assert found.meta["charged_usd"] == pytest.approx(0.001)
 
 
 def test_linkedin_search_params() -> None:
@@ -151,10 +169,30 @@ def test_a_posting_that_cant_be_read_is_judged_on_the_search_result(retryable: b
     assert treg.tools().count(JOB_DETAILS) == tries  # a busy treg gets one more try; a refusal doesn't
 
 
-def test_a_failed_linkedin_search_raises() -> None:
-    cfg = RadarConfig(keywords=["GTM Engineer"], locations=["United States"])
-    with pytest.raises(RuntimeError, match="is down"):
-        search_linkedin(FakeTreg(fail={LINKEDIN_JOBS}), cfg, 86400)
+def test_a_failed_linkedin_search_keeps_what_the_calls_before_it_found() -> None:
+    def listed(query: dict[str, str], _body: object) -> dict[str, object]:
+        if query["location"] == "Canada":
+            raise TregError("treg is busy", retryable=True)
+        return {"elements": [linkedin_item("7", "GTM Engineer", "Zeta")]}
+
+    cfg = RadarConfig(keywords=["GTM Engineer"], locations=["United States", "Canada"])
+    found = search_linkedin(FakeTreg({LINKEDIN_JOBS: listed, JOB_DETAILS: job_details()}), cfg, 86400)
+    assert found.error == "treg is busy"
+    assert [j["id"] for j in found.jobs] == ["li-7"]  # the first search's job, paid for and kept
+    assert found.meta["spent_usd"] == pytest.approx(0.002)  # the first search and its posting
+
+    found = search_linkedin(FakeTreg(fail={LINKEDIN_JOBS}), cfg, 86400)
+    assert (found.jobs, found.error) == ([], f"{LINKEDIN_JOBS} is down")
+
+
+@pytest.mark.parametrize(("per_search", "pages_read", "taken"), [(1, 1, 1), (26, 2, 26), (50, 2, 50)])
+def test_each_linkedin_search_takes_at_most_per_search_jobs(per_search: int, pages_read: int, taken: int) -> None:
+    listed = [linkedin_item(str(n), "Account Executive", f"Co {n}") for n in range(60)]
+    cfg = RadarConfig(keywords=["GTM Engineer"], locations=["United States"], per_search=per_search)
+    treg = FakeTreg({LINKEDIN_JOBS: pages(listed, 25)})
+    found = search_linkedin(treg, cfg, 86400)
+    assert treg.tools().count(LINKEDIN_JOBS) == pages_read
+    assert found.meta["scanned"] == taken
 
 
 def test_hiring_posts() -> None:
@@ -167,6 +205,19 @@ def test_hiring_posts() -> None:
     assert [p["id"] for p in found.jobs] == ["p1"]  # the same post from every query, once; no job seekers
     assert {q["postedLimit"] for _, q, _, _ in treg.calls} == {"24h"}
     assert found.meta == {"scanned": 12, "kept": 1, "window": "24h", "charged_usd": 0.024}
+
+
+def test_a_failed_post_search_keeps_the_posts_already_read() -> None:
+    hiring = {"id": "p1", "content": "We're hiring a GTM engineer! DM me.", "author": {"name": "Pat"}}
+
+    def search(query: dict[str, str], _body: object) -> dict[str, object]:
+        if query["search"] != POST_QUERIES[0]:
+            raise TregError("treg is busy", retryable=True)
+        return {"elements": [hiring]}
+
+    found = search_posts(FakeTreg({POST_SEARCH: search}, price=0.004), "24h")
+    assert ([p["id"] for p in found.jobs], found.error) == (["p1"], "treg is busy")
+    assert found.meta["charged_usd"] == pytest.approx(0.004)
 
 
 def test_search_window() -> None:

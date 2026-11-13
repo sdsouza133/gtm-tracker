@@ -24,13 +24,20 @@ MEMBER_ID = re.compile(r"/in/(ACo[A-Za-z0-9_-]+)")
 
 
 class LinkedInError(RuntimeError):
-    """A run that failed. `spent` is what it may have cost, so the budget still counts it; `found` is what earlier runs
-    for the same post had already read, so it isn't lost with the failure."""
+    """A run that failed. `spent` is what it may have cost, so the budget still counts it; `found` is what was already
+    read for the same post, so it isn't lost with the failure; `read` is the raw items of the pages read before it."""
 
-    def __init__(self, message: str, spent: float = 0.0, found: list["Engager"] | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        spent: float = 0.0,
+        found: list["Engager"] | None = None,
+        read: list[dict[str, Any]] | None = None,
+    ) -> None:
         super().__init__(message)
         self.spent = spent
         self.found = found or []
+        self.read = read or []
 
 
 @dataclass(frozen=True)
@@ -85,7 +92,7 @@ class LinkedIn:
             try:
                 answer = self.treg.call(tool, query=params, max_usd=PRICE[tool])
             except TregError as e:
-                raise LinkedInError(f"{_name(tool)}: {e}", spent=spent + e.spent) from e
+                raise LinkedInError(f"{_name(tool)}: {e}", spent=spent + e.spent, read=items[:want]) from e
             spent += answer.cost_usd
             body = answer.body if isinstance(answer.body, dict) else {}
             got = [i for i in body.get("elements") or [] if isinstance(i, dict)]
@@ -119,16 +126,20 @@ class LinkedIn:
         """Up to `reactions` likes and `comments` comments on one post, people only (company pages dropped)."""
         out: list[Engager] = []
         spent = 0.0
-        if reactions and post.likes:
-            items, spent = self._pages(REACTIONS, {"post": post.url}, min(reactions, post.likes), max_usd)
-            out += [e for e in (parse_engager(i, "reaction", post) for i in items) if e]
-        if comments and post.comments:
+        reads: tuple[tuple[Kind, str, int, int], ...] = (
+            ("reaction", REACTIONS, reactions, post.likes),
+            ("comment", COMMENTS, comments, post.comments),
+        )
+        for kind, tool, want, there in reads:
+            if not (want and there):
+                continue
             try:
-                items, cost = self._pages(COMMENTS, {"post": post.url}, min(comments, post.comments), max_usd - spent)
-            except LinkedInError as e:  # the likes already read were paid for, and still count as touches
-                raise LinkedInError(str(e), spent=spent + e.spent, found=out) from e
+                items, cost = self._pages(tool, {"post": post.url}, min(want, there), max_usd - spent)
+            except LinkedInError as e:  # what was read before it failed was paid for, and still counts as touches
+                found = out + _engagers(e.read, kind, post)
+                raise LinkedInError(str(e), spent=spent + e.spent, found=found) from e
             spent += cost
-            out += [e for e in (parse_engager(i, "comment", post) for i in items) if e]
+            out += _engagers(items, kind, post)
         return out, spent
 
     def profiles(self, urls: list[str], max_usd: float) -> tuple[dict[str, Profile], float]:
@@ -156,6 +167,10 @@ class LinkedIn:
         if errors and len(errors) == len(urls):
             raise LinkedInError(f"{_name(PROFILES)}: {errors[0]}", spent=spent)
         return {p.key: p for p in found}, spent
+
+
+def _engagers(items: list[dict[str, Any]], kind: Kind, post: Post) -> list[Engager]:
+    return [e for e in (parse_engager(i, kind, post) for i in items) if e]
 
 
 def _name(tool: str) -> str:

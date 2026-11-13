@@ -75,6 +75,7 @@ RECRUITER = re.compile(r"recruit|talent|staffing|headhunt|sourcer|job board|jobs
 class Found:
     jobs: list[dict[str, Any]] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
+    error: str = ""  # why the search stopped early; what it found and spent before that is still here
 
 
 @dataclass
@@ -237,25 +238,41 @@ def posting(spend: Spend, job_id: str) -> dict[str, Any] | None:
     return None
 
 
+def _listings(
+    spend: Spend, cfg: RadarConfig, searches: list[dict[str, str]], since: datetime
+) -> tuple[dict[str, dict[str, Any]], int, str]:
+    """Each search's jobs posted in the window, at most `per_search` a search, as far as the cap goes. A failed call
+    ends the searching but keeps what the calls before it found (they were paid for), with the reason."""
+    listed: dict[str, dict[str, Any]] = {}
+    scanned = 0
+    for params in searches:
+        taken = 0
+        for page in range(1, math.ceil(cfg.per_search / JOBS_PAGE) + 1):
+            if not spend.affords(LINKEDIN_JOBS):
+                break
+            try:
+                items = _elements(spend.call(LINKEDIN_JOBS, query={**params, "page": str(page)}))
+            except TregError as e:
+                return listed, scanned, str(e)
+            full = len(items) == JOBS_PAGE
+            items = items[: cfg.per_search - taken]
+            taken += len(items)
+            scanned += len(items)
+            for item in items:
+                if item.get("id") and _posted_since(item, since):
+                    listed.setdefault(str(item["id"]), item)
+            if not full:
+                break
+    return listed, scanned, ""
+
+
 def search_linkedin(treg: Caller, cfg: RadarConfig, since_seconds: int, now: datetime | None = None) -> Found:
     """Search LinkedIn, then read the full posting of each likely role (its description, pay and how to apply), as
     many as the daily cap covers. A role whose posting couldn't be read is judged on the search result alone."""
     spend = Spend(treg, cfg.daily_usd)
     since = (now or datetime.now(UTC)) - timedelta(seconds=since_seconds)
     searches = search_params(cfg, since_seconds)
-    listed: dict[str, dict[str, Any]] = {}
-    scanned = 0
-    for params in searches:
-        for page in range(1, math.ceil(cfg.per_search / JOBS_PAGE) + 1):
-            if not spend.affords(LINKEDIN_JOBS):
-                break
-            items = _elements(spend.call(LINKEDIN_JOBS, query={**params, "page": str(page)}))
-            scanned += len(items)
-            for item in items:
-                if item.get("id") and _posted_since(item, since):
-                    listed.setdefault(str(item["id"]), item)
-            if len(items) < JOBS_PAGE:
-                break
+    listed, scanned, error = _listings(spend, cfg, searches, since)
     jobs, unread = [], 0
     for job_id, item in listed.items():
         job = parse_job(item)
@@ -271,7 +288,7 @@ def search_linkedin(treg: Caller, cfg: RadarConfig, since_seconds: int, now: dat
     meta = {"searches": len(searches), "scanned": scanned, "kept": len(kept), "spent_usd": round(spend.spent, 3)}
     if unread:
         meta["unread"] = unread
-    return Found(kept, meta)
+    return Found(kept, meta, error)
 
 
 # ----------------------------------------------------------------------------- company job boards through Google
@@ -286,10 +303,15 @@ def search_ats(treg: Caller, web: boards.Http, cfg: RadarConfig, days: int, toda
     spend = Spend(treg, ATS_CAP_USD)
     recent = "qdr:d" if days <= 1 else f"qdr:d{days}"
     hits: list[str] = []
+    error = ""
     for query in ats_queries(cfg):
         if not spend.affords(GOOGLE_SEARCH):
             break
-        body = spend.call(GOOGLE_SEARCH, body={"q": query, "tbs": recent, "gl": "us", "hl": "en"})
+        try:
+            body = spend.call(GOOGLE_SEARCH, body={"q": query, "tbs": recent, "gl": "us", "hl": "en"})
+        except TregError as e:  # the boards already found are still read
+            error = str(e)
+            break
         organic = body.get("organic") if isinstance(body, dict) else None
         hits += [str(hit.get("link") or "") for hit in organic or [] if isinstance(hit, dict)]
     wanted: dict[tuple[str, str], set[str]] = {}
@@ -343,7 +365,7 @@ def search_ats(treg: Caller, web: boards.Http, cfg: RadarConfig, days: int, toda
         and fits(j, cfg)[0]
     ]
     meta = {"boards": len(wanted), "read": len(found), "kept": len(kept), "charged_usd": round(spend.spent, 3)}
-    return Found(kept, meta)
+    return Found(kept, meta, error)
 
 
 # ----------------------------------------------------------------------------- "we're hiring" posts
@@ -373,15 +395,21 @@ def search_posts(treg: Caller, window: str) -> Found:
     spend = Spend(treg, POSTS_CAP_USD)
     kept: dict[str, dict[str, Any]] = {}
     scanned = 0
+    error = ""
     for query in POST_QUERIES:
         if not spend.affords(POST_SEARCH):
             break
-        posts = _elements(
-            spend.call(POST_SEARCH, query={"search": query, "postedLimit": window, "sortBy": "date", "page": "1"})
-        )
+        try:
+            body = spend.call(
+                POST_SEARCH, query={"search": query, "postedLimit": window, "sortBy": "date", "page": "1"}
+            )
+        except TregError as e:  # the posts already read are kept
+            error = str(e)
+            break
+        posts = _elements(body)
         scanned += len(posts)
         for post in posts:
             if (h := hiring_post(post)) and h["id"]:
                 kept.setdefault(h["id"], h)
     meta = {"scanned": scanned, "kept": len(kept), "window": window, "charged_usd": round(spend.spent, 3)}
-    return Found(list(kept.values()), meta)
+    return Found(list(kept.values()), meta, error)

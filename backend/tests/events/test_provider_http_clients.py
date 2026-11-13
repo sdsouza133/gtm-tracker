@@ -81,6 +81,31 @@ def test_treg_search_pages_up_to_the_posts_asked_for_and_never_past_its_reservat
     assert (len(run.posts), run.cost_usd) == (100, Decimal("0.004"))
 
 
+def test_a_short_page_isnt_the_last_when_the_search_says_there_are_more() -> None:
+    def trimmed(req: httpx2.Request) -> httpx2.Response:  # older posts trimmed from each page after reading LinkedIn
+        n = int(req.url.params["page"])
+        body = {"elements": posts(f"p{n}", 20), "pagination": {"totalPages": 3, "pageNumber": n}}
+        return httpx2.Response(200, json=body, headers={"X-Treg-Cost-Micro": "2000"})
+
+    rec = Recorder({SEARCH: trimmed})
+    run = TregPostSearch("tok", transport=httpx2.MockTransport(rec)).start(
+        [QUERY], max_posts_per_query=200, max_charge_usd=Decimal("0.40")
+    )
+    assert [r.url.params["page"] for r in rec.requests] == ["1", "2", "3"]  # every page, and none past the last
+    assert len(run.posts) == 60
+
+
+@pytest.mark.parametrize("body", [[], {"elements": {}}, {"pagination": {}}])
+def test_an_answer_that_isnt_a_page_of_posts_fails_instead_of_finding_nothing(body: object) -> None:
+    answers = iter([page(posts("a", 3)), httpx2.Response(200, json=body, headers={"X-Treg-Cost-Micro": "2000"})])
+    rec = Recorder({SEARCH: lambda _req: next(answers)})
+    with pytest.raises(ProviderError, match="page of posts") as odd:
+        TregPostSearch("tok", transport=httpx2.MockTransport(rec)).start(
+            ["first", "second"], max_posts_per_query=50, max_charge_usd=Decimal("0.40")
+        )
+    assert (odd.value.retryable, odd.value.cost_usd) == (True, Decimal("0.004"))  # both answers were paid for
+
+
 def test_treg_errors_say_whether_to_retry_and_what_was_spent() -> None:
     answers = iter([page(posts("a", 3)), httpx2.Response(429, json={"detail": "provider_rate_limited"})])
     rec = Recorder({SEARCH: lambda _req: next(answers)})

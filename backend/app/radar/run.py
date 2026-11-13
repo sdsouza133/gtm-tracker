@@ -258,18 +258,22 @@ def search_all(treg: Caller, web: boards.Http, cfg: RadarConfig, status: dict[st
     try:
         out.linkedin = sources.search_linkedin(treg, cfg, window, now)
     except Exception as e:
-        out.errors.append(f"LinkedIn search failed: {e}"[:300])
+        out.linkedin = sources.Found(error=str(e))
     if cfg.ats_search:
         try:
             out.ats = sources.search_ats(treg, web, cfg, max(1, round(window / 86400)), today)
         except Exception as e:
-            out.errors.append(f"Job-board search failed: {e}"[:300])
+            out.ats = sources.Found(error=str(e))
     if cfg.post_search:
         last_posts = _days_since(status.get("last_posts_at"), now)
         try:
             out.posts = sources.search_posts(treg, "24h" if last_posts is not None and last_posts <= 1.25 else "week")  # noqa: PLR2004
         except Exception as e:
-            out.errors.append(f"Hiring-post search failed: {e}"[:300])
+            out.posts = sources.Found(error=str(e))
+    # A search that stopped early keeps what it found and spent, and its error holds the search window open.
+    for what, found in (("LinkedIn", out.linkedin), ("Job-board", out.ats), ("Hiring-post", out.posts)):
+        if found.error:
+            out.errors.append(f"{what} search failed: {found.error}"[:300])
     return out
 
 
@@ -565,7 +569,7 @@ def _run(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigg
             )
             if tools.treg and not found.errors:
                 status["last_linkedin_at"] = started_at
-            if found.posts.meta:
+            if found.posts.meta and not found.posts.error:
                 status["last_posts_at"] = started_at
             put_setting(session, "radar_status", status)
             record(session, "radar", describe(summary, found.errors))

@@ -120,6 +120,31 @@ def test_a_failed_call_is_a_linkedin_error_that_keeps_what_was_paid_for() -> Non
     assert len(comments_failed.value.found) == 10  # the likes read before the comments failed are kept
 
 
+@pytest.mark.parametrize("failing", [li.REACTIONS, li.COMMENTS])
+def test_pages_read_before_a_later_page_fails_are_kept(failing: str) -> None:
+    class SecondPageFails(FakeHarvest):
+        def call(
+            self, tool: str, *, query: dict[str, Any] | None = None, body: dict[str, Any] | None = None, max_usd: float
+        ) -> Answer:
+            if tool == failing and (query or {}).get("page") == "2":
+                self.calls.append((tool, dict(query or {}), max_usd))
+                raise TregError("busy", retryable=True)
+            return super().call(tool, query=query, body=body, max_usd=max_usd)
+
+    likes = [reaction(f"ACoAAl{n}", "X", "VP Sales", P1) for n in range(15)]
+    notes = [comment(f"ACoAAc{n}", f"c-{n}", "Head of RevOps", P1, "Agreed") for n in range(15)]
+    harvest = SecondPageFails(reactions={P1: likes}, comments={P1: notes}, page_size=10)
+    with pytest.raises(LinkedInError, match="busy") as failed:
+        LinkedIn(harvest).engagers(a_post(likes=15, comments=15), 30, 30, 1.0)
+    kinds = [e.kind for e in failed.value.found]
+    if failing == li.REACTIONS:
+        assert kinds == ["reaction"] * 10  # the first page of likes, paid for and kept
+        assert failed.value.spent == pytest.approx(0.002)
+    else:
+        assert kinds == ["reaction"] * 15 + ["comment"] * 10  # every like, and the first page of comments
+        assert failed.value.spent == pytest.approx(3 * 0.002)
+
+
 def test_a_dropped_connection_counts_its_whole_ceiling() -> None:
     class Dropped(FakeHarvest):
         def call(
