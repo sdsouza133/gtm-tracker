@@ -606,6 +606,7 @@ class RadarConfigPatch(BaseModel):
     hour: int | None = Field(default=None, ge=0, le=23)
     min_fit: int | None = Field(default=None, ge=1, le=3)
     recent_days: int | None = Field(default=None, ge=1, le=60)
+    ttl_days: int | None = Field(default=None, ge=1, le=365)
     ats_search: bool | None = None
     post_search: bool | None = None
     core_only: bool | None = None
@@ -622,6 +623,7 @@ class RadarConfigOut(BaseModel):
     hour: int
     min_fit: int
     recent_days: int
+    ttl_days: int
     ats_search: bool
     post_search: bool
     core_only: bool

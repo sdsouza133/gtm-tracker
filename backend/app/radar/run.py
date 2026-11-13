@@ -7,7 +7,9 @@ everything in one transaction:
   it was parked for a stale or misfit role;
 - a posting gone from the board puts a warning on its open Apply move;
 - a LinkedIn or board-search role at a tracked company becomes an Apply move; any other role lands in the inbox;
-- companies whose role has gone stale (older than `recent_days`, nothing done yet) are parked;
+- untouched companies (not started or bench, nothing done) are parked `ttl_days` after their role was posted, or after
+  they were added when they have no role; one whose role is fresh again comes back. This also runs on its own once a
+  day (`start_ttl_scheduler`), so it keeps rolling when the radar's schedule is off;
 - hiring posts are kept for two weeks for the daily research to qualify.
 
 A Postgres advisory lock makes sure only one pass runs at a time, across every copy of the app.
@@ -145,24 +147,43 @@ def started(session: Session, company_id: str) -> bool:
     return False
 
 
-def park_stale_roles(session: Session, today: date, recent_days: int) -> list[str]:
+UNTOUCHED = (Stage.NOT_STARTED, Stage.BENCH)
+
+
+def company_age(c: Company, today: date) -> tuple[int | None, str]:
+    """Days since the company's role was posted, or since it was added when it has no role; and which it was."""
+    age = role_age(c, today)
+    if age is not None:
+        return age, f"Role posted {job_date(c)[:10]} ({age} days ago)"
+    added = c.created_at.date()
+    return (today - added).days, f"Added {added.isoformat()} with no role ({(today - added).days} days ago)"
+
+
+def park_untouched(session: Session, today: date, ttl_days: int) -> list[str]:
+    """Rolling TTL: park every not-started or bench company where nothing has been done once it's older than
+    `ttl_days`, and bring back one parked for its age whose role is fresh again (re-posted, say)."""
     parked = []
-    for c in session.scalars(select(Company).where(Company.stage == Stage.NOT_STARTED)):
-        age = role_age(c, today)
-        if age is None or age <= recent_days or started(session, c.id):
+    for c in session.scalars(select(Company).where(Company.stage.in_(UNTOUCHED)).order_by(Company.name)):
+        age, since = company_age(c, today)
+        if age is None or age <= ttl_days or started(session, c.id):
             continue
         c.stage = Stage.PARKED
         c.parked_why = ParkedWhy.STALE_ROLE
         c.parked_reason = (
-            f"Role posted {job_date(c)[:10]} ({age} days ago). Only roles from the last {recent_days} days are worked; "
-            "it comes back if they post a new one."
+            f"{since}. Companies nobody has touched are parked after {ttl_days} days; it comes back if they post a "
+            "new role."
         )
         parked.append(f"{c.name} ({age}d)")
+    stale = select(Company).where(Company.stage == Stage.PARKED, Company.parked_why == ParkedWhy.STALE_ROLE)
+    for c in session.scalars(stale.order_by(Company.name)):
+        age = role_age(c, today)
+        if age is not None and age <= ttl_days:
+            _unpark(session, c, f"its role is {age} days old")
     if parked:
         record(
             session,
             "stage",
-            f"Parked {len(parked)} companies whose role is over {recent_days} days old: {', '.join(parked)}",
+            f"Parked {len(parked)} untouched companies older than {ttl_days} days: {', '.join(parked)}",
         )
     return parked
 
@@ -455,7 +476,7 @@ def apply_results(
     _apply_board_checks(session, cfg, checks, today, summary)
     session.flush()
     _apply_found_jobs(session, found, today, summary)
-    park_stale_roles(session, today, cfg.recent_days)
+    park_untouched(session, today, cfg.ttl_days)
     cutoff = datetime.now(UTC) - timedelta(days=INBOX_DAYS)
     for item in session.scalars(select(RadarItem).where(RadarItem.created_at < cutoff)):
         session.delete(item)
@@ -614,6 +635,42 @@ def start_scheduler(
                 log.exception("radar scheduler check failed")
 
     threading.Thread(target=loop, name="job-radar", daemon=True).start()
+    return stop
+
+
+TTL_LAST_RUN = "company_ttl_last_run"
+
+
+def expire_untouched(factory: sessionmaker[Session], settings: Settings) -> list[str] | None:
+    """Run the rolling TTL now, under the radar's lock so it never overlaps a pass. None when a pass holds the lock."""
+    with pass_lock(factory) as got:
+        if not got:
+            return None
+        today = datetime.now(settings.tz).date()
+        with factory() as session:
+            parked = park_untouched(session, today, config(session).ttl_days)
+            put_setting(session, TTL_LAST_RUN, today.isoformat())
+            session.commit()
+        return parked
+
+
+def start_ttl_scheduler(factory: sessionmaker[Session], settings: Settings) -> threading.Event:
+    """Checks now and then every five minutes; runs the TTL once a (local) day. Returns an event that stops it."""
+    stop = threading.Event()
+
+    def loop() -> None:
+        while True:
+            try:
+                with factory() as session:
+                    ran = get_setting(session, TTL_LAST_RUN, "") == datetime.now(settings.tz).date().isoformat()
+                if not ran:
+                    expire_untouched(factory, settings)
+            except Exception:
+                log.exception("company TTL check failed")
+            if stop.wait(CHECK_EVERY_S):
+                return
+
+    threading.Thread(target=loop, name="company-ttl", daemon=True).start()
     return stop
 
 
