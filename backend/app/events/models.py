@@ -28,7 +28,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from app import models as tracker
 
 Money = Numeric(12, 4)
-"""US dollars to 1/100 of a cent: Apify charges $0.002 per post."""
+"""US dollars to 1/100 of a cent: a LinkedIn post search page costs fractions of a cent."""
 
 
 class Base(DeclarativeBase):
@@ -162,7 +162,7 @@ class RunEvent(Base):
     status: Mapped[RunEventStatus] = mapped_column(
         _enum(RunEventStatus, "run_event_status"), default=RunEventStatus.PENDING
     )
-    apify_run_id: Mapped[str | None] = mapped_column(String(64))
+    search_run_id: Mapped[str | None] = mapped_column("apify_run_id", String(64))  # the provider's id for the search
     spend_id: Mapped[int | None] = mapped_column(BigInteger, comment="Reservation for the current search")
     search_queries: Mapped[list[Any]] = mapped_column(
         default=list,

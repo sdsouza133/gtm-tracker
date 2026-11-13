@@ -24,7 +24,7 @@ function Today({ home }: { home: EventsHome }) {
           </span>
         </p>
         <p className="text-[13px] text-muted">
-          Each run spends up to {usd(home.run_budget_usd)} on Claude and Apify, plus Apollo credits for emails. Jobs:{" "}
+          Each run spends up to {usd(home.run_budget_usd)} on Claude and treg, plus Apollo credits for emails. Jobs:{" "}
           {queue.running} running, {queue.due} waiting, {queue.later} later
           {queue.failed ? `, ${queue.failed} failed` : ""}.
         </p>

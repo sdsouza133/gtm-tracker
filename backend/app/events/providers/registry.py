@@ -7,10 +7,10 @@ import anthropic
 from app.events.config import EventsSettings
 from app.events.providers import fakes
 from app.events.providers.anthropic_llm import AnthropicLlm
-from app.events.providers.apify import ApifyPostSearch
 from app.events.providers.apollo import ApolloEnrichment
 from app.events.providers.protocols import EmailVerifier, Llm, PeopleEnrichment, PostSearch, WebFetcher
 from app.events.providers.reoon import ReoonVerifier
+from app.events.providers.treg import TregPostSearch
 from app.events.providers.webfetch import SafeFetcher
 
 
@@ -58,9 +58,7 @@ def build_providers(settings: EventsSettings) -> Providers:
     return Providers(
         fetcher=SafeFetcher(),
         llm=llm,
-        search=ApifyPostSearch(
-            secret(settings.apify_token), actor=settings.apify_actor, posted_limit=settings.apify_posted_limit
-        ),
+        search=TregPostSearch(secret(settings.treg_token), posted_limit=settings.search_posted_limit),
         enrichment=ApolloEnrichment(secret(settings.apollo_api_key)),
         verifier=ReoonVerifier(secret(settings.reoon_api_key)) if settings.reoon_enabled else None,
     )

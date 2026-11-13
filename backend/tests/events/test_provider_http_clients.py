@@ -1,4 +1,4 @@
-"""Contract tests for the Apify, Apollo and Reoon clients, against synthetic responses shaped like the real
+"""Contract tests for the treg, Apollo and Reoon clients, against synthetic responses shaped like the real
 ones (field names and structure copied from live responses; every value is made up)."""
 
 import json
@@ -8,10 +8,10 @@ from typing import Any
 import httpx2
 import pytest
 
-from app.events.providers.apify import ApifyPostSearch, parse_post
 from app.events.providers.apollo import ApolloEnrichment
 from app.events.providers.reoon import ReoonVerifier
-from app.events.providers.types import ProviderError, SearchRun, SearchStatus
+from app.events.providers.treg import TregPostSearch, parse_post
+from app.events.providers.types import ProviderError, SearchStatus
 
 
 class Recorder:
@@ -27,7 +27,9 @@ class Recorder:
         return answer if isinstance(answer, httpx2.Response) else httpx2.Response(200, json=answer)
 
 
-# ------------------------------------------------------------------------------------------------------- Apify
+# -------------------------------------------------------------------------------------------------------- treg
+SEARCH = "/call/harvestapi.linkedin.post.search"
+QUERY = '"RevOps Summit 2026" AND attending'
 POST_ITEM = {
     "type": "post",
     "id": "7390000000000000001",
@@ -41,74 +43,79 @@ POST_ITEM = {
         "publicIdentifier": "avery-okafor-1234",
     },
     "postedAt": {"timestamp": 1792611808091, "date": "2026-10-21T19:43:28.091Z", "postedAgoShort": "1d"},
-    "query": {"sortBy": "relevance", "page": 1, "search": '"RevOps Summit 2026" AND attending'},
 }
 
 
-def run_data(status: str, **extra: object) -> dict[str, Any]:
-    return {"data": {"id": "run123", "status": status, "defaultDatasetId": "ds456", **extra}}
+def page(items: list[dict[str, Any]], token: str = "") -> httpx2.Response:
+    body = {"elements": items, "pagination": {"pageSize": 50, "paginationToken": token or None}, "error": None}
+    return httpx2.Response(200, json=body, headers={"X-Treg-Cost-Micro": "2000"})
 
 
-def test_apify_start_caps_the_charge_and_reads_no_profiles() -> None:
-    routes = {"/v2/acts/harvestapi~linkedin-post-search/runs": run_data("READY")}
-    rec = Recorder(routes)
-    run = ApifyPostSearch("tok", transport=httpx2.MockTransport(rec)).start(
-        ['"RevOps Summit 2026"'], max_posts_per_query=50, max_charge_usd=Decimal("0.40")
+def posts(prefix: str, n: int) -> list[dict[str, Any]]:
+    return [dict(POST_ITEM, id=f"{prefix}-{i}") for i in range(n)]
+
+
+def test_treg_search_answers_at_once_with_every_querys_posts() -> None:
+    rec = Recorder({SEARCH: lambda req: page(posts(req.url.params["search"], 3))})
+    run = TregPostSearch("tok", transport=httpx2.MockTransport(rec)).start(
+        [QUERY, '"RevOps Summit"'], max_posts_per_query=50, max_charge_usd=Decimal("0.40")
     )
-    assert (run.id, run.status) == ("run123", SearchStatus.RUNNING)
+    assert (run.status, run.cost_usd, len(run.posts)) == (SearchStatus.SUCCEEDED, Decimal("0.004"), 6)
+    assert {p.query for p in run.posts} == {QUERY, '"RevOps Summit"'}
     request = rec.requests[0]
-    assert request.url.params["maxTotalChargeUsd"] == "0.40"
-    assert request.headers["authorization"] == "Bearer tok"
-    body = json.loads(request.content)
-    assert body["searchQueries"] == ['"RevOps Summit 2026"']
-    assert body["maxPosts"] == 50
-    assert body["profileScraperMode"] == "short"  # full profiles cost extra
-    assert body["scrapeReactions"] is body["scrapeComments"] is False
+    assert request.headers["X-Treg-Token"] == "tok"
+    assert "tok" not in str(request.url)  # the key never goes in a URL a proxy might log
+    assert request.headers["X-Treg-Route-Max-Cost"] == "0.0040"  # each call capped at its list price
+    assert (request.url.params["scrapePostedLimit"], request.url.params["sortBy"]) == ("3months", "relevance")
+    assert "postedLimit" not in request.url.params  # LinkedIn's own filter only goes back a month
 
 
-@pytest.mark.parametrize(
-    ("status", "expected"),
-    [
-        ("RUNNING", SearchStatus.RUNNING),
-        ("TIMING-OUT", SearchStatus.RUNNING),  # on its way to TIMED-OUT, with the final usage still to come
-        ("ABORTING", SearchStatus.RUNNING),
-        ("SUCCEEDED", SearchStatus.SUCCEEDED),
-        ("TIMED-OUT", SearchStatus.SUCCEEDED),  # partial results are still charged and still useful
-        ("ABORTED", SearchStatus.SUCCEEDED),
-        ("FAILED", SearchStatus.FAILED),
-    ],
-)
-def test_apify_run_statuses(status: str, expected: SearchStatus) -> None:
-    rec = Recorder({"/v2/actor-runs/run123": run_data(status, usageTotalUsd=0.10005)})
-    run = ApifyPostSearch("tok", transport=httpx2.MockTransport(rec)).get("run123")
-    assert run.status == expected
-    assert run.cost_usd == Decimal("0.10005")
+def test_treg_search_pages_up_to_the_posts_asked_for_and_never_past_its_reservation() -> None:
+    answers = iter([page(posts("a", 50), token="next"), page(posts("b", 50), token="again"), page(posts("c", 50))])
+    rec = Recorder({SEARCH: lambda _req: next(answers)})
+    search = TregPostSearch("tok", posted_limit="week", transport=httpx2.MockTransport(rec))
+    run = search.start([QUERY], max_posts_per_query=120, max_charge_usd=Decimal("0.0065"))
+    assert len(rec.requests) == 2  # $0.004 spent, and a third page lists at $0.004: over the $0.0065 reserved
+    assert rec.requests[1].url.params["paginationToken"] == "next"
+    assert rec.requests[0].url.params["postedLimit"] == "week"
+    assert (len(run.posts), run.cost_usd) == (100, Decimal("0.004"))
 
 
-def test_apify_posts_are_paged_and_parsed() -> None:
-    first = [dict(POST_ITEM, id=str(i)) for i in range(1000)]
-    second = [dict(POST_ITEM, id="last"), {"id": "", "content": "no id"}, dict(POST_ITEM, id="empty", content="")]
-    pages = iter([first, second])
-    rec = Recorder({"/v2/datasets/ds456/items": lambda _req: httpx2.Response(200, json=next(pages))})
-    search = ApifyPostSearch("tok", transport=httpx2.MockTransport(rec))
-    posts = search.posts(SearchRun(id="run123", status=SearchStatus.SUCCEEDED, dataset_id="ds456"))
-    assert len(posts) == 1001
-    assert [r.url.params["offset"] for r in rec.requests] == ["0", "1000"]
+def test_treg_errors_say_whether_to_retry_and_what_was_spent() -> None:
+    answers = iter([page(posts("a", 3)), httpx2.Response(429, json={"detail": "provider_rate_limited"})])
+    rec = Recorder({SEARCH: lambda _req: next(answers)})
+    with pytest.raises(ProviderError) as busy:
+        TregPostSearch("tok", transport=httpx2.MockTransport(rec)).start(
+            ["first", "second"], max_posts_per_query=50, max_charge_usd=Decimal("0.40")
+        )
+    assert (busy.value.retryable, busy.value.cost_usd) == (True, Decimal("0.002"))  # the first page was paid for
+
+    rec = Recorder({SEARCH: httpx2.Response(401, json={"detail": "invalid token"})})
+    with pytest.raises(ProviderError) as refused:
+        TregPostSearch("bad", transport=httpx2.MockTransport(rec)).start(
+            [QUERY], max_posts_per_query=50, max_charge_usd=Decimal("0.40")
+        )
+    assert not refused.value.retryable
+
+
+def test_a_search_the_worker_lost_is_failed_at_full_cost() -> None:
+    run = TregPostSearch("tok").get("treg-lost")
+    assert (run.status, run.cost_usd) == (SearchStatus.FAILED, None)  # None: settle the whole reservation
 
 
 def test_a_post_item_becomes_a_normalized_post() -> None:
-    post = parse_post(POST_ITEM)
+    post = parse_post(POST_ITEM, QUERY)
     assert post is not None
     assert post.author_url == "https://www.linkedin.com/in/avery-okafor-1234"
     assert post.author_headline == "Head of Growth at Northwind Labs"
     assert post.author_kind == "person"
     assert post.posted_at is not None
     assert post.posted_at.isoformat() == "2026-10-21T19:43:28.091000+00:00"
-    assert post.query == '"RevOps Summit 2026" AND attending'
+    assert post.query == QUERY
 
 
 def test_a_post_date_without_an_offset_is_utc() -> None:
-    post = parse_post({**POST_ITEM, "postedAt": {"date": "2026-10-21T19:43:28"}})
+    post = parse_post({**POST_ITEM, "postedAt": {"date": "2026-10-21T19:43:28"}}, QUERY)
     assert post is not None
     assert post.posted_at is not None
     assert post.posted_at.isoformat() == "2026-10-21T19:43:28+00:00"
@@ -116,30 +123,25 @@ def test_a_post_date_without_an_offset_is_utc() -> None:
 
 def test_an_unreadable_post_date_is_left_out_not_fatal() -> None:
     for date_value in ("not a date", 20261021, {"x": 1}):
-        post = parse_post({**POST_ITEM, "postedAt": {"date": date_value}})
+        post = parse_post({**POST_ITEM, "postedAt": {"date": date_value}}, QUERY)
         assert post is not None
         assert post.posted_at is None
 
 
-def test_company_posts_and_reposts() -> None:
+def test_company_posts_reposts_and_empty_items() -> None:
     company = dict(
         POST_ITEM,
         author={"type": "company", "name": "Northwind", "linkedinUrl": "https://www.linkedin.com/company/northwind"},
     )
-    parsed = parse_post(company)
+    parsed = parse_post(company, QUERY)
     assert parsed is not None
     assert (parsed.author_kind, parsed.author_headline) == ("company", None)
     repost = dict(POST_ITEM, content="", repost={"content": "Original text about RevOps Summit"})
-    reposted = parse_post(repost)
+    reposted = parse_post(repost, QUERY)
     assert reposted is not None
     assert reposted.text == "Original text about RevOps Summit"
-
-
-def test_apify_errors_are_classified() -> None:
-    rec = Recorder({"/v2/actor-runs/run123": httpx2.Response(401, json={"error": {"type": "token-not-valid"}})})
-    with pytest.raises(ProviderError) as exc:
-        ApifyPostSearch("bad", transport=httpx2.MockTransport(rec)).get("run123")
-    assert not exc.value.retryable
+    assert parse_post({"id": "", "content": "no id"}, QUERY) is None
+    assert parse_post(dict(POST_ITEM, content=""), QUERY) is None
 
 
 # ------------------------------------------------------------------------------------------------------ Apollo

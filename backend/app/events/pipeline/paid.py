@@ -34,7 +34,7 @@ class SpendingPausedError(Exception):
 
 
 def check_not_paused(ctx: JobContext) -> None:
-    """Call before anything billed: Claude and Apify (`paid_call` does), Apollo and Reoon.
+    """Call before anything billed: Claude and treg (`paid_call` does), Apollo and Reoon.
 
     A job only sees the settings its worker started with, and changing EVENTS_PAUSE_NEW_RUNS restarts the worker. So a
     worker told to stop starts no paid call either: the job goes back at once, for the next worker to pick up.

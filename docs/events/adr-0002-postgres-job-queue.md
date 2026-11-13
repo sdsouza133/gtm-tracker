@@ -28,14 +28,14 @@ the rules below. It must also have a test that runs it twice.
    - Before starting the call, write what is about to happen (the spend reservation, the search being started) and
      commit.
    - Right before the call, mark the reservation as started, which is one more short commit.
-   - After the call, store the provider's handle right away, such as the Apify run ID on the run's event row.
+   - After the call, store the provider's handle right away, such as the search's ID on the run's event row (`search_run_id`).
 2. **On retry, look before acting.**
    - **Reservation never marked started.** The call never happened. Release the reservation and start over.
-   - **Handle stored.** Resume that call (poll that Apify run) instead of starting a new one. Settle the reservation
+   - **Handle stored.** Resume that call (poll that search) instead of starting a new one. Settle the reservation
      from the provider's own record of what it charged.
    - **Started, but no handle** (the worker stopped during the call). Settle at the reserved amount, which is the
      most the call could cost, then start over. An unknown outcome counts as spent, never as freed.
-     - An Apify run is capped at the reservation by `maxTotalChargeUsd`.
+     - A post search reads no page its reservation can't cover.
      - A Claude call is bounded by its prompt, `max_tokens` and `max_uses`.
    - **A sweeper backs this up.** It applies the same rules to any reservation still open an hour after it was made,
      so a run that died can't hold budget.
