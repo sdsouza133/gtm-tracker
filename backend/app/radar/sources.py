@@ -1,27 +1,29 @@
-"""The paid searches, through Apify, each with a dollar cap:
+"""The paid searches, through treg (treg.to), each with a dollar cap:
 
-- LinkedIn's public job search (pay per result),
-- company job boards found through Google, then read from the board itself (free) for the real details,
+- LinkedIn's public job search, then each likely role's full posting (HarvestAPI, paid per page and per posting),
+- company job boards found through Google (Serper), then read from the board itself (free) for the real details,
 - LinkedIn posts where someone says they're hiring a GTM engineer (the poster is often the hiring manager).
 """
 
+import math
 import re
-import urllib.parse
 from dataclasses import dataclass, field
-from datetime import date, timedelta
-from typing import Any, Protocol
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 from app.radar import boards
-from app.radar.apify import RunResult
 from app.radar.fit import AGENCY, CANADA, RadarConfig, fits, flags_for, is_overseas, salary_in, title_score
+from app.treg import Caller, TregError
 
-LINKEDIN_JOBS = "curious_coder/linkedin-jobs-scraper"
-PRICE_PER_JOB = 0.002
-GOOGLE_SEARCH = "apify/google-search-scraper"
-GOOGLE_CAP_USD = 0.50  # Apify's minimum cap for this actor
-POST_SEARCH = "harvestapi/linkedin-post-search"
-POSTS_CAP_USD = 0.40
-POSTS_PER_QUERY = 50
+LINKEDIN_JOBS = "harvestapi.linkedin.search.jobs"  # 25 jobs a page
+JOBS_PAGE = 25
+JOB_DETAILS = "harvestapi.linkedin.job.get"  # one posting, with its description
+GOOGLE_SEARCH = "serper.web.search"  # 10 results a page
+POST_SEARCH = "harvestapi.linkedin.post.search"  # 50 posts a page
+# treg's list prices, the most one call can cost: each call is sent with its price as its ceiling.
+CALL_USD = {LINKEDIN_JOBS: 0.001, JOB_DETAILS: 0.001, GOOGLE_SEARCH: 0.001, POST_SEARCH: 0.004}
+ATS_CAP_USD = 0.05
+POSTS_CAP_USD = 0.05
 SNIPPET = 700
 POST_TEXT = 1500
 DAY_S = 86400
@@ -69,16 +71,36 @@ ANNOUNCE = re.compile(
 RECRUITER = re.compile(r"recruit|talent|staffing|headhunt|sourcer|job board|jobs in|remote work", re.IGNORECASE)
 
 
-class Runner(Protocol):
-    def run(
-        self, actor: str, actor_input: dict[str, Any], max_usd: float, *, partial_ok: bool = False
-    ) -> RunResult: ...
-
-
 @dataclass
 class Found:
     jobs: list[dict[str, Any]] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class Spend:
+    """Calls charged against one search's cap. A call is made only when its whole list price still fits."""
+
+    treg: Caller
+    cap: float
+    spent: float = 0.0
+
+    def affords(self, tool: str) -> bool:
+        return self.spent + CALL_USD[tool] <= self.cap + 1e-9
+
+    def call(self, tool: str, *, query: dict[str, Any] | None = None, body: dict[str, Any] | None = None) -> Any:
+        try:
+            answer = self.treg.call(tool, query=query, body=body, max_usd=CALL_USD[tool])
+        except TregError as e:
+            self.spent += e.spent
+            raise
+        self.spent += answer.cost_usd
+        return answer.body
+
+
+def _elements(body: Any) -> list[dict[str, Any]]:
+    items = body.get("elements") if isinstance(body, dict) else None
+    return [i for i in items or [] if isinstance(i, dict)]
 
 
 def window_seconds(days_since_last_good_run: float | None) -> int:
@@ -90,108 +112,192 @@ def window_seconds(days_since_last_good_run: float | None) -> int:
 # ----------------------------------------------------------------------------- LinkedIn jobs
 
 
-def search_urls(cfg: RadarConfig, since_seconds: int) -> list[str]:
-    urls = []
+def search_params(cfg: RadarConfig, since_seconds: int) -> list[dict[str, str]]:
+    """One LinkedIn job search per keyword and location. LinkedIn's date filter is coarse (a day or a week), so the
+    exact window is applied to the results afterwards."""
+    posted = "24h" if since_seconds <= DAY_S else "week"
+    searches = []
     for keyword in cfg.keywords:
         for location in cfg.locations:
             if keyword.strip() and location.strip():  # quoted, so LinkedIn matches the phrase
                 params = {
-                    "keywords": f'"{keyword.strip()}"',
+                    "search": f'"{keyword.strip()}"',
                     "location": location.strip(),
-                    "f_TPR": f"r{since_seconds}",
+                    "postedLimit": posted,
+                    "sortBy": "date",
                 }
                 if cfg.toronto_ok and not CANADA.search(location):
-                    params["f_WT"] = "2"  # US searches: remote roles only; Canadian roles can be on-site
-                urls.append(f"https://www.linkedin.com/jobs/search/?{urllib.parse.urlencode(params)}")
-    return urls
+                    params["workplaceType"] = "remote"  # US searches: remote roles only; Canadian roles can be on-site
+                searches.append(params)
+    return searches
 
 
-def parse_job(item: dict[str, Any]) -> dict[str, Any]:
-    job_id = str(item.get("id") or "")
-    title = (item.get("title") or "").strip()
-    description = item.get("descriptionText") or ""
-    location = item.get("location") or ""
+def _text(value: Any) -> str:
+    """A field as text: a list is joined, and LinkedIn's {"name": ...} entries (industries, say) give their name."""
+    if isinstance(value, list):
+        return ", ".join(t for t in (_text(v) for v in value) if t)
+    if isinstance(value, dict):
+        return str(value.get("name") or value.get("title") or "")
+    return str(value or "")
+
+
+def _location(listed: Any, full: dict[str, Any]) -> str:
+    """Where the job is, as LinkedIn says it, with how it's worked when that isn't already in the text: the full
+    posting says "United States" where the search said "United States (Remote)"."""
+    text = str(listed.get("linkedinText") or "") if isinstance(listed, dict) else str(listed or "")
+    place = full.get("location")
+    if not text and isinstance(place, dict):
+        text = str(place.get("linkedinText") or "")
+    how = {"remote": "Remote", "hybrid": "Hybrid", "office": "On-site", "on-site": "On-site", "onsite": "On-site"}
+    kind = how.get(str(full.get("workplaceType") or "").lower())
+    if kind and kind.lower() not in text.lower():
+        text = f"{text} ({kind})" if text else kind
+    return text
+
+
+def _salary(value: Any) -> str:
+    if isinstance(value, dict):
+        if value.get("text"):
+            return str(value["text"])
+        low, high = value.get("min"), value.get("max")
+        if low or high:
+            money = "–".join(f"{n:,.0f}" if isinstance(n, int | float) else str(n) for n in (low, high) if n)
+            return f"{value.get('currency') or ''} {money}".strip()
+        return ""
+    return str(value or "")
+
+
+def parse_job(item: dict[str, Any], details: dict[str, Any] | None = None) -> dict[str, Any]:
+    """A job from LinkedIn's search results, completed by its full posting when that was read."""
+    full = {**item, **(details or {})}
+    job_id = str(full.get("id") or "")
+    title = str(full.get("title") or "").strip()
+    description = str(full.get("descriptionText") or "")
+    company = {**(item.get("company") or {}), **((details or {}).get("company") or {})}
+    location_text = _location(item.get("location"), full)
+    apply = full.get("applyMethod") or {}
     return {
         "id": f"li-{job_id}",
         "job_id": job_id,
         "title": title,
-        "company": (item.get("companyName") or "").strip(),
-        "company_linkedin": (item.get("companyLinkedinUrl") or "").split("?")[0],
-        "website": item.get("companyWebsite") or "",
-        "employees": str(item.get("companyEmployeesCount") or ""),
-        "industry": item.get("industries") or "",
-        "location": location,
-        "posted": (item.get("postedAt") or "")[:10],
-        "applicants": str(item.get("applicantsCount") or ""),
-        "salary": item.get("salary") or salary_in(description),
-        "seniority": item.get("seniorityLevel") or "",
-        "url": f"https://www.linkedin.com/jobs/view/{job_id}" if job_id else (item.get("link") or "").split("?")[0],
-        "apply_url": item.get("applyUrl") or "",
+        "company": str(company.get("name") or full.get("companyName") or "").strip(),
+        "company_linkedin": str(company.get("linkedinUrl") or full.get("companyLink") or "").split("?")[0],
+        "website": str(company.get("website") or ""),
+        "employees": str(company.get("employeeCount") or ""),
+        "industry": _text(full.get("industries") or company.get("industries")),
+        "location": location_text,
+        "posted": str(full.get("postedDate") or "")[:10],
+        "applicants": str(full.get("applicants") or ""),
+        "salary": _salary(full.get("salary")) or salary_in(description),
+        "seniority": _text(full.get("experienceLevel")),
+        "url": f"https://www.linkedin.com/jobs/view/{job_id}" if job_id else str(full.get("url") or "").split("?")[0],
+        "apply_url": str(
+            (apply.get("companyApplyUrl") if isinstance(apply, dict) else "") or full.get("easyApplyUrl") or ""
+        ),
         "fit": title_score(title),
-        "flags": flags_for(location, description),
+        "flags": flags_for(location_text, description),
         "snippet": re.sub(r"\s+", " ", description)[:SNIPPET],
     }
 
 
-def filter_jobs(items: list[dict[str, Any]], cfg: RadarConfig) -> list[dict[str, Any]]:
-    """One row per LinkedIn job: GTM titles, no staffing agencies, roles that fit."""
-    by_id: dict[str, dict[str, Any]] = {}
-    for item in items:
-        job = parse_job(item)
-        if job["job_id"]:
-            by_id.setdefault(job["job_id"], job)
-    return [
-        j
-        for j in by_id.values()
-        if j["fit"] >= cfg.min_fit
-        and j["company"]
-        and not AGENCY.search(f"{j['company']} {j['industry']}")
-        and fits(j, cfg)[0]
-    ]
-
-
-def search_linkedin(apify: Runner, cfg: RadarConfig, since_seconds: int) -> Found:
-    urls = search_urls(cfg, since_seconds)
-    result = apify.run(
-        LINKEDIN_JOBS,
-        {"urls": urls, "limitPerSource": cfg.per_search, "scrapeCompany": True},
-        cfg.daily_usd,
-        partial_ok=True,
+def likely(job: dict[str, Any], cfg: RadarConfig) -> bool:
+    """Worth reading the full posting: a GTM title at a company that isn't a staffing agency."""
+    return (
+        job["fit"] >= cfg.min_fit and bool(job["company"]) and not AGENCY.search(f"{job['company']} {job['industry']}")
     )
-    kept = filter_jobs(result.items, cfg)
-    spent = round(len(result.items) * PRICE_PER_JOB, 2)
-    return Found(kept, {"searches": len(urls), "scanned": len(result.items), "kept": len(kept), "spent_usd": spent})
+
+
+def filter_jobs(jobs: list[dict[str, Any]], cfg: RadarConfig) -> list[dict[str, Any]]:
+    """GTM titles, no staffing agencies, roles that fit."""
+    return [j for j in jobs if likely(j, cfg) and fits(j, cfg)[0]]
+
+
+def _posted_since(item: dict[str, Any], since: datetime) -> bool:
+    try:
+        posted = datetime.fromisoformat(str(item.get("postedDate") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return True  # no readable date: keep it, the fit rules decide
+    return (posted if posted.tzinfo else posted.replace(tzinfo=UTC)) >= since
+
+
+def posting(spend: Spend, job_id: str) -> dict[str, Any] | None:
+    """A job's full posting, or None when the cap is reached or it can't be read: taken down since the search, or
+    treg busy twice in a row. One posting failing never fails the search."""
+    for attempt in range(2):
+        if not spend.affords(JOB_DETAILS):
+            return None
+        try:
+            body = spend.call(JOB_DETAILS, query={"jobId": job_id})
+        except TregError as e:
+            if e.retryable and attempt == 0:
+                continue
+            return None
+        details = body.get("element") if isinstance(body, dict) else None
+        return details if isinstance(details, dict) else None
+    return None
+
+
+def search_linkedin(treg: Caller, cfg: RadarConfig, since_seconds: int, now: datetime | None = None) -> Found:
+    """Search LinkedIn, then read the full posting of each likely role (its description, pay and how to apply), as
+    many as the daily cap covers. A role whose posting couldn't be read is judged on the search result alone."""
+    spend = Spend(treg, cfg.daily_usd)
+    since = (now or datetime.now(UTC)) - timedelta(seconds=since_seconds)
+    searches = search_params(cfg, since_seconds)
+    listed: dict[str, dict[str, Any]] = {}
+    scanned = 0
+    for params in searches:
+        for page in range(1, math.ceil(cfg.per_search / JOBS_PAGE) + 1):
+            if not spend.affords(LINKEDIN_JOBS):
+                break
+            items = _elements(spend.call(LINKEDIN_JOBS, query={**params, "page": str(page)}))
+            scanned += len(items)
+            for item in items:
+                if item.get("id") and _posted_since(item, since):
+                    listed.setdefault(str(item["id"]), item)
+            if len(items) < JOBS_PAGE:
+                break
+    jobs, unread = [], 0
+    for job_id, item in listed.items():
+        job = parse_job(item)
+        if not likely(job, cfg):
+            continue
+        details = posting(spend, job_id)
+        if details is None:
+            unread += 1
+        else:
+            job = parse_job(item, details)
+        jobs.append(job)
+    kept = filter_jobs(jobs, cfg)
+    meta = {"searches": len(searches), "scanned": scanned, "kept": len(kept), "spent_usd": round(spend.spent, 3)}
+    if unread:
+        meta["unread"] = unread
+    return Found(kept, meta)
 
 
 # ----------------------------------------------------------------------------- company job boards through Google
 
 
-def ats_queries(cfg: RadarConfig) -> str:
-    return "\n".join(f'site:{site} "{k.strip()}"' for site in ATS_SITES for k in cfg.keywords[:3] if k.strip())
+def ats_queries(cfg: RadarConfig) -> list[str]:
+    return [f'site:{site} "{k.strip()}"' for site in ATS_SITES for k in cfg.keywords[:3] if k.strip()]
 
 
-def search_ats(apify: Runner, web: boards.Http, cfg: RadarConfig, days: int, today: date) -> Found:
+def search_ats(treg: Caller, web: boards.Http, cfg: RadarConfig, days: int, today: date) -> Found:
     """Roles posted straight to company job boards: these often never reach LinkedIn, so fewer people apply."""
-    result = apify.run(
-        GOOGLE_SEARCH,
-        {
-            "queries": ats_queries(cfg),
-            "maxPagesPerQuery": 1,
-            "quickDateRange": f"d{max(1, days)}",
-            "countryCode": "us",
-            "searchLanguage": "en",
-            "saveHtmlToKeyValueStore": False,
-        },
-        GOOGLE_CAP_USD,
-        partial_ok=True,
-    )
+    spend = Spend(treg, ATS_CAP_USD)
+    recent = "qdr:d" if days <= 1 else f"qdr:d{days}"
+    hits: list[str] = []
+    for query in ats_queries(cfg):
+        if not spend.affords(GOOGLE_SEARCH):
+            break
+        body = spend.call(GOOGLE_SEARCH, body={"q": query, "tbs": recent, "gl": "us", "hl": "en"})
+        organic = body.get("organic") if isinstance(body, dict) else None
+        hits += [str(hit.get("link") or "") for hit in organic or [] if isinstance(hit, dict)]
     wanted: dict[tuple[str, str], set[str]] = {}
-    for page in result.items:
-        for hit in page.get("organicResults") or []:
-            for ats, rx in ATS_LINK:
-                if m := re.search(rx, hit.get("url") or "", re.IGNORECASE):
-                    wanted.setdefault((ats, m.group(1)), set()).add(m.group(2).lower())
-                    break
+    for url in hits:
+        for ats, rx in ATS_LINK:
+            if m := re.search(rx, url, re.IGNORECASE):
+                wanted.setdefault((ats, m.group(1)), set()).add(m.group(2).lower())
+                break
     found = []
     for (ats, slug), ids in wanted.items():
         got = boards.read(web, ats, slug)
@@ -236,7 +342,7 @@ def search_ats(apify: Runner, web: boards.Http, cfg: RadarConfig, days: int, tod
         and (not j["posted"] or j["posted"] >= oldest)
         and fits(j, cfg)[0]
     ]
-    meta = {"boards": len(wanted), "read": len(found), "kept": len(kept), "charged_usd": result.charged_usd}
+    meta = {"boards": len(wanted), "read": len(found), "kept": len(kept), "charged_usd": round(spend.spent, 3)}
     return Found(kept, meta)
 
 
@@ -263,24 +369,19 @@ def hiring_post(post: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def search_posts(apify: Runner, window: str) -> Found:
-    result = apify.run(
-        POST_SEARCH,
-        {
-            "searchQueries": POST_QUERIES,
-            "maxPosts": POSTS_PER_QUERY,
-            "postedLimit": window,
-            "sortBy": "date",
-            "profileScraperMode": "short",
-            "scrapeReactions": False,
-            "scrapeComments": False,
-        },
-        POSTS_CAP_USD,
-        partial_ok=True,
-    )
+def search_posts(treg: Caller, window: str) -> Found:
+    spend = Spend(treg, POSTS_CAP_USD)
     kept: dict[str, dict[str, Any]] = {}
-    for post in result.items:
-        if (h := hiring_post(post)) and h["id"]:
-            kept.setdefault(h["id"], h)
-    meta = {"scanned": len(result.items), "kept": len(kept), "window": window, "charged_usd": result.charged_usd}
+    scanned = 0
+    for query in POST_QUERIES:
+        if not spend.affords(POST_SEARCH):
+            break
+        posts = _elements(
+            spend.call(POST_SEARCH, query={"search": query, "postedLimit": window, "sortBy": "date", "page": "1"})
+        )
+        scanned += len(posts)
+        for post in posts:
+            if (h := hiring_post(post)) and h["id"]:
+                kept.setdefault(h["id"], h)
+    meta = {"scanned": scanned, "kept": len(kept), "window": window, "charged_usd": round(spend.spent, 3)}
     return Found(list(kept.values()), meta)

@@ -100,7 +100,7 @@ class RadarConfig:
     )
     locations: list[str] = field(default_factory=lambda: ["United States", "Canada"])
     per_search: int = 25  # most jobs taken from each keyword x location search
-    daily_usd: float = 0.30  # Apify stops the LinkedIn run at this spend
+    daily_usd: float = 0.30  # the most the LinkedIn search spends in a pass (searches plus full postings)
     hour: int = 7  # local hour the morning run starts
     min_fit: int = 2  # 3 = the role itself, 2 = next door (RevOps, GTM systems), 1 = worth a look
     recent_days: int = 7  # a role older than this is likely filled

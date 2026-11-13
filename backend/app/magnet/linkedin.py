@@ -1,27 +1,26 @@
-"""LinkedIn through Apify's HarvestAPI actors, which need no LinkedIn login or cookies.
+"""LinkedIn through HarvestAPI's endpoints on treg (treg.to), which need no LinkedIn login or cookies.
 
-Each actor is paid per item, so every run gets a spend cap from the build's budget, and the spend counted is the
-larger of what Apify reports and the item count times the list price.
+Each call is one page (up to 50 or 100 posts, 100 likes or comments) or one profile, at a set price per call, so the
+build's budget is checked before every call and the spend counted is what treg reports charging.
 """
 
+import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-import httpx2
-
 from app.magnet.touch import Kind
-from app.radar.apify import MIN_CHARGE_USD
-from app.radar.sources import Runner
+from app.treg import Caller, TregError
 
-COMPANY_POSTS = "harvestapi/linkedin-company-posts"
-PROFILE_POSTS = "harvestapi/linkedin-profile-posts"
-REACTIONS = "harvestapi/linkedin-post-reactions"
-COMMENTS = "harvestapi/linkedin-post-comments"
-PROFILES = "harvestapi/linkedin-profile-scraper"
-PROFILE_MODE = "Profile details no email ($4 per 1k)"
-PRICE = {COMPANY_POSTS: 0.002, PROFILE_POSTS: 0.002, REACTIONS: 0.002, COMMENTS: 0.002, PROFILES: 0.004}  # $ per item
-CAP_SLACK = 1.25  # Apify's cap sits a little above the list price, so a run isn't stopped one item short
+COMPANY_POSTS = "harvestapi.linkedin.company.posts"
+PROFILE_POSTS = "harvestapi.linkedin.user.posts"
+REACTIONS = "harvestapi.linkedin.post.reactions"
+COMMENTS = "harvestapi.linkedin.post.comments"
+PROFILES = "harvestapi.linkedin.user.profile.main"  # the profile as LinkedIn first shows it: enough for where and what
+PRICE = {COMPANY_POSTS: 0.004, PROFILE_POSTS: 0.004, REACTIONS: 0.004, COMMENTS: 0.004, PROFILES: 0.004}  # $ a call
+PROFILE_WORKERS = 3  # treg shares its HarvestAPI account: a few profiles at a time, not a burst
+MEMBER_ID = re.compile(r"/in/(ACo[A-Za-z0-9_-]+)")
 
 
 class LinkedInError(RuntimeError):
@@ -73,57 +72,59 @@ class Profile:
 
 
 class LinkedIn:
-    def __init__(self, runner: Runner) -> None:
-        self.runner = runner
+    def __init__(self, treg: Caller) -> None:
+        self.treg = treg
 
-    def _run(self, actor: str, actor_input: dict[str, Any], expected: int, max_usd: float) -> tuple[list[Any], float]:
-        # Apify won't take a cap under MIN_CHARGE_USD, so with less budget than that left, nothing starts
-        if max_usd < MIN_CHARGE_USD or expected <= 0:
-            return [], 0.0
-        name = actor.rsplit("/", maxsplit=1)[-1]
-        cap = min(max_usd, expected * PRICE[actor] * CAP_SLACK + 0.01)
-        try:
-            result = self.runner.run(actor, actor_input, cap, partial_ok=True)
-        except (RuntimeError, httpx2.HTTPError) as e:  # ApifyError, and timeouts or dropped connections
-            # the run may have started and be charging, and its cost is now unknown: count all it was allowed to spend
-            raise LinkedInError(f"{name}: {type(e).__name__} {e}", spent=cap) from e
-        items = [i for i in result.items if isinstance(i, dict)]
-        if result.status != "SUCCEEDED" and not items:  # a run stopped at its cap still keeps what it saved
-            raise LinkedInError(f"{name} ended {result.status}.", spent=result.charged_usd)
-        return items, max(result.charged_usd, len(items) * PRICE[actor])
+    def _pages(self, tool: str, query: dict[str, str], want: int, max_usd: float) -> tuple[list[dict[str, Any]], float]:
+        """Up to `want` items, a page at a time, while the budget covers a whole call."""
+        items: list[dict[str, Any]] = []
+        spent = 0.0
+        page, token = 1, ""
+        while len(items) < want and spent + PRICE[tool] <= max_usd + 1e-9:
+            params = {**query, "page": str(page)} | ({"paginationToken": token} if token else {})
+            try:
+                answer = self.treg.call(tool, query=params, max_usd=PRICE[tool])
+            except TregError as e:
+                raise LinkedInError(f"{_name(tool)}: {e}", spent=spent + e.spent) from e
+            spent += answer.cost_usd
+            body = answer.body if isinstance(answer.body, dict) else {}
+            got = [i for i in body.get("elements") or [] if isinstance(i, dict)]
+            items += got
+            pagination = body.get("pagination") or {}
+            token = str(pagination.get("paginationToken") or "")
+            last = pagination.get("totalPages")
+            if not got or (page >= int(last) if last is not None else not token):
+                break
+            page += 1
+        return items[:want], spent
 
     def posts(
         self, targets: list[str], per_target: int, max_usd: float, *, people: bool = False
     ) -> tuple[list[Post], float]:
         """The last month's posts by company pages (or, with `people`, by people), newest first per target."""
-        if not targets:
-            return [], 0.0
-        actor = PROFILE_POSTS if people else COMPANY_POSTS
-        items, spent = self._run(
-            actor,
-            {"targetUrls": targets, "maxPosts": per_target, "postedLimit": "month"},
-            len(targets) * per_target,
-            max_usd,
-        )
-        return [p for p in (parse_post(i) for i in items) if p], spent
+        tool = PROFILE_POSTS if people else COMPANY_POSTS
+        out: list[Post] = []
+        spent = 0.0
+        for target in targets:
+            query = {"profile" if people else "company": target, "postedLimit": "month"}
+            try:
+                items, cost = self._pages(tool, query, per_target, max_usd - spent)
+            except LinkedInError as e:
+                raise LinkedInError(str(e), spent=spent + e.spent) from e
+            spent += cost
+            out += [p for p in (parse_post(i, target) for i in items) if p]
+        return out, spent
 
     def engagers(self, post: Post, reactions: int, comments: int, max_usd: float) -> tuple[list[Engager], float]:
         """Up to `reactions` likes and `comments` comments on one post, people only (company pages dropped)."""
         out: list[Engager] = []
         spent = 0.0
-        reactions = min(reactions, affordable(REACTIONS, max_usd))
         if reactions and post.likes:
-            items, cost = self._run(
-                REACTIONS, {"posts": [post.url], "maxItems": reactions}, min(reactions, post.likes), max_usd
-            )
-            spent += cost
+            items, spent = self._pages(REACTIONS, {"post": post.url}, min(reactions, post.likes), max_usd)
             out += [e for e in (parse_engager(i, "reaction", post) for i in items) if e]
-        comments = min(comments, affordable(COMMENTS, max_usd - spent))
         if comments and post.comments:
             try:
-                items, cost = self._run(
-                    COMMENTS, {"posts": [post.url], "maxItems": comments}, min(comments, post.comments), max_usd - spent
-                )
+                items, cost = self._pages(COMMENTS, {"post": post.url}, min(comments, post.comments), max_usd - spent)
             except LinkedInError as e:  # the likes already read were paid for, and still count as touches
                 raise LinkedInError(str(e), spent=spent + e.spent, found=out) from e
             spent += cost
@@ -131,18 +132,39 @@ class LinkedIn:
         return out, spent
 
     def profiles(self, urls: list[str], max_usd: float) -> tuple[dict[str, Profile], float]:
-        """Profiles by member key: where they live and where they work now. As many as the budget covers."""
+        """Profiles by member key: where they live and where they work now. As many as the budget covers; a profile
+        that can't be read is left out, and only all of them failing is an error."""
         urls = urls[: affordable(PROFILES, max_usd)]
         if not urls:
             return {}, 0.0
-        items, spent = self._run(PROFILES, {"urls": urls, "profileScraperMode": PROFILE_MODE}, len(urls), max_usd)
-        found = [p for p in (parse_profile(i) for i in items) if p]
+
+        def one(url: str) -> tuple[Profile | None, float, TregError | None]:
+            m = MEMBER_ID.search(url)
+            query = {"main": "true"} | ({"profileId": m.group(1)} if m else {"url": url})
+            try:
+                answer = self.treg.call(PROFILES, query=query, max_usd=PRICE[PROFILES])
+            except TregError as e:
+                return None, e.spent, e
+            element = answer.body.get("element") if isinstance(answer.body, dict) else None
+            return (parse_profile(element) if isinstance(element, dict) else None), answer.cost_usd, None
+
+        with ThreadPoolExecutor(max_workers=PROFILE_WORKERS) as pool:
+            results = list(pool.map(one, urls))
+        spent = sum(cost for _, cost, _ in results)
+        found = [p for p, _, _ in results if p]
+        errors = [e for _, _, e in results if e]
+        if errors and len(errors) == len(urls):
+            raise LinkedInError(f"{_name(PROFILES)}: {errors[0]}", spent=spent)
         return {p.key: p for p in found}, spent
 
 
-def affordable(actor: str, max_usd: float) -> int:
-    """How many items of this actor the budget pays for, so a run can't charge more than is left."""
-    return max(0, int(max_usd / PRICE[actor]))
+def _name(tool: str) -> str:
+    return tool.removeprefix("harvestapi.linkedin.")
+
+
+def affordable(tool: str, max_usd: float) -> int:
+    """How many calls of this tool the budget pays for, so the calls can't charge more than is left."""
+    return max(0, int(max_usd / PRICE[tool] + 1e-9))
 
 
 def _day(value: Any) -> date | None:
@@ -161,14 +183,12 @@ def _int(value: Any) -> int:
         return 0
 
 
-def parse_post(item: dict[str, Any]) -> Post | None:
+def parse_post(item: dict[str, Any], target: str) -> Post | None:
+    """One post read from `target`'s page (a company page or a person's profile)."""
     url = str(item.get("linkedinUrl") or "")
     if not url or item.get("type", "post") != "post":
         return None
     engagement = item.get("engagement") or {}
-    query = item.get("query") or {}
-    author = item.get("author") or {}
-    target = str(query.get("targetUrl") or query.get("profileUrl") or author.get("linkedinUrl") or "")
     return Post(
         url=url,
         target=target,

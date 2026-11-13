@@ -1,4 +1,4 @@
-"""A full radar pass against the database, with the network and Apify faked."""
+"""A full radar pass against the database, with the network and treg faked."""
 
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import get_settings
 from app.models import Activity, Company, Move, MoveType, ParkedWhy, RadarItem, Setting, Stage
 from app.radar import run as radar
-from app.radar.sources import LINKEDIN_JOBS, POST_SEARCH
+from app.radar.sources import JOB_DETAILS, LINKEDIN_JOBS, POST_SEARCH
 from tests import factories as f
-from tests.radar_fakes import FakeApify, FakeWeb, ashby, ashby_job, linkedin_item
+from tests.radar_fakes import FakeWeb, ashby, ashby_job, job_details, linkedin_item
+from tests.treg_fakes import FakeTreg, pages
 
 UUID_OLD = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 UUID_NEW = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -62,7 +63,7 @@ def test_a_new_board_posting_becomes_an_apply_move(db: Session, factory: session
     )
     db.commit()
     web = FakeWeb(json_by_url=ashby("acme", ashby_job("Senior GTM Engineer", UUID_NEW, posted=today.isoformat())))
-    assert radar.run_once(factory, get_settings(), radar.Tools(web=web, apify=None), "test")
+    assert radar.run_once(factory, get_settings(), radar.Tools(web=web, treg=None), "test")
 
     moves = db.scalars(select(Move).where(Move.company_id == c.id).order_by(Move.created_at)).all()
     assert [m.title for m in moves] == ["Apply: GTM Engineer"]  # one open Apply move per company
@@ -87,7 +88,7 @@ def test_a_parked_company_comes_back_when_it_posts_again(
     c = tracked(db, today, stage=Stage.PARKED, parked_why=ParkedWhy.STALE_ROLE)
     db.commit()
     web = FakeWeb(json_by_url=ashby("acme", ashby_job("GTM Engineer", UUID_NEW, posted=today.isoformat())))
-    radar.run_once(factory, get_settings(), radar.Tools(web=web, apify=None), "test")
+    radar.run_once(factory, get_settings(), radar.Tools(web=web, treg=None), "test")
     db.refresh(c)
     assert (c.stage, c.parked_why) == (Stage.NOT_STARTED, None)
     apply = db.scalars(select(Move).where(Move.company_id == c.id, Move.type == MoveType.APPLY)).one()
@@ -100,27 +101,33 @@ def test_linkedin_roles_go_to_tracked_companies_or_the_inbox(
     beta = f.company(db, name="Beta Labs", stage=Stage.NOT_STARTED)
     bench = f.company(db, name="Gamma", stage=Stage.BENCH)
     db.commit()
-    apify = FakeApify(
+    treg = FakeTreg(
         {
-            LINKEDIN_JOBS: [
-                linkedin_item("1", "GTM Engineer", "Beta Labs"),
-                linkedin_item("2", "GTM Engineer", "Delta"),
-                linkedin_item("3", "GTM Engineer", "Gamma"),
-                linkedin_item("4", "GTM Engineer", "TalentCo Staffing"),
-                linkedin_item("5", "Account Executive", "Epsilon"),
-            ],
-            POST_SEARCH: [
-                {
-                    "id": "p1",
-                    "content": "We're hiring a GTM engineer! DM me.",
-                    "author": {"name": "Pat"},
-                    "postedAt": {"date": "2026-10-25"},
-                },
-                {"id": "p2", "content": "Open to work as a GTM engineer", "author": {"name": "Sam"}},
-            ],
+            LINKEDIN_JOBS: pages(
+                [
+                    linkedin_item("1", "GTM Engineer", "Beta Labs"),
+                    linkedin_item("2", "GTM Engineer", "Delta"),
+                    linkedin_item("3", "GTM Engineer", "Gamma"),
+                    linkedin_item("4", "GTM Engineer", "TalentCo Staffing"),
+                    linkedin_item("5", "Account Executive", "Epsilon"),
+                ],
+                25,
+            ),
+            JOB_DETAILS: job_details(),
+            POST_SEARCH: {
+                "elements": [
+                    {
+                        "id": "p1",
+                        "content": "We're hiring a GTM engineer! DM me.",
+                        "author": {"name": "Pat"},
+                        "postedAt": {"date": "2026-10-25"},
+                    },
+                    {"id": "p2", "content": "Open to work as a GTM engineer", "author": {"name": "Sam"}},
+                ]
+            },
         }
     )
-    tools = radar.Tools(web=FakeWeb(), apify=apify)
+    tools = radar.Tools(web=FakeWeb(), treg=treg)
     radar.run_once(factory, get_settings(), tools, "test")
     assert db.scalars(select(Move.title).where(Move.company_id == beta.id)).all() == ["Apply: GTM Engineer"]
     inbox = {i.company: i for i in db.scalars(select(RadarItem))}
@@ -133,8 +140,8 @@ def test_linkedin_roles_go_to_tracked_companies_or_the_inbox(
     radar.run_once(factory, get_settings(), tools, "test")  # a second pass adds nothing twice
     assert db.scalars(select(Move).where(Move.company_id == beta.id)).all().__len__() == 1
     assert len(db.scalars(select(RadarItem)).all()) == 2
-    caps = {actor: cap for actor, _, cap in apify.runs}
-    assert caps[LINKEDIN_JOBS] == pytest.approx(0.30)
+    caps = {tool: cap for tool, _, _, cap in treg.calls}
+    assert caps[LINKEDIN_JOBS] == pytest.approx(0.001)  # every call capped at its list price
 
 
 def test_stale_roles_are_parked_and_errors_are_reported(
@@ -143,8 +150,8 @@ def test_stale_roles_are_parked_and_errors_are_reported(
     old = f.company(db, name="Old Role", posted=today - timedelta(days=20))
     fresh = f.company(db, name="Fresh Role", posted=today - timedelta(days=2))
     db.commit()
-    apify = FakeApify(fail={LINKEDIN_JOBS})
-    radar.run_once(factory, get_settings(), radar.Tools(web=FakeWeb(), apify=apify), "test")
+    treg = FakeTreg(fail={LINKEDIN_JOBS})
+    radar.run_once(factory, get_settings(), radar.Tools(web=FakeWeb(), treg=treg), "test")
     db.refresh(old)
     db.refresh(fresh)
     assert (old.stage, old.parked_why) == (Stage.PARKED, ParkedWhy.STALE_ROLE)
@@ -159,7 +166,7 @@ def test_only_one_pass_at_a_time(db: Session, factory: sessionmaker[Session], co
     connection.execute(text("SELECT pg_advisory_lock(:k)"), {"k": radar.LOCK_KEY})
     try:
         other = sessionmaker(bind=connection.engine)  # a separate connection, like a second copy of the app
-        assert radar.run_once(other, get_settings(), radar.Tools(web=FakeWeb(), apify=None), "test") is False
+        assert radar.run_once(other, get_settings(), radar.Tools(web=FakeWeb(), treg=None), "test") is False
     finally:
         connection.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": radar.LOCK_KEY})
     assert db.get(Setting, "radar_status") is None

@@ -27,8 +27,8 @@ from app.magnet import touch
 from app.magnet.brain import ICP, Brain, Competitor, Thinker
 from app.magnet.linkedin import PRICE, PROFILES, Engager, LinkedIn, LinkedInError, Post, Profile
 from app.magnet.site import read_site
-from app.radar.apify import Apify
 from app.radar.fit import domain_of, web_url
+from app.treg import Treg
 
 Mode = Literal["teaser", "full"]
 Progress = Callable[[str, dict[str, Any]], None]
@@ -71,7 +71,7 @@ class Plan:
     comments: int  # per post
     profiles: int  # the best-fitting people looked up for location and current job
     emails: bool
-    budget_usd: float  # Apify spend; Claude and Apollo are on top (a few cents and credits)
+    budget_usd: float  # LinkedIn spend (through treg); Claude and Apollo are on top (a few cents and credits)
 
 
 PLANS: dict[Mode, Plan] = {
@@ -121,7 +121,7 @@ class Tools:
 
 
 def default_tools(settings: Settings) -> Tools:
-    """The real network. Raises (BrainError, ApifyError or ApolloError) naming the setting that's missing."""
+    """The real network. Raises (BrainError, TregError or ApolloError) naming the setting that's missing."""
 
     def secret(value: SecretStr | None) -> str:
         return value.get_secret_value() if value else ""
@@ -129,7 +129,7 @@ def default_tools(settings: Settings) -> Tools:
     return Tools(
         read_site=read_site,
         brain=Brain(secret(settings.anthropic_api_key), settings.magnet_icp_model, settings.magnet_screen_model),
-        linkedin=LinkedIn(Apify(secret(settings.apify_token))),
+        linkedin=LinkedIn(Treg(secret(settings.treg_token))),
         apollo=Apollo(secret(settings.apollo_api_key)),
     )
 
@@ -254,7 +254,7 @@ def build(spec: Spec, tools: Tools, today: date, progress: Progress | None = Non
             "in_region": len(leads),
             "tiers": {t: sum(1 for lead in leads if lead["tier"] == t) for t in ("hot", "warm", "touch")},
             "emails": emails,
-            "apify_usd": round(budget.spent, 3),
+            "linkedin_usd": round(budget.spent, 3),
         },
     }
 
@@ -352,7 +352,7 @@ def _engage(
         budget.add(spent)
         engagers += found
     if failed == len(posts) and not engagers:
-        raise BuildError("Apify couldn't read the likes and comments. Try again in a few minutes.")
+        raise BuildError("LinkedIn's likes and comments couldn't be read. Try again in a few minutes.")
     return engagers, failed
 
 

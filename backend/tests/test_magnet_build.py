@@ -7,6 +7,7 @@ from app.enrich.apollo import ApolloError
 from app.magnet import linkedin as li
 from app.magnet.build import PLANS, BuildError, Spec, Tools, build
 from app.magnet.linkedin import LinkedIn
+from app.treg import TregError
 from tests.magnet_fakes import (
     ORGS,
     P1,
@@ -17,7 +18,7 @@ from tests.magnet_fakes import (
     RIVAL_PAGE,
     FakeApollo,
     FakeBrain,
-    FakeRunner,
+    FakeHarvest,
     post,
     runner,
     site,
@@ -26,7 +27,7 @@ from tests.magnet_fakes import (
 TODAY = date(2026, 11, 1)
 
 
-def tools(run: FakeRunner, apollo: FakeApollo | None = None, brain: FakeBrain | None = None) -> Tools:
+def tools(run: FakeHarvest, apollo: FakeApollo | None = None, brain: FakeBrain | None = None) -> Tools:
     return Tools(
         read_site=site,
         brain=brain or FakeBrain("rivalco.example", "nolinkedin.example", "otherco.example"),
@@ -72,9 +73,9 @@ def test_a_teaser_reads_one_competitor_and_ranks_people_in_the_icp_by_touchpoint
 def test_a_teaser_stays_inside_its_budget() -> None:
     run = runner()
     report = build(spec(), tools(run), TODAY)
-    assert sum(cap for _, _, cap in run.runs) <= PLANS["teaser"].budget_usd
-    assert report["stats"]["apify_usd"] <= PLANS["teaser"].budget_usd
-    assert li.PROFILE_POSTS not in run.actors()  # no decision makers in a teaser
+    assert sum(cap for _, _, cap in run.calls) <= PLANS["teaser"].budget_usd
+    assert report["stats"]["linkedin_usd"] <= PLANS["teaser"].budget_usd
+    assert li.PROFILE_POSTS not in run.tools()  # no decision makers in a teaser
 
 
 def test_the_full_build_reads_three_competitors_and_their_decision_makers_and_finds_emails() -> None:
@@ -101,7 +102,7 @@ def test_the_full_build_reads_three_competitors_and_their_decision_makers_and_fi
     assert by_name["Ana Example"]["email_status"] == "verified"
     assert "Hal Example" in by_name  # liked the CEO's post
     assert report["stats"]["emails"] == {"asked": len(report["leads"]), "found": 1, "error": ""}
-    assert sum(cap for _, _, cap in run.runs) <= PLANS["full"].budget_usd
+    assert sum(cap for _, _, cap in run.calls) <= PLANS["full"].budget_usd
 
 
 def test_the_competitors_the_user_names_go_first() -> None:
@@ -134,16 +135,16 @@ def test_no_recent_posts_is_a_clear_error() -> None:
 def test_one_post_failing_leaves_the_rest_but_all_failing_is_an_error() -> None:
     run = runner()
     calls = {"n": 0}
-    real = run.run
+    real = run.call
 
-    def flaky(actor: str, actor_input: dict[str, Any], max_usd: float, *, partial_ok: bool = False) -> Any:
-        if actor == li.REACTIONS:
+    def flaky(tool: str, *, query: Any = None, body: Any = None, max_usd: float) -> Any:
+        if tool == li.REACTIONS:
             calls["n"] += 1
             if calls["n"] == 1:
-                raise RuntimeError("timeout")
-        return real(actor, actor_input, max_usd, partial_ok=partial_ok)
+                raise TregError("timeout", retryable=True)
+        return real(tool, query=query, body=body, max_usd=max_usd)
 
-    run.run = flaky  # type: ignore[method-assign]
+    run.call = flaky  # type: ignore[method-assign]
     report = build(spec(), tools(run), TODAY)
     assert report["stats"]["posts_failed"] == 1
     assert report["leads"]
@@ -171,7 +172,7 @@ def test_the_decision_makers_posts_failing_still_leaves_the_company_pages() -> N
     assert report["leads"]
 
 
-def test_a_post_is_matched_to_its_author_even_without_the_query_echoed_back() -> None:
+def test_a_post_is_matched_to_the_profile_it_was_read_from() -> None:
     bare = post(R1, RIA, likes=3, comments=0)
     del bare["query"]
     bare["author"] = {
@@ -198,9 +199,9 @@ def test_recruiters_are_kept_for_a_prospect_that_sells_to_recruiters() -> None:
 
 
 def test_a_post_whose_comments_failed_still_counts_the_likes_it_paid_for() -> None:
-    report = build(spec(), tools(runner(fail={li.COMMENTS})), TODAY)
+    run = runner(fail={li.COMMENTS})
+    report = build(spec(), tools(run), TODAY)
     assert report["stats"]["posts_failed"] == 2  # the two posts with comments; the third had none to read
     assert "Ana Example" in {lead["name"] for lead in report["leads"]}  # her likes on those two posts still count
-    likes_read = 5 + 4 + 1  # P2, P1 (the company page too), P3
-    posts_read = 4
-    assert report["stats"]["apify_usd"] >= round((likes_read + posts_read) * 0.002, 3)
+    paid = [tool for tool in run.tools() if tool != li.COMMENTS]  # a failed call isn't charged
+    assert report["stats"]["linkedin_usd"] == pytest.approx(round(len(paid) * 0.002, 3))

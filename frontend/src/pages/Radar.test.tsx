@@ -56,7 +56,7 @@ const state: RadarState = {
       text: "We're hiring a GTM engineer",
     },
   ],
-  apify: false,
+  treg: false,
 };
 
 describe("Radar", () => {
@@ -68,7 +68,7 @@ describe("Radar", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("US work authorization")).toBeInTheDocument();
     expect(screen.getByText("Pat Example")).toBeInTheDocument();
-    expect(screen.getByText(/need an Apify token/)).toBeInTheDocument();
+    expect(screen.getByText(/need a treg token/)).toBeInTheDocument();
   });
 
   it("adds a role, dismisses one, runs now and saves settings", async () => {
