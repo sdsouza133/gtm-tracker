@@ -104,6 +104,8 @@ class RadarConfig:
     hour: int = 7  # local hour the morning run starts
     min_fit: int = 2  # 3 = the role itself, 2 = next door (RevOps, GTM systems), 1 = worth a look
     recent_days: int = 7  # a role older than this is likely filled
+    # an untouched company is parked this many days after its role was posted (one with no role: after it was added)
+    ttl_days: int = 15
     ats_search: bool = True  # also search company job boards through Google
     post_search: bool = True  # also search LinkedIn posts where people say they're hiring
     core_only: bool = True  # only GTM engineering roles, not RevOps, admin or analyst

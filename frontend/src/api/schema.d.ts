@@ -2397,6 +2397,8 @@ export interface components {
             min_fit: number;
             /** Recent Days */
             recent_days: number;
+            /** Ttl Days */
+            ttl_days: number;
             /** Ats Search */
             ats_search: boolean;
             /** Post Search */
@@ -2429,6 +2431,8 @@ export interface components {
             min_fit?: number | null;
             /** Recent Days */
             recent_days?: number | null;
+            /** Ttl Days */
+            ttl_days?: number | null;
             /** Ats Search */
             ats_search?: boolean | null;
             /** Post Search */

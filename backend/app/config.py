@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     magnet_screen_model: str = "claude-haiku-5-5"
     # Run the radar every morning (at radar_config.hour, local time). Off in tests and one-off scripts.
     radar_schedule: bool = True
+    # Once a day, park companies nobody has touched in radar_config.ttl_days (rolling). Runs even with the radar off;
+    # off in tests and one-off scripts.
+    ttl_schedule: bool = True
 
     @field_validator("allowed_emails", mode="before")
     @classmethod
