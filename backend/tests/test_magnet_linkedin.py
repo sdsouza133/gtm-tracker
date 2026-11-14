@@ -31,6 +31,14 @@ def test_posts_are_read_per_page_and_person() -> None:
     assert harvest.calls == [(li.COMPANY_POSTS, {"company": RIVAL_PAGE, "postedLimit": "month", "page": "1"}, 0.004)]
 
 
+def test_only_posts_since_the_date_asked_for_are_kept() -> None:
+    old = post(f"{P1}-old", RIVAL_PAGE, 90, 9, day="2026-08-02")  # a person's feed comes back from months ago too
+    harvest = FakeHarvest(people_posts=[post(P1, RIVAL_PAGE, 10, 2), old])
+    found, spent = LinkedIn(harvest).posts([RIVAL_PAGE], 5, max_usd=1.0, people=True, since=date(2026, 10, 1))
+    assert [p.url for p in found] == [P1]
+    assert spent == pytest.approx(0.002)  # the page was paid for either way
+
+
 def test_engagers_are_people_only() -> None:
     harvest = FakeHarvest(
         reactions={P1: [reaction("ACoAAana", "Ana E.", "VP Sales", P1), company_reaction(P1)]},

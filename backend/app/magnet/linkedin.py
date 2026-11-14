@@ -109,21 +109,32 @@ class LinkedIn:
         return items[:want], spent
 
     def posts(
-        self, targets: list[str], per_target: int, max_usd: float, *, people: bool = False
+        self,
+        targets: list[str],
+        per_target: int,
+        max_usd: float,
+        *,
+        people: bool = False,
+        since: date | None = None,
     ) -> tuple[list[Post], float]:
-        """The last month's posts by company pages (or, with `people`, by people), newest first per target."""
+        """Posts by company pages (or, with `people`, by people) since `since`, newest first per target. LinkedIn is
+        asked for the last month, but a person's posts come back from further back too, so the date is checked here."""
         tool = PROFILE_POSTS if people else COMPANY_POSTS
         out: list[Post] = []
         spent = 0.0
+
+        def recent(items: list[dict[str, Any]], target: str) -> list[Post]:
+            found = [p for p in (parse_post(i, target) for i in items) if p]
+            return [p for p in found if since is None or p.day is None or p.day >= since]
+
         for target in targets:
             query = {"profile" if people else "company": target, "postedLimit": "month"}
             try:
                 items, cost = self._pages(tool, query, per_target, max_usd - spent)
             except LinkedInError as e:  # the posts already read were paid for
-                found = out + [p for p in (parse_post(i, target) for i in e.read) if p]
-                raise LinkedInError(str(e), spent=spent + e.spent, posts=found) from e
+                raise LinkedInError(str(e), spent=spent + e.spent, posts=out + recent(e.read, target)) from e
             spent += cost
-            out += [p for p in (parse_post(i, target) for i in items) if p]
+            out += recent(items, target)
         return out, spent
 
     def engagers(self, post: Post, reactions: int, comments: int, max_usd: float) -> tuple[list[Engager], float]:
