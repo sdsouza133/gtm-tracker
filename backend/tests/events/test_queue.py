@@ -140,7 +140,7 @@ def test_long_errors_are_truncated(db: Session) -> None:
 
 
 def test_defer_reschedules_without_using_an_attempt(db: Session) -> None:
-    job_id = queue.enqueue(db, "poll_apify", max_attempts=1, run_after=NOW)
+    job_id = queue.enqueue(db, "poll_search", max_attempts=1, run_after=NOW)
     assert job_id is not None
     db.commit()
     for minute in range(5):  # polling five times must not exhaust a single attempt

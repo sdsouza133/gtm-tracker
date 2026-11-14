@@ -1,7 +1,7 @@
 """The events tool's settings: its caps and knobs (EVENTS_*), and the API keys it shares with the rest of the tracker.
 
 Every knob has a default, so the tool works with nothing set beyond the keys the tracker already has. The keys are
-read under their own names (ANTHROPIC_API_KEY, APIFY_TOKEN, APOLLO_API_KEY): one key per service for the whole
+read under their own names (ANTHROPIC_API_KEY, TREG_TOKEN, APOLLO_API_KEY): one key per service for the whole
 tracker.
 """
 
@@ -25,7 +25,7 @@ class EventsSettings(BaseSettings):
     # providers bill.
     timezone: str = Field(default="America/Toronto", validation_alias=AliasChoices("TIMEZONE"))
 
-    # Spend caps for the dollar-billed services, Apify and Claude.
+    # Spend caps for the dollar-billed services, treg and Claude.
     run_budget_usd: Decimal = Field(default=Decimal("3.00"), gt=0)
     # The part of a run spent before approval. At least what analyze_site reserves, or no run could start.
     analysis_budget_usd: Decimal = Field(default=Decimal("0.50"), ge=Decimal("0.15"))
@@ -40,7 +40,7 @@ class EventsSettings(BaseSettings):
     worker_heartbeat_seconds: int = Field(default=30, ge=1, le=300)
     worker_stale_after_seconds: int = Field(default=300, ge=60)  # no heartbeat for this long: the job is put back
 
-    # Collecting posts: one Apify search per event, whose posts other runs reuse for a few days.
+    # Collecting posts: one LinkedIn post search per event, whose posts other runs reuse for a few days.
     search_posts_per_query: int = Field(default=50, ge=1, le=200)
     search_cache_days: int = Field(default=3, ge=0, le=30)
     search_poll_seconds: int = Field(default=20, ge=1, le=600)
@@ -65,9 +65,9 @@ class EventsSettings(BaseSettings):
     # Web searches for one event research, plus at most one Claude asked for just as a long turn paused.
     max_web_searches: int = Field(default=4, ge=1, le=20)  # each search's results are most of a plan's cost
     llm_fallbacks: bool = True
-    apify_token: SecretStr | None = Field(default=None, validation_alias=AliasChoices("APIFY_TOKEN"))
-    apify_actor: str = "harvestapi~linkedin-post-search"
-    apify_posted_limit: Literal["week", "month", "3months", "6months"] = "3months"
+    # treg reads LinkedIn's public posts (HarvestAPI's post search) for the events.
+    treg_token: SecretStr | None = Field(default=None, validation_alias=AliasChoices("TREG_TOKEN"))
+    search_posted_limit: Literal["week", "month", "3months", "6months"] = "3months"
     apollo_api_key: SecretStr | None = Field(default=None, validation_alias=AliasChoices("APOLLO_API_KEY"))
     # An optional second check of the emails on a list (one credit per address).
     reoon_enabled: bool = False
@@ -107,7 +107,7 @@ class EventsSettings(BaseSettings):
         """The keys a real run needs that aren't set, by the names to set them under."""
         if self.providers == "fake":
             return []
-        keys = {"ANTHROPIC_API_KEY": self.anthropic_api_key, "APIFY_TOKEN": self.apify_token}
+        keys = {"ANTHROPIC_API_KEY": self.anthropic_api_key, "TREG_TOKEN": self.treg_token}
         keys["APOLLO_API_KEY"] = self.apollo_api_key
         if self.reoon_enabled:
             keys["EVENTS_REOON_API_KEY"] = self.reoon_api_key

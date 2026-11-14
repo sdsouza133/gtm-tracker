@@ -18,7 +18,7 @@ from app.events.models import Base
 EventsSettings.model_config["env_file"] = None
 for _variable in [v for v in os.environ if v.startswith("EVENTS_")]:
     del os.environ[_variable]
-for _variable in ("ANTHROPIC_API_KEY", "APIFY_TOKEN", "APOLLO_API_KEY"):
+for _variable in ("ANTHROPIC_API_KEY", "TREG_TOKEN", "APOLLO_API_KEY"):
     os.environ.pop(_variable, None)
 os.environ["EVENTS_PROVIDERS"] = "fake"
 os.environ["EVENTS_WORKER"] = "false"  # no worker thread behind a test client: tests run the jobs themselves

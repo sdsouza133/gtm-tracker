@@ -199,14 +199,14 @@ def test_a_search_runs_and_its_posts_are_stored(db: Session) -> None:
     links = db.execute(select(EventPost.query, func.count()).group_by(EventPost.query))
     assert sorted(tuple(row) for row in links) == sorted((q, 9) for q in QUERIES)
     cached = sorted((c.query, c.post_count, c.cost_usd) for c in db.scalars(select(SearchCache)))
-    assert cached == sorted((q, 9, Decimal("0.018")) for q in QUERIES)  # (sorted here: collations order quotes apart)
+    assert cached == sorted((q, 9, Decimal("0.002")) for q in QUERIES)  # (sorted here: collations order quotes apart)
 
     [entry] = spend(db, run)
     assert (entry.provider, entry.status, entry.estimated_usd, entry.actual_usd, entry.units) == (
-        "apify",
+        "treg",
         SpendStatus.SETTLED,
-        Decimal("0.20"),  # 2 searches x 50 posts x $0.002: the most Apify may charge
-        Decimal("0.036"),
+        Decimal("0.008"),  # 2 searches x one page of 50 posts x $0.004, treg's list price: the most it may charge
+        Decimal("0.004"),
         Decimal(18),
     )
     moved = fresh(db, run)
@@ -339,28 +339,28 @@ def test_a_search_that_never_finishes_is_counted_in_full_and_tried_again(db: Ses
     assert (retry.status, retry.error) == (RunEventStatus.PENDING, "the search ran too long")
 
 
-def test_a_search_apify_refuses_to_start_is_tried_once_more_then_skipped(db: Session) -> None:
+def test_a_search_the_provider_refuses_to_start_is_tried_once_more_then_skipped(db: Session) -> None:
     clock = Clock()
-    search = StubSearch(start_error=ProviderError("Apify refused the request (400)", retryable=False))
+    search = StubSearch(start_error=ProviderError("treg refused the request (400)", retryable=False))
     run = approved_run(db)
     run_jobs(db, worker(clock, search), clock)
     [skipped] = run_events(db, run)
     assert (skipped.status, skipped.search_attempts) == (RunEventStatus.FAILED, 2)
-    assert skipped.error == "the search couldn't start: Apify refused the request (400)"
+    assert skipped.error == "the search couldn't start: treg refused the request (400)"
     assert {e.status for e in spend(db, run)} == {SpendStatus.RELEASED}  # nothing was charged
     assert fresh(db, run).status == RunStatus.FAILED
 
 
-def test_a_busy_apify_retries_the_job_later_without_using_a_search_attempt(db: Session) -> None:
+def test_a_busy_provider_retries_the_job_later_without_using_a_search_attempt(db: Session) -> None:
     clock = Clock()
-    search = StubSearch(start_error=ProviderError("Apify is busy or failing (503)", retryable=True))
+    search = StubSearch(start_error=ProviderError("treg is busy or failing (503)", retryable=True))
     run = approved_run(db)
     worker(clock, search).run_once()
     [job] = jobs(db, COLLECT_EVENT)
     assert (job.status, job.attempts, job.last_error) == (
         JobStatus.QUEUED,
         1,
-        "ProviderError: Apify is busy or failing (503)",
+        "ProviderError: treg is busy or failing (503)",
     )
     [waiting] = run_events(db, run)
     assert (waiting.status, waiting.search_attempts, waiting.search_queries) == (RunEventStatus.PENDING, 0, [])
@@ -382,7 +382,7 @@ def test_while_paused_no_search_is_claimed_or_started(db: Session) -> None:
 def test_the_last_failed_attempt_closes_the_reservation_and_skips_the_event(db: Session) -> None:
     class Unreachable(StubSearch):
         def get(self, _run_id: str) -> SearchRun:
-            raise ProviderError("Apify is busy or failing (503)", retryable=True)
+            raise ProviderError("treg is busy or failing (503)", retryable=True)
 
     clock = Clock()
     run = approved_run(db)
@@ -403,7 +403,7 @@ def test_the_last_failed_attempt_closes_the_reservation_and_skips_the_event(db: 
 def test_the_daily_cap_makes_the_run_wait_for_the_next_day(db: Session) -> None:
     clock, search = Clock(), StubSearch()
     run = approved_run(db)
-    w = worker(clock, search, daily_cap_usd="0.10")  # a search needs $0.20
+    w = worker(clock, search, daily_cap_usd="0.005")  # a search needs $0.008
     w.run_once()
     waiting = fresh(db, run)
     assert (waiting.status, waiting.status_detail) == (RunStatus.WAITING_FOR_BUDGET, collect.WAITING)
@@ -420,7 +420,7 @@ def test_the_daily_cap_makes_the_run_wait_for_the_next_day(db: Session) -> None:
 
 def test_an_event_the_run_budget_cannot_cover_is_skipped(db: Session) -> None:
     clock, search = Clock(), StubSearch()
-    run = approved_run(db, budget_usd="0.10")
+    run = approved_run(db, budget_usd="0.005")
     run_jobs(db, worker(clock, search), clock)
     [skipped] = run_events(db, run)
     assert skipped.status == RunEventStatus.FAILED
@@ -449,8 +449,8 @@ def test_a_search_started_by_a_worker_that_died_is_counted_in_full(db: Session) 
     [pending] = run_events(db, run)
     crashed = budget.reserve(
         db,
-        provider="apify",
-        estimated_usd=Decimal("0.20"),
+        provider="treg",
+        estimated_usd=Decimal("0.008"),
         daily_cap_usd=Decimal(20),
         run_id=run.id,
         step_key=step_key(run.id, f"collect:{pending.event_id}"),
@@ -463,7 +463,7 @@ def test_a_search_started_by_a_worker_that_died_is_counted_in_full(db: Session) 
 
     run_jobs(db, worker(clock, search), clock)
     first, second = spend(db, run)
-    assert (first.id, first.status, first.actual_usd) == (crashed, SpendStatus.SETTLED, Decimal("0.20"))
+    assert (first.id, first.status, first.actual_usd) == (crashed, SpendStatus.SETTLED, Decimal("0.008"))
     assert second.status == SpendStatus.SETTLED
     assert fresh(db, run).status == RunStatus.QUALIFYING
 
@@ -544,7 +544,7 @@ def test_a_finished_search_whose_cost_is_unknown_is_counted_in_full(db: Session)
     assert (entry.status, entry.actual_usd) == (SpendStatus.SETTLED, entry.estimated_usd)
 
 
-def test_a_search_apify_lost_track_of_is_counted_in_full_and_tried_again(db: Session) -> None:
+def test_a_search_the_provider_lost_track_of_is_counted_in_full_and_tried_again(db: Session) -> None:
     @dataclass
     class Forgetful(StubSearch):
         lost: bool = False
@@ -552,7 +552,7 @@ def test_a_search_apify_lost_track_of_is_counted_in_full_and_tried_again(db: Ses
         def get(self, run_id: str) -> SearchRun:
             if not self.lost:
                 self.lost = True
-                raise ProviderError("Apify refused the request (404)", retryable=False)
+                raise ProviderError("treg refused the request (404)", retryable=False)
             return super().get(run_id)
 
     clock, search = Clock(), Forgetful()
@@ -565,7 +565,7 @@ def test_a_search_apify_lost_track_of_is_counted_in_full_and_tried_again(db: Ses
     assert run_events(db, run)[0].status == RunEventStatus.DONE
 
 
-def test_a_search_whose_posts_apify_refuses_to_hand_over_is_paid_for_and_tried_again(db: Session) -> None:
+def test_a_search_whose_posts_the_provider_refuses_to_hand_over_is_paid_for_and_tried_again(db: Session) -> None:
     @dataclass
     class Unreadable(StubSearch):
         refused: list[SearchRun] = field(default_factory=list)
@@ -573,7 +573,7 @@ def test_a_search_whose_posts_apify_refuses_to_hand_over_is_paid_for_and_tried_a
         def posts(self, run: SearchRun) -> list[SearchedPost]:
             if not self.refused:
                 self.refused.append(run)
-                raise ProviderError("Apify refused the request (403)", retryable=False)
+                raise ProviderError("treg refused the request (403)", retryable=False)
             return super().posts(run)
 
     clock, search = Clock(), Unreadable()
@@ -601,3 +601,33 @@ def test_a_job_for_an_event_already_collected_does_nothing(db: Session) -> None:
 
 def test_the_collect_job_is_registered() -> None:
     assert JOBS[COLLECT_EVENT].on_give_up is collect.give_up
+
+
+@dataclass
+class AnswersAtOnce(StubSearch):
+    """Like treg: the search is finished, with its posts, when `start` returns. Never polled."""
+
+    def start(self, queries: list[str], *, max_posts_per_query: int, max_charge_usd: Decimal) -> SearchRun:
+        run = super().start(queries, max_posts_per_query=max_posts_per_query, max_charge_usd=max_charge_usd)
+        done = super().get(run.id)
+        return dataclasses.replace(done, posts=tuple(super().posts(done)))
+
+    def get(self, run_id: str) -> SearchRun:
+        raise AssertionError(f"{run_id} answered at once and is never polled")
+
+    def posts(self, run: SearchRun) -> list[SearchedPost]:
+        return list(run.posts)
+
+
+def test_a_search_that_answers_at_once_is_stored_in_the_same_job(db: Session) -> None:
+    clock, search = Clock(), AnswersAtOnce(posts_per_query=9)
+    run = approved_run(db)
+    assert worker(clock, search).run_once()  # one job, no deferral
+
+    [done] = run_events(db, run)
+    assert (done.status, done.collected_at) == (RunEventStatus.DONE, NOW)
+    assert done.search_run_id is not None
+    assert db.scalar(select(func.count()).select_from(Post)) == 18
+    [entry] = spend(db, run)
+    assert (entry.provider, entry.status, entry.actual_usd) == ("treg", SpendStatus.SETTLED, Decimal("0.004"))
+    assert fresh(db, run).status == RunStatus.QUALIFYING

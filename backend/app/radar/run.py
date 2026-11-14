@@ -28,9 +28,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import Settings
 from app.models import Company, Move, MoveStatus, MoveType, ParkedWhy, RadarItem, Setting, Stage
 from app.radar import boards, sources
-from app.radar.apify import Apify
 from app.radar.fit import RadarConfig, domain_of, fits, is_overseas, linkedin_slug, norm, web_url
 from app.services.history import record
+from app.treg import Caller, Treg
 
 log = logging.getLogger("gtm_tracker.radar")
 
@@ -251,27 +251,29 @@ class Searches:
     errors: list[str] = field(default_factory=list)
 
 
-def search_all(
-    apify: sources.Runner, web: boards.Http, cfg: RadarConfig, status: dict[str, Any], today: date
-) -> Searches:
+def search_all(treg: Caller, web: boards.Http, cfg: RadarConfig, status: dict[str, Any], today: date) -> Searches:
     now = datetime.now(UTC)
     out = Searches()
     window = sources.window_seconds(_days_since(status.get("last_linkedin_at"), now))
     try:
-        out.linkedin = sources.search_linkedin(apify, cfg, window)
+        out.linkedin = sources.search_linkedin(treg, cfg, window, now)
     except Exception as e:
-        out.errors.append(f"LinkedIn search failed: {e}"[:300])
+        out.linkedin = sources.Found(error=str(e))
     if cfg.ats_search:
         try:
-            out.ats = sources.search_ats(apify, web, cfg, max(1, round(window / 86400)), today)
+            out.ats = sources.search_ats(treg, web, cfg, max(1, round(window / 86400)), today)
         except Exception as e:
-            out.errors.append(f"Job-board search failed: {e}"[:300])
+            out.ats = sources.Found(error=str(e))
     if cfg.post_search:
         last_posts = _days_since(status.get("last_posts_at"), now)
         try:
-            out.posts = sources.search_posts(apify, "24h" if last_posts is not None and last_posts <= 1.25 else "week")  # noqa: PLR2004
+            out.posts = sources.search_posts(treg, "24h" if last_posts is not None and last_posts <= 1.25 else "week")  # noqa: PLR2004
         except Exception as e:
-            out.errors.append(f"Hiring-post search failed: {e}"[:300])
+            out.posts = sources.Found(error=str(e))
+    # A search that stopped early keeps what it found and spent, and its error holds the search window open.
+    for what, found in (("LinkedIn", out.linkedin), ("Job-board", out.ats), ("Hiring-post", out.posts)):
+        if found.error:
+            out.errors.append(f"{what} search failed: {found.error}"[:300])
     return out
 
 
@@ -492,7 +494,7 @@ class Tools:
     """What a pass talks to; tests swap in fakes."""
 
     web: boards.Http
-    apify: sources.Runner | None
+    treg: Caller | None
 
 
 @contextmanager
@@ -553,7 +555,7 @@ def _run(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigg
                 )
             ]
         checks = check_boards(tools.web, tracked, today, cfg.min_fit)
-        found = search_all(tools.apify, tools.web, cfg, status, today) if tools.apify else Searches()
+        found = search_all(tools.treg, tools.web, cfg, status, today) if tools.treg else Searches()
         with factory() as session:
             summary = apply_results(session, cfg, checks, found, today)
             status = dict(get_setting(session, "radar_status", {}))
@@ -565,9 +567,9 @@ def _run(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigg
                 summary=summary,
                 error=" ".join(found.errors),
             )
-            if tools.apify and not found.errors:
+            if tools.treg and not found.errors:
                 status["last_linkedin_at"] = started_at
-            if found.posts.meta:
+            if found.posts.meta and not found.posts.error:
                 status["last_posts_at"] = started_at
             put_setting(session, "radar_status", status)
             record(session, "radar", describe(summary, found.errors))
@@ -618,8 +620,8 @@ def start_scheduler(
 
 
 def default_tools(settings: Settings) -> Tools:
-    token = settings.apify_token.get_secret_value() if settings.apify_token else ""
-    return Tools(web=boards.Web(), apify=Apify(token) if token else None)
+    token = settings.treg_token.get_secret_value().strip() if settings.treg_token else ""
+    return Tools(web=boards.Web(), treg=Treg(token) if token else None)
 
 
 def find_board_for(

@@ -32,8 +32,9 @@ class Settings(BaseSettings):
     static_dir: str = "static"
     # Optional tokens for automation (the daily refresh) to call the API without a browser session.
     api_token: SecretStr | None = None
-    # The job radar's paid searches (LinkedIn, Google, hiring posts) run only with an Apify token; job boards are free.
-    apify_token: SecretStr | None = None
+    # treg (treg.to) reads LinkedIn and Google for the job radar, lead magnets and the events tool. Without it the
+    # radar still checks job boards (free), but its LinkedIn, Google and hiring-post searches don't run.
+    treg_token: SecretStr | None = None
     # Apollo finds work emails and what a company does. It only runs once sign-in is on (not OPEN_ACCESS).
     apollo_api_key: SecretStr | None = None
     # Claude works out a lead magnet's ICP from the prospect's website (the strong model, once per build) and screens

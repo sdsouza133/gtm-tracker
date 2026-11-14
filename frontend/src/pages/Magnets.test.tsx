@@ -20,7 +20,7 @@ function magnet(over: Partial<Magnet> = {}): Magnet {
     created: "2026-10-26T15:00:00Z",
     link: "/m/g1/tok",
     views: 2,
-    summary: { leads: 3, hot: 1, warm: 2, touch: 0, emails: 0, fit: 9, people: 40, apify_usd: 0.21 },
+    summary: { leads: 3, hot: 1, warm: 2, touch: 0, emails: 0, fit: 9, people: 40, linkedin_usd: 0.21 },
     ...over,
   };
 }

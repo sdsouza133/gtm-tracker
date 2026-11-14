@@ -4990,9 +4990,9 @@
       "type": "integer",
       "title": "People"
      },
-     "apify_usd": {
+     "linkedin_usd": {
       "type": "number",
-      "title": "Apify Usd"
+      "title": "Linkedin Usd"
      }
     },
     "type": "object",
@@ -5004,7 +5004,7 @@
      "emails",
      "fit",
      "people",
-     "apify_usd"
+     "linkedin_usd"
     ],
     "title": "MagnetSummary"
    },
@@ -7549,9 +7549,9 @@
       "type": "array",
       "title": "Posts"
      },
-     "apify": {
+     "treg": {
       "type": "boolean",
-      "title": "Apify"
+      "title": "Treg"
      }
     },
     "type": "object",
@@ -7560,7 +7560,7 @@
      "config",
      "items",
      "posts",
-     "apify"
+     "treg"
     ],
     "title": "RadarOut"
    },

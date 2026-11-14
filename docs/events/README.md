@@ -46,7 +46,7 @@ You start a run for any website, and you review its plan and read its list in th
 The tool has no service of its own. When the tracker starts, it starts one worker thread (`app/events/worker.py`).
 The worker claims jobs from `ev_jobs` and runs them (see [ADR 0002](adr-0002-postgres-job-queue.md)).
 
-- **The worker needs three keys:** `ANTHROPIC_API_KEY`, `APIFY_TOKEN` and `APOLLO_API_KEY`, the same keys the rest of
+- **The worker needs three keys:** `ANTHROPIC_API_KEY`, `TREG_TOKEN` and `APOLLO_API_KEY`, the same keys the rest of
   the tracker uses (and `EVENTS_REOON_API_KEY` with `EVENTS_REOON_ENABLED`). Without them it runs only its
   housekeeping and the 30-day deletion, and the Events page says which keys are missing. A run whose job it gives
   up on still fails. `GET /healthz/events` says the same without sign-in, like `/healthz`: `ready`, the names of
@@ -82,7 +82,8 @@ collecting / qualifying wait as waiting_for_budget when the day's cap is reached
 3. **collect**, one job per event.
    - It reuses any search a run made for the same event in the last `EVENTS_SEARCH_CACHE_DAYS` (3). A run waits for
      another run's search of the same event rather than pay twice.
-   - The rest go into one Apify run, capped by `maxTotalChargeUsd`.
+   - The rest go into one LinkedIn post search through treg, which never reads a page its reservation can't cover.
+     treg answers at once, so the posts are stored in the same job.
    - A search that fails is tried once more, then only its event is dropped. The run fails only if no event could be
      searched.
 4. **qualify**, one job per run.
@@ -103,12 +104,12 @@ collecting / qualifying wait as waiting_for_budget when the day's cap is reached
 
 ## Money
 
-- **Claude and Apify** are billed in dollars. Each run has `EVENTS_RUN_BUDGET_USD` ($3), of which
+- **Claude and treg** are billed in dollars. Each run has `EVENTS_RUN_BUDGET_USD` ($3), of which
   `EVENTS_ANALYSIS_BUDGET_USD` ($0.50) is the most it spends before you approve. Every run also counts against the
   day's `EVENTS_DAILY_CAP_USD` ($20).
 - **Reserving before calling.** Each paid call first reserves its estimate against both the run's cap and the day's
-  cap, in one transaction, and settles the actual cost afterwards. Apify runs carry `maxTotalChargeUsd`, so even a
-  runaway search can't go past its reservation.
+  cap, in one transaction, and settles the actual cost afterwards. A post search starts no page (at treg's list price)
+  that its reservation can't cover, so even a runaway search can't go past it.
 - **Apollo** is billed in credits: a run uses at most `EVENTS_APOLLO_CREDITS_PER_RUN` (150), one per person found.
 - **Stopping new spend.** `EVENTS_PAUSE_NEW_RUNS` stops all new paid calls: jobs that would make one wait 5 minutes
   and try again.

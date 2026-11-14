@@ -1,4 +1,4 @@
-"""Shared HTTP handling for the JSON APIs (Apify, Apollo, Reoon, Resend)."""
+"""Shared HTTP handling for the JSON APIs (Apollo, Reoon, Resend)."""
 
 from collections.abc import Callable
 from typing import Any

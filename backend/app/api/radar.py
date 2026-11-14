@@ -95,7 +95,7 @@ def state(session: DbSession, settings: AppSettings) -> RadarOut:
         config=RadarConfigOut(**radar.config(session).__dict__),
         items=[_item(r) for r in items],
         posts=posts,
-        apify=bool(settings.apify_token and settings.apify_token.get_secret_value()),
+        treg=bool(settings.treg_token and settings.treg_token.get_secret_value().strip()),
     )
 
 

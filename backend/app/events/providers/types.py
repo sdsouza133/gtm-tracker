@@ -56,13 +56,14 @@ class SearchStatus(StrEnum):
 
 @dataclass(frozen=True)
 class SearchRun:
-    """A LinkedIn post search started with the provider (one Apify run)."""
+    """A LinkedIn post search started with the provider. A provider that answers at once (treg) returns it finished,
+    with its posts; one that runs in the background is polled until it finishes."""
 
     id: str
     status: SearchStatus
-    dataset_id: str | None = None
     cost_usd: Decimal | None = None
     message: str | None = None
+    posts: tuple["SearchedPost", ...] = ()
 
 
 @dataclass(frozen=True)

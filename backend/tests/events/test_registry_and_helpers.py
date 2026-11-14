@@ -8,8 +8,8 @@ from app.events.linkedin import normalize_profile_url
 from app.events.pipeline.base import JobContext
 from app.events.providers import fakes, pricing
 from app.events.providers.anthropic_llm import AnthropicLlm
-from app.events.providers.apify import ApifyPostSearch
 from app.events.providers.registry import ProviderConfigError, build_providers
+from app.events.providers.treg import TregPostSearch
 
 
 def test_fake_providers_by_default() -> None:
@@ -19,7 +19,7 @@ def test_fake_providers_by_default() -> None:
 
 
 def test_real_providers_need_their_keys() -> None:
-    with pytest.raises(ProviderConfigError, match="ANTHROPIC_API_KEY, APIFY_TOKEN, APOLLO_API_KEY"):
+    with pytest.raises(ProviderConfigError, match="ANTHROPIC_API_KEY, TREG_TOKEN, APOLLO_API_KEY"):
         build_providers(EventsSettings(providers="real"))
 
 
@@ -27,25 +27,25 @@ def test_real_providers_with_keys() -> None:
     settings = EventsSettings(
         providers="real",
         anthropic_api_key="a",
-        apify_token="b",
+        treg_token="b",
         apollo_api_key="c",
     )
     providers = build_providers(settings)
     assert isinstance(providers.llm, AnthropicLlm)
     assert providers.llm._client.max_retries == 0  # every attempt, billed or not, goes through our spend accounting
-    assert isinstance(providers.search, ApifyPostSearch)
+    assert isinstance(providers.search, TregPostSearch)
 
 
 @pytest.mark.parametrize("blank", ["", "   "])
 def test_a_blank_key_counts_as_missing(monkeypatch: pytest.MonkeyPatch, blank: str) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", blank)  # e.g. a CI secret or Railway variable that was never filled in
     with pytest.raises(ProviderConfigError, match=r"needs ANTHROPIC_API_KEY$"):
-        build_providers(EventsSettings(providers="real", apify_token="b", apollo_api_key="c"))
+        build_providers(EventsSettings(providers="real", treg_token="b", apollo_api_key="c"))
 
 
 def test_reoon_key_is_required_only_when_enabled() -> None:
     settings = EventsSettings(
-        providers="real", anthropic_api_key="a", apify_token="b", apollo_api_key="c", reoon_enabled=True
+        providers="real", anthropic_api_key="a", treg_token="b", apollo_api_key="c", reoon_enabled=True
     )
     with pytest.raises(ProviderConfigError, match="REOON_API_KEY"):
         build_providers(settings)
@@ -92,9 +92,10 @@ def test_labeling_a_batch_is_estimated_from_its_size_and_model() -> None:
     assert pricing.claude_label_estimate("claude-haiku-5-5", 25) < pricing.claude_label_estimate("claude-opus-5-5", 25)
 
 
-def test_apify_estimate_is_the_worst_case() -> None:
-    assert pricing.apify_search_estimate(queries=4, max_posts_per_query=50) == Decimal("0.400")
-    assert pricing.apify_search_estimate(queries=2, max_posts_per_query=0) == Decimal("0.002")
+def test_post_search_estimate_is_the_worst_case() -> None:
+    assert pricing.post_search_estimate(queries=4, max_posts_per_query=50) == Decimal("0.016")  # a page each
+    assert pricing.post_search_estimate(queries=2, max_posts_per_query=120) == Decimal("0.024")  # three pages each
+    assert pricing.post_search_estimate(queries=2, max_posts_per_query=0) == Decimal("0.008")  # an empty page is paid
 
 
 def test_today_is_the_trackers_day_for_event_dates() -> None:

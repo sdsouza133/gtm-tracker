@@ -1682,8 +1682,8 @@ export interface components {
             fit: number;
             /** People */
             people: number;
-            /** Apify Usd */
-            apify_usd: number;
+            /** Linkedin Usd */
+            linkedin_usd: number;
         };
         /** Me */
         Me: {
@@ -2484,8 +2484,8 @@ export interface components {
             items: components["schemas"]["RadarItemOut"][];
             /** Posts */
             posts: components["schemas"]["HiringPost"][];
-            /** Apify */
-            apify: boolean;
+            /** Treg */
+            treg: boolean;
         };
         /** Reply */
         Reply: {
