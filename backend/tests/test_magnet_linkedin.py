@@ -6,7 +6,7 @@ import pytest
 from app.magnet import linkedin as li
 from app.magnet.linkedin import LinkedIn, LinkedInError, Post, parse_post, parse_profile
 from app.treg import Answer, TregError
-from tests.magnet_fakes import RIVAL_PAGE, FakeHarvest, comment, company_reaction, post, profile, reaction
+from tests.magnet_fakes import OTHER_PAGE, RIVAL_PAGE, FakeHarvest, comment, company_reaction, post, profile, reaction
 
 P1 = "https://www.linkedin.com/posts/rivalco_p1"
 
@@ -143,6 +143,22 @@ def test_pages_read_before_a_later_page_fails_are_kept(failing: str) -> None:
     else:
         assert kinds == ["reaction"] * 15 + ["comment"] * 10  # every like, and the first page of comments
         assert failed.value.spent == pytest.approx(3 * 0.002)
+
+
+def test_posts_read_before_a_later_target_fails_are_kept() -> None:
+    class SecondTargetFails(FakeHarvest):
+        def call(
+            self, tool: str, *, query: dict[str, Any] | None = None, body: dict[str, Any] | None = None, max_usd: float
+        ) -> Answer:
+            if (query or {}).get("company") == OTHER_PAGE:
+                raise TregError("busy", retryable=True)
+            return super().call(tool, query=query, body=body, max_usd=max_usd)
+
+    harvest = SecondTargetFails(posts=[post(P1, RIVAL_PAGE, 10, 2), post(f"{P1}-2", RIVAL_PAGE, 3, 0)])
+    with pytest.raises(LinkedInError, match="busy") as failed:
+        LinkedIn(harvest).posts([RIVAL_PAGE, OTHER_PAGE], 5, max_usd=1.0)
+    assert [p.url for p in failed.value.posts] == [P1, f"{P1}-2"]  # the first page's posts, paid for and kept
+    assert failed.value.spent == pytest.approx(0.002)
 
 
 def test_a_dropped_connection_counts_its_whole_ceiling() -> None:

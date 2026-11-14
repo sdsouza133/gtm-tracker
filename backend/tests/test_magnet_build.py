@@ -172,6 +172,23 @@ def test_the_decision_makers_posts_failing_still_leaves_the_company_pages() -> N
     assert report["leads"]
 
 
+def test_posts_read_before_a_later_page_failed_are_still_mined() -> None:
+    run = runner(page_size=2)
+    real = run.call
+
+    def second_page_fails(tool: str, *, query: Any = None, body: Any = None, max_usd: float) -> Any:
+        if tool == li.COMPANY_POSTS and (query or {}).get("page") == "2":
+            raise TregError("busy", retryable=True)
+        return real(tool, query=query, body=body, max_usd=max_usd)
+
+    run.call = second_page_fails  # type: ignore[method-assign]
+    report = build(spec(), tools(run), TODAY)
+    assert report["competitors"][0]["posts"]  # the first page's posts, paid for and mined
+    assert report["leads"]
+    with pytest.raises(li.LinkedInError, match=r"company\.posts"):  # nothing read at all is still an error
+        build(spec(), tools(runner(fail={li.COMPANY_POSTS})), TODAY)
+
+
 def test_a_post_is_matched_to_the_profile_it_was_read_from() -> None:
     bare = post(R1, RIA, likes=3, comments=0)
     del bare["query"]

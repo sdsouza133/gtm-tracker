@@ -315,13 +315,18 @@ def _posts(rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, 
             by_target[_key(p["linkedin"])] = r
     pages = [r.linkedin for r in rivals]
     people = [p["linkedin"] for r in rivals for p in r.people]
-    found, spent = linkedin.posts(pages, plan.posts_per_target, budget.left(keep))
+    try:
+        found, spent = linkedin.posts(pages, plan.posts_per_target, budget.left(keep))
+    except LinkedInError as e:
+        if not e.posts:
+            raise
+        found, spent = e.posts, e.spent  # a page failed, but the posts read before it still work
     budget.add(spent)
     if people:
         try:
             more, spent = linkedin.posts(people, plan.posts_per_target, budget.left(keep), people=True)
         except LinkedInError as e:
-            more, spent = [], e.spent  # the decision makers are extra; the company pages alone still work
+            more, spent = e.posts, e.spent  # the decision makers are extra; keep what was read before the failure
         budget.add(spent)
         found += more
     chosen: list[Post] = []

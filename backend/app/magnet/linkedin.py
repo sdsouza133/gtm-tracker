@@ -24,8 +24,9 @@ MEMBER_ID = re.compile(r"/in/(ACo[A-Za-z0-9_-]+)")
 
 
 class LinkedInError(RuntimeError):
-    """A run that failed. `spent` is what it may have cost, so the budget still counts it; `found` is what was already
-    read for the same post, so it isn't lost with the failure; `read` is the raw items of the pages read before it."""
+    """A run that failed. `spent` is what it may have cost, so the budget still counts it. What was paid for before
+    the failure isn't lost with it: `found` is the likes and comments already read for the post, `posts` the posts
+    already read, and `read` the raw items of the pages read before it."""
 
     def __init__(
         self,
@@ -33,11 +34,13 @@ class LinkedInError(RuntimeError):
         spent: float = 0.0,
         found: list["Engager"] | None = None,
         read: list[dict[str, Any]] | None = None,
+        posts: list["Post"] | None = None,
     ) -> None:
         super().__init__(message)
         self.spent = spent
         self.found = found or []
         self.read = read or []
+        self.posts = posts or []
 
 
 @dataclass(frozen=True)
@@ -116,8 +119,9 @@ class LinkedIn:
             query = {"profile" if people else "company": target, "postedLimit": "month"}
             try:
                 items, cost = self._pages(tool, query, per_target, max_usd - spent)
-            except LinkedInError as e:
-                raise LinkedInError(str(e), spent=spent + e.spent) from e
+            except LinkedInError as e:  # the posts already read were paid for
+                found = out + [p for p in (parse_post(i, target) for i in e.read) if p]
+                raise LinkedInError(str(e), spent=spent + e.spent, posts=found) from e
             spent += cost
             out += [p for p in (parse_post(i, target) for i in items) if p]
         return out, spent
