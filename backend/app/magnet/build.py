@@ -15,7 +15,7 @@ competitors with emails, for prospects who replied. Every paid call draws on the
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit
 
@@ -55,6 +55,9 @@ NOT_BUYERS = re.compile(
 SELLS_TO_RECRUITERS_OR_STUDENTS = re.compile(r"recruit|talent|sourc|student|universit|campus", re.IGNORECASE)
 SAID_KEPT = 2  # comments quoted per lead
 MIN_NAME = 3  # shorter company names match too many headlines by accident
+
+
+POSTS_DAYS = 31  # the competitors' posts mined: the last month's
 
 
 class BuildError(RuntimeError):
@@ -194,7 +197,7 @@ def build(spec: Spec, tools: Tools, today: date, progress: Progress | None = Non
 
     keep_for_profiles = plan.profiles * PRICE[PROFILES]
     say("reading their posts", {"competitors": [r.name for r in rivals]})
-    posts = _posts(rivals, tools.linkedin, plan, budget, keep_for_profiles)
+    posts = _posts(rivals, tools.linkedin, plan, budget, keep_for_profiles, since=today - timedelta(days=POSTS_DAYS))
     if not posts:
         raise BuildError("The competitors haven't posted on LinkedIn in the last month.")
 
@@ -306,7 +309,9 @@ def _decision_makers(apollo: Finder, domain: str, limit: int) -> list[dict[str, 
     return out
 
 
-def _posts(rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, keep: float) -> list[Post]:
+def _posts(
+    rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, keep: float, *, since: date
+) -> list[Post]:
     """Each competitor's most engaged posts from the last month, across its page and its decision makers."""
     by_target: dict[str, Rival] = {}
     for r in rivals:
@@ -316,7 +321,7 @@ def _posts(rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, 
     pages = [r.linkedin for r in rivals]
     people = [p["linkedin"] for r in rivals for p in r.people]
     try:
-        found, spent = linkedin.posts(pages, plan.posts_per_target, budget.left(keep))
+        found, spent = linkedin.posts(pages, plan.posts_per_target, budget.left(keep), since=since)
     except LinkedInError as e:
         if not e.posts:
             raise
@@ -324,7 +329,7 @@ def _posts(rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, 
     budget.add(spent)
     if people:
         try:
-            more, spent = linkedin.posts(people, plan.posts_per_target, budget.left(keep), people=True)
+            more, spent = linkedin.posts(people, plan.posts_per_target, budget.left(keep), people=True, since=since)
         except LinkedInError as e:
             more, spent = e.posts, e.spent  # the decision makers are extra; keep what was read before the failure
         budget.add(spent)
