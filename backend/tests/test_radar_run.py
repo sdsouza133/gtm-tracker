@@ -1,6 +1,6 @@
 """A full radar pass against the database, with the network and treg faked."""
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.radar import people
 from app.radar import run as radar
+from app.radar.fit import RadarConfig
 from app.radar.sources import JOB_DETAILS, LINKEDIN_JOBS, POST_SEARCH
 from tests import factories as f
 from tests.radar_fakes import FakeWeb, ashby, ashby_job, job_details, linkedin_item
@@ -248,6 +249,46 @@ def test_strong_new_roles_go_on_the_board_with_people_to_write_to(
     lines = db.scalars(select(Activity.text).where(Activity.kind == "radar")).all()
     assert any("1 added to the board with 1 people to write to" in line for line in lines)
     assert bench.id
+
+
+def test_two_postings_of_one_role_get_one_apply_move(db: Session, factory: sessionmaker[Session]) -> None:
+    db.commit()
+    treg = FakeTreg(
+        {
+            LINKEDIN_JOBS: pages(
+                [linkedin_item("31", "GTM Engineer", "Delta"), linkedin_item("32", "GTM Engineer", "Delta")], 25
+            ),
+            JOB_DETAILS: job_details(),
+        }
+    )
+    radar.run_once(factory, get_settings(), radar.Tools(web=FakeWeb(), treg=treg), "test")
+    delta = db.scalars(select(Company).where(Company.name == "Delta")).one()
+    applies = db.scalars(select(Move).where(Move.company_id == delta.id, Move.type == MoveType.APPLY)).all()
+    assert len(applies) == 1
+    assert [i.state for i in db.scalars(select(RadarItem))] == ["added", "added"]
+
+
+def test_a_refresh_leaves_a_company_you_benched_since_the_role_was_found(
+    db: Session, factory: sessionmaker[Session], today: date
+) -> None:
+    gamma = f.company(db, name="Gamma", stage=Stage.BENCH)
+    since = datetime.now(UTC).isoformat()
+    db.add(
+        RadarItem(
+            id="li-41",
+            company="Gamma",
+            title="GTM Engineer",
+            url="https://www.linkedin.com/jobs/view/41",
+            fit=3,
+            state="new",
+            data={"found_at": datetime.now(UTC).isoformat(), "on_bench": False},  # not benched when it was found
+        )
+    )
+    db.commit()
+    out = radar.auto_add(factory, RadarConfig(), radar.Tools(web=FakeWeb(), treg=None), today, since)
+    db.refresh(gamma)
+    assert (out["auto_added"], gamma.stage) == (0, Stage.BENCH)
+    assert db.get(RadarItem, "li-41").state == "new"  # type: ignore[union-attr]
 
 
 def test_with_auto_add_off_every_new_role_waits_in_the_inbox(db: Session, factory: sessionmaker[Session]) -> None:

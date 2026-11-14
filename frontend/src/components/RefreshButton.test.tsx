@@ -60,6 +60,26 @@ describe("Refresh", () => {
     expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
   });
 
+  it("says so when it can't tell when the board was last refreshed, and lets you try again", async () => {
+    let fail = true;
+    mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today,
+      "GET /api/radar": {
+        get status() {
+          return fail ? 500 : 200;
+        },
+        body: () => (fail ? { detail: "Server error" } : radar(lastRun)),
+      },
+    });
+    renderApp(<App />);
+    expect(await screen.findByText(/Couldn't load when it last ran/)).toBeInTheDocument();
+    fail = false;
+    await userEvent.click(screen.getByRole("button", { name: "Reload status" }));
+    expect(await screen.findByText(/2 companies added, 5 people/)).toBeInTheDocument();
+  });
+
   it("refreshes everything, shows the progress, and reloads the page when it's done", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let state = "idle";

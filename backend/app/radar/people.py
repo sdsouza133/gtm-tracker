@@ -50,9 +50,16 @@ class Lead:
 
 def guess(headline: str, company: str) -> tuple[RoleInHire, Sureness] | None:
     """Their likely part in hiring a GTM engineer, from their LinkedIn headline; None when it's someone to skip."""
-    named = bool(norm(company)) and norm(company) in norm(headline)
-    if not headline.strip() or (ELSEWHERE.search(headline) and not named):
-        return None  # works somewhere else, or says nothing about what they do
+    if not headline.strip() or not norm(company):
+        return None
+    at = ELSEWHERE.search(headline)
+    if at:  # "... at Orama | formerly Acme": the employer named first is where they work now
+        employer = re.split(r"[|,·•]", headline[at.end() :], maxsplit=1)[0]
+        named = norm(company) in norm(employer)
+        if not named:
+            return None  # works somewhere else
+    else:
+        named = norm(company) in norm(headline)
     sure = Sureness.LIKELY if named else Sureness.GUESS
     senior = bool(LEADER.search(headline))
     manages = senior or bool(MANAGER.search(headline))
@@ -91,6 +98,8 @@ def find(
 ) -> tuple[list[Lead], float]:
     """Up to `want` people at the company and what the lookups cost. A call is made only when its whole list price
     still fits in `max_usd`; one failing call skips that title word, not the company."""
+    if want <= 0:
+        return [], 0.0
     words = SMALL_TEAM_WORDS if employees is not None and employees < SMALL_TEAM else WORDS
     seen: dict[str, Lead] = {}
     spent = 0.0

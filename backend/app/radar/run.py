@@ -51,6 +51,7 @@ POSTS_KEEP = 300
 MAX_ATTEMPTS = 3
 STARTING_GRACE = timedelta(minutes=2)  # a pass asked for this recently counts as running before it takes the lock
 CHECK_EVERY_S = 300
+HELD_STAGES = frozenset({Stage.BENCH, Stage.PARKED, Stage.REJECTED})  # a refresh never adds to these
 AUTO_ADD_SCAN = 300  # the newest inbox roles a pass looks at for adding (this pass's are among them)
 APPLY_WHY_BOARD = (
     "New posting on their job board, found by the job radar on {day}. "
@@ -219,13 +220,21 @@ def _unpark(session: Session, c: Company, why: str) -> None:
     record(session, "stage", f"{c.name}: back from parked, {why}", company_id=c.id)
 
 
-def apply_if_new(session: Session, c: Company, title: str, url: str, today: date, why: str) -> bool:
-    """An Apply move for today, unless one is open for the company or this role was handled before (same link, or the
-    same title: reposts get new links)."""
+def matching_apply(session: Session, c: Company, title: str, url: str) -> Move | None:
+    """The company's open Apply move, or one for this role from before (same link, or the same title: reposts get new
+    links)."""
     t, url = norm(title), web_url(url)
     for m in session.scalars(select(Move).where(Move.company_id == c.id, Move.type == MoveType.APPLY)):
         if m.status is MoveStatus.OPEN or m.url == url or norm(m.title.removeprefix("Apply: ")) == t:
-            return False
+            return m
+    return None
+
+
+def apply_if_new(session: Session, c: Company, title: str, url: str, today: date, why: str) -> bool:
+    """An Apply move for today, unless one is open for the company or this role was handled before."""
+    url = web_url(url)
+    if matching_apply(session, c, title, url):
+        return False
     session.add(
         Move(company_id=c.id, type=MoveType.APPLY, title=f"Apply: {title}"[:500], due=today, notes=why, url=url or None)
     )
@@ -407,9 +416,13 @@ class Added:
     new_company: bool
 
 
-def add_to_board(session: Session, item: RadarItem, today: date, *, by: str = "the job radar") -> Added:
+def add_to_board(
+    session: Session, item: RadarItem, today: date, *, by: str = "the job radar", one_apply: bool = False
+) -> Added:
     """Put a radar role into the tracker: the company (if it's new), an Apply move, and a move to find the hiring
-    manager, both for today. The caller commits."""
+    manager, both for today. With `one_apply` (a refresh's own adds), a company that already has an open Apply move,
+    or one for this role, keeps it instead of getting another; a person adding a role always gets the move they asked
+    for. The caller commits."""
     j: dict[str, Any] = {**item.data, "company": item.company, "title": item.title, "url": item.url}
     posting = {
         "title": item.title,
@@ -430,6 +443,9 @@ def add_to_board(session: Session, item: RadarItem, today: date, *, by: str = "t
         jobs = dict(company.research.get("jobs") or {})
         jobs["postings"] = [posting, *[p for p in jobs.get("postings") or [] if p.get("url") != item.url]]
         company.research = {**company.research, "jobs": jobs}
+        if one_apply and (open_apply := matching_apply(session, company, item.title, item.url)) is not None:
+            _mark_added(session, item, company, by)  # one Apply move per company: the open one stands
+            return Added(company, open_apply, False)
     else:
         board = j.get("board")
         domain = domain_of(j.get("website") or "") or None
@@ -490,12 +506,16 @@ def add_to_board(session: Session, item: RadarItem, today: date, *, by: str = "t
             notes=FIND_THEM_NOTES,
         )
     )
+    _mark_added(session, item, company, by)
+    return Added(company, apply_move, new_company)
+
+
+def _mark_added(session: Session, item: RadarItem, company: Company, by: str) -> None:
     item.state = "added"
     item.company_id = company.id
     item.data = {**item.data, "added_at": datetime.now(UTC).isoformat()}
     session.flush()
     record(session, "radar", f"{company.name}: added by {by} ({item.title})", company_id=company.id)
-    return Added(company, apply_move, new_company)
 
 
 @dataclass(frozen=True)
@@ -537,8 +557,14 @@ def auto_add(
         ]
         fresh.sort(key=lambda i: (i.posted or date.min, i.id), reverse=True)
         added: list[_OnBoard] = []
-        for item in fresh[: cfg.auto_add_max]:
-            a = add_to_board(session, item, today, by="a refresh")
+        for item in fresh:
+            if len(added) >= cfg.auto_add_max:
+                break
+            j = {**item.data, "company": item.company, "title": item.title, "url": item.url}
+            current = session.get(Company, item.company_id) if item.company_id else find_company(session, j)
+            if current is not None and current.stage in HELD_STAGES:
+                continue  # benched, parked or rejected since the role was found: that's your call, not a refresh's
+            a = add_to_board(session, item, today, by="a refresh", one_apply=True)
             c = a.company
             added.append(
                 _OnBoard(

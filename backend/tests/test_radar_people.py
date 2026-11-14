@@ -30,6 +30,7 @@ def profile(name: str, headline: str, slug: str) -> dict[str, Any]:
         ("Co-founder & CEO at Acme", (RoleInHire.FOUNDER, Sureness.LIKELY)),
         ("Founder & CEO at Otherco", None),  # someone else's founder
         ("Senior GTM Consultant at Orama", None),  # works somewhere else
+        ("GTM Consultant at Orama | formerly Acme", None),  # used to work there
         ("GTM Engineering @ Acme", (RoleInHire.PEER, Sureness.LIKELY)),
         ("VP of Marketing at Acme", (RoleInHire.APPROVER, Sureness.GUESS)),
         ("Executive Assistant", None),
@@ -90,3 +91,9 @@ def test_no_call_is_made_that_the_budget_left_cant_cover_and_a_failed_word_is_sk
 
     found, _ = people.find(FakeTreg({people.PROFILE_SEARCH: busy_on_ops}), ACME_PAGE, "Acme", 200, 4, max_usd=1.0)
     assert [p.name for p in found] == ["Ana Example"]
+
+
+def test_asking_for_nobody_costs_nothing() -> None:
+    treg = FakeTreg({people.PROFILE_SEARCH: {"elements": []}})
+    assert people.find(treg, ACME_PAGE, "Acme", 200, 0, max_usd=1.0) == ([], 0.0)
+    assert treg.calls == []

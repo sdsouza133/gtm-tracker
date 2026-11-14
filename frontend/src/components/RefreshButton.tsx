@@ -34,7 +34,9 @@ export function RefreshButton() {
   const added = sm["auto_added"] ?? 0;
   const atYours = (sm["tracked_new"] ?? 0) + (sm["linkedin_tracked"] ?? 0);
   let line = "Not refreshed yet";
-  if (running) line = `Refreshing: ${s.step || "starting"}…`;
+  if (radar.isPending) line = "Checking when it last ran…";
+  else if (radar.isError && !radar.data) line = "Couldn't load when it last ran.";
+  else if (running) line = `Refreshing: ${s.step || "starting"}…`;
   else if (s.last_run_at)
     line =
       `Refreshed ${formatDateTimeDay(s.last_run_at)} at ${formatTime(s.last_run_at)}: ` +
@@ -57,6 +59,11 @@ export function RefreshButton() {
       </Button>
       <p className="text-[12px] text-muted" aria-live="polite">
         {line}
+        {radar.isError && !radar.data && (
+          <button type="button" className="ml-1 underline" onClick={() => void radar.refetch()}>
+            Reload status
+          </button>
+        )}
       </p>
       {s.error && !running && <p className="max-w-md text-[12px] text-bad sm:text-right">{s.error}</p>}
       {radar.data && !radar.data.treg && (
