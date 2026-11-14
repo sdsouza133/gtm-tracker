@@ -7,6 +7,7 @@ import { CompanyCard } from "@/components/CompanyCard";
 import { CompanyPanel } from "@/components/CompanyPanel";
 import { LovedCard } from "@/components/LovedCard";
 import { MoveRow } from "@/components/MoveRow";
+import { RefreshButton } from "@/components/RefreshButton";
 import { Button, Card, EmptyState, PageHeader } from "@/components/ui";
 import { formatLongDay, relativeDay } from "@/lib/format";
 import { safeUrl } from "@/lib/safe";
@@ -165,7 +166,9 @@ export function TodayPage() {
       : `${greeting()}. You're clear.`;
   return (
     <div className="flex max-w-6xl flex-col gap-6">
-      <PageHeader eyebrow={formatLongDay(data.today)} title={title} />
+      <PageHeader eyebrow={formatLongDay(data.today)} title={title}>
+        <RefreshButton />
+      </PageHeader>
 
       <StatsRow dueCount={due} />
 

@@ -44,8 +44,9 @@ function Status({ data }: { data: RadarState }) {
         </p>
         {!s.running && s.last_run_at && (
           <p className="text-[13px] text-muted">
-            {(sm["tracked_new"] ?? 0) + (sm["linkedin_tracked"] ?? 0)} new at your companies · {sm["inbox_new"] ?? 0}{" "}
-            new in the inbox · {sm["boards_checked"] ?? 0} job boards checked
+            {(sm["tracked_new"] ?? 0) + (sm["linkedin_tracked"] ?? 0)} new at your companies ·{" "}
+            {sm["auto_added"] ? `${sm["auto_added"]} added to the board with ${sm["people_added"] ?? 0} people · ` : ""}
+            {sm["inbox_new"] ?? 0} new in the inbox · {sm["boards_checked"] ?? 0} job boards checked
             {sm["spent_usd"] ? ` · $${sm["spent_usd"].toFixed(2)} on searches` : ""}
           </p>
         )}

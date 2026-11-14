@@ -2409,6 +2409,16 @@ export interface components {
             min_usd: number;
             /** Min Cad */
             min_cad: number;
+            /** Auto Add */
+            auto_add: boolean;
+            /** Auto Add Fit */
+            auto_add_fit: number;
+            /** Auto Add Max */
+            auto_add_max: number;
+            /** People Per Company */
+            people_per_company: number;
+            /** People Usd */
+            people_usd: number;
         };
         /**
          * RadarConfigPatch
@@ -2441,6 +2451,16 @@ export interface components {
             min_usd?: number | null;
             /** Min Cad */
             min_cad?: number | null;
+            /** Auto Add */
+            auto_add?: boolean | null;
+            /** Auto Add Fit */
+            auto_add_fit?: number | null;
+            /** Auto Add Max */
+            auto_add_max?: number | null;
+            /** People Per Company */
+            people_per_company?: number | null;
+            /** People Usd */
+            people_usd?: number | null;
         };
         /** RadarItemOut */
         RadarItemOut: {
