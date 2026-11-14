@@ -62,11 +62,13 @@ def create_app() -> FastAPI:
             if settings.radar_schedule
             else None
         )
+        ttl = radar_run.start_ttl_scheduler(session_factory(), settings) if settings.ttl_schedule else None
         events = get_events_settings()
         worker = events_worker.start(events) if events.worker else None  # the events tool's background jobs
         yield
-        if stop is not None:
-            stop.set()
+        for event in (stop, ttl):
+            if event is not None:
+                event.set()
         if worker is not None:
             worker.stop(timeout=events_worker.STOP_WAIT_SECONDS)  # lets the job it's running finish
 
