@@ -19,6 +19,7 @@ const state: RadarState = {
     hour: 7,
     min_fit: 2,
     recent_days: 7,
+    ttl_days: 15,
     ats_search: true,
     post_search: true,
     core_only: true,
