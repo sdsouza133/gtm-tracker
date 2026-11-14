@@ -7210,6 +7210,10 @@
       "type": "integer",
       "title": "Recent Days"
      },
+     "ttl_days": {
+      "type": "integer",
+      "title": "Ttl Days"
+     },
      "ats_search": {
       "type": "boolean",
       "title": "Ats Search"
@@ -7244,6 +7248,7 @@
      "hour",
      "min_fit",
      "recent_days",
+     "ttl_days",
      "ats_search",
      "post_search",
      "core_only",
@@ -7353,6 +7358,19 @@
        }
       ],
       "title": "Recent Days"
+     },
+     "ttl_days": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 365.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ttl Days"
      },
      "ats_search": {
       "anyOf": [
