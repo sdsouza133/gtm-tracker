@@ -75,7 +75,7 @@ describe("the Events page", () => {
   });
 
   it.each([
-    [{ missing: ["APIFY_TOKEN"] }, "The events tool needs APIFY_TOKEN set in Railway."],
+    [{ missing: ["TREG_TOKEN"] }, "The events tool needs TREG_TOKEN set in Railway."],
     [{ open_access: true }, "The events tool is off while the tracker has no sign-in: its lists hold work emails."],
     [{ paused: true }, "New runs are on hold."],
   ])("says why no run can start (%o)", async (over, says) => {

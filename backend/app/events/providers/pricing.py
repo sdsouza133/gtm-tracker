@@ -30,8 +30,9 @@ CLAUDE = {
 MOST_EXPENSIVE = CLAUDE["claude-opus-5-5"]
 WEB_SEARCH_USD = Decimal("0.01")  # $10 per 1,000 searches
 
-APIFY_POST_USD = Decimal("0.002")
-APIFY_EMPTY_QUERY_USD = Decimal("0.001")  # a search that finds nothing is still charged
+# LinkedIn post search through treg: a page of up to 50 posts per call, at HarvestAPI's list price per call.
+POST_SEARCH_PAGE = 50
+POST_SEARCH_PAGE_USD = Decimal("0.004")
 
 
 def claude_price(model: str) -> TokenPrice:
@@ -72,7 +73,7 @@ def claude_label_estimate(model: str, posts: int) -> Decimal:
     )
 
 
-def apify_search_estimate(queries: int, max_posts_per_query: int) -> Decimal:
-    """The most a post search can charge: every query returns its maximum (or nothing, at the empty-query price)."""
-    per_query = max(APIFY_POST_USD * max_posts_per_query, APIFY_EMPTY_QUERY_USD)
-    return per_query * queries
+def post_search_estimate(queries: int, max_posts_per_query: int) -> Decimal:
+    """The most a post search can charge: every query reads every page it may (a page is charged even when empty)."""
+    pages = max(1, -(-max_posts_per_query // POST_SEARCH_PAGE))
+    return POST_SEARCH_PAGE_USD * pages * queries

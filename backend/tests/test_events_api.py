@@ -104,10 +104,10 @@ def test_a_run_needs_a_public_website(
 def test_without_its_keys_no_run_starts(events_client: TestClient) -> None:
     real = EventsSettings(providers="real", anthropic_api_key="a-key")
     events_client.app.dependency_overrides[get_events_settings] = lambda: real  # type: ignore[attr-defined]
-    assert events_client.get("/api/events").json()["missing"] == ["APIFY_TOKEN", "APOLLO_API_KEY"]
+    assert events_client.get("/api/events").json()["missing"] == ["TREG_TOKEN", "APOLLO_API_KEY"]
     r = events_client.post("/api/events/runs", json={"website": "acme.com"})
     assert r.status_code == 409
-    assert "APIFY_TOKEN, APOLLO_API_KEY" in r.json()["detail"]
+    assert "TREG_TOKEN, APOLLO_API_KEY" in r.json()["detail"]
 
 
 def test_whether_the_tool_is_set_up_can_be_checked_without_signing_in(client: TestClient, db: Session) -> None:
@@ -127,7 +127,7 @@ def test_whether_the_tool_is_set_up_can_be_checked_without_signing_in(client: Te
     overrides[get_events_settings] = lambda: EventsSettings(providers="real", anthropic_api_key="a-key", worker=True)
     assert client.get(url).json() == {
         "ready": False,
-        "missing": ["APIFY_TOKEN", "APOLLO_API_KEY"],
+        "missing": ["TREG_TOKEN", "APOLLO_API_KEY"],
         "worker": True,
         "open_access": False,
     }

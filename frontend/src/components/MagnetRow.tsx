@@ -57,7 +57,7 @@ export function MagnetRow({
       {s && (
         <p className="text-muted">
           {s.leads} in the US or Canada ({s.hot} hot, {s.warm} warm, {s.touch} single touch) out of {s.fit} who fit the
-          ICP{magnet.mode === "full" ? `, ${s.emails} with emails` : ""}. Apify ${s.apify_usd.toFixed(2)}.
+          ICP{magnet.mode === "full" ? `, ${s.emails} with emails` : ""}. LinkedIn data ${s.linkedin_usd.toFixed(2)}.
           {magnet.views ? ` Opened ${magnet.views} time${magnet.views === 1 ? "" : "s"}.` : ""}
         </p>
       )}

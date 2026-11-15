@@ -665,7 +665,7 @@ class RadarOut(BaseModel):
     config: RadarConfigOut
     items: list[RadarItemOut]
     posts: list[HiringPost]
-    apify: bool
+    treg: bool  # a treg token is set, so the LinkedIn, Google and hiring-post searches run
 
 
 class RadarAdded(BaseModel):
@@ -706,7 +706,7 @@ class MagnetSummary(BaseModel):
     emails: int
     fit: int
     people: int
-    apify_usd: float
+    linkedin_usd: float  # what reading LinkedIn cost (through treg)
 
 
 class MagnetOut(BaseModel):

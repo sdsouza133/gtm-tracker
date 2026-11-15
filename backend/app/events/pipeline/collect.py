@@ -5,10 +5,12 @@ Approving the plan (`approve`) stores the events and queues one `collect_event` 
 1. Leaves out the searches any run made for the same event in the last EVENTS_SEARCH_CACHE_DAYS: posts are shared, so a
    popular event gets cheaper with every company that asks about it. While another run is searching the event, it
    waits for that search instead of paying for the same posts.
-2. Starts one Apify run for the rest, capped at the amount reserved for it (`maxTotalChargeUsd`), and stores the run's
-   id before waiting on it, so a worker that stops mid-search picks the same run back up instead of paying again.
-3. Polls it, deferring in between (which uses no attempt), then stores the posts, which search found each and the
-   searches themselves, and settles the reservation at what Apify charged.
+2. Runs one LinkedIn post search for the rest (through treg), within the amount reserved for it, and stores the search's
+   id. treg answers at once, so the posts are stored straight away; a provider that runs in the background is polled
+   instead, deferring in between (which uses no attempt), and a worker that stops mid-search picks the same search
+   back up instead of paying again.
+3. Stores the posts, which search found each and the searches themselves, and settles the reservation at what the
+   search cost.
 
 A search that fails or runs too long is tried once more; after that only its event is marked failed. The run moves on
 to qualify once no event is left to search, and fails only if none could be searched. When the day's cap is used up,
@@ -36,14 +38,14 @@ from app.events.pipeline import runs
 from app.events.pipeline.base import DONE, Defer, JobContext, Outcome, Payload
 from app.events.pipeline.paid import check_not_paused, paid_call, step_key
 from app.events.pipeline.qualify import QUALIFY
-from app.events.providers.pricing import apify_search_estimate
+from app.events.providers.pricing import post_search_estimate
 from app.events.providers.types import Answer, ProviderError, SearchedPost, SearchRun, SearchStatus
 from app.events.schemas import MAX_QUERIES, ApprovedEvent
 
 COLLECT_EVENT = "collect_event"
 MAX_EVENTS = 3
 SEARCH_TRIES = 2  # a search that fails or runs too long is tried once more
-SEARCH_GIVE_UP_AFTER = timedelta(minutes=30)  # Apify stops a run at 15 minutes; this is for one that never says so
+SEARCH_GIVE_UP_AFTER = timedelta(minutes=30)  # for a background search that never says it's done
 MAX_POST_ID_CHARS = 64
 ACTIVE = (RunStatus.COLLECTING, RunStatus.WAITING_FOR_BUDGET)
 OPEN = (RunEventStatus.PENDING, RunEventStatus.SEARCHING)
@@ -98,7 +100,7 @@ def collect_event(ctx: JobContext, session: Session, payload: Payload) -> Outcom
     if search is None and run.status not in ACTIVE:  # canceled or failed: start nothing new
         run_event.status = RunEventStatus.PENDING  # (and don't make other runs wait on a search that never started)
         return DONE
-    session.commit()  # no transaction stays open while Apify answers
+    session.commit()  # no transaction stays open while the search runs
     if search is None:
         return _start(ctx, session, run_id, event_id)
     return _poll(ctx, session, run_id, event_id, search)
@@ -119,19 +121,19 @@ def give_up(ctx: JobContext, session: Session, payload: Payload) -> None:
 
 @dataclass(frozen=True)
 class _Search:
-    """The Apify run an event is waiting on."""
+    """The search an event is waiting on."""
 
-    apify_run_id: str
+    search_id: str
     spend_id: int
     queries: list[str]
     started_at: datetime
 
     @classmethod
     def of(cls, run_event: RunEvent) -> "_Search | None":
-        if run_event.apify_run_id is None or run_event.spend_id is None or run_event.search_started_at is None:
+        if run_event.search_run_id is None or run_event.spend_id is None or run_event.search_started_at is None:
             return None
         return cls(
-            run_event.apify_run_id, run_event.spend_id, list(run_event.search_queries), run_event.search_started_at
+            run_event.search_run_id, run_event.spend_id, list(run_event.search_queries), run_event.search_started_at
         )
 
 
@@ -165,13 +167,13 @@ def _start(ctx: JobContext, session: Session, run_id: uuid.UUID, event_id: uuid.
     session.commit()
 
     per_query = ctx.settings.search_posts_per_query
-    estimate = apify_search_estimate(len(todo), per_query)
+    estimate = post_search_estimate(len(todo), per_query)
     try:
         paid = paid_call(
             ctx,
             run_id=run_id,
             step=_step(event_id),
-            provider="apify",
+            provider="treg",
             estimate=estimate,
             call=lambda: Answer(
                 ctx.providers.search.start(todo, max_posts_per_query=per_query, max_charge_usd=estimate)
@@ -186,22 +188,34 @@ def _start(ctx: JobContext, session: Session, run_id: uuid.UUID, event_id: uuid.
             raise
         return _search_failed(ctx, session, run_id, event_id, reason=f"the search couldn't start: {exc}")
 
-    # Store the run's id right away: from here on, every attempt polls this run instead of paying again.
+    # Store the search's id right away: from here on, every attempt polls this search instead of paying again.
+    found = paid.answer.value
     run = runs.locked(session, run_id)
     run_event = _locked(session, run_id, event_id)
     if run_event is not None:
-        run_event.apify_run_id = paid.answer.value.id
+        run_event.search_run_id = found.id
         run_event.spend_id = paid.spend_id
     if run is not None and run.status == RunStatus.WAITING_FOR_BUDGET:
         run.status = RunStatus.COLLECTING
         run.status_detail = SEARCHING
     session.commit()
+    return _stored_or_polled(ctx, session, run_id, event_id, _Search(found.id, paid.spend_id, todo, now), found)
+
+
+def _stored_or_polled(
+    ctx: JobContext, session: Session, run_id: uuid.UUID, event_id: uuid.UUID, search: _Search, found: SearchRun
+) -> Outcome:
+    """A search that answered at once (treg) is stored now; one still running in the background is polled later."""
+    if found.status == SearchStatus.SUCCEEDED:
+        return _store(
+            ctx, session, run_id, event_id, search=search, found=found, posts=ctx.providers.search.posts(found)
+        )
     return Defer(_poll_delay(ctx))
 
 
 def _poll(ctx: JobContext, session: Session, run_id: uuid.UUID, event_id: uuid.UUID, search: _Search) -> Outcome:
     try:
-        found = ctx.providers.search.get(search.apify_run_id)
+        found = ctx.providers.search.get(search.search_id)
     except ProviderError as exc:
         if exc.retryable:
             raise
@@ -313,7 +327,7 @@ def _search_failed(
     run_event = _locked(session, run_id, event_id)
     if run_event is None:
         return DONE
-    run_event.apify_run_id = None
+    run_event.search_run_id = None
     run_event.spend_id = None
     run_event.error = reason
     if run_event.search_attempts < SEARCH_TRIES:
@@ -331,7 +345,7 @@ def _not_started(
     event_id: uuid.UUID,
     exc: BudgetExceededError | None = None,
 ) -> Outcome:
-    """The search was never started (no budget, or Apify couldn't take it): undo the attempt."""
+    """The search was never started (no budget, or the provider couldn't take it): undo the attempt."""
     run = runs.locked(session, run_id)
     run_event = _locked(session, run_id, event_id)
     if run is None or run_event is None:

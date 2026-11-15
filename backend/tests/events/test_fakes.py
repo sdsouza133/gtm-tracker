@@ -45,7 +45,7 @@ def test_fake_search_is_deterministic_and_mixed() -> None:
     assert search.get(run.id).status == SearchStatus.RUNNING
     done = search.get(run.id)
     assert done.status == SearchStatus.SUCCEEDED
-    assert done.cost_usd == Decimal("0.018")
+    assert done.cost_usd == Decimal("0.002")  # one page
     posts = search.posts(done)
     assert [p.id for p in posts] == [p.id for p in search.posts(done)]
     assert {p.author_kind for p in posts} == {"person", "company"}
@@ -97,10 +97,11 @@ def test_fake_verifier() -> None:
 
 def test_fake_search_respects_the_post_and_spend_caps() -> None:
     search = FakePostSearch(posts_per_query=9)
-    run = search.start(['"Pipeline Week"', "#PipelineWeek"], max_posts_per_query=3, max_charge_usd=Decimal("0.01"))
+    queries = ['"Pipeline Week"', "#PipelineWeek"]
+    run = search.start(queries, max_posts_per_query=3, max_charge_usd=Decimal("0.005"))
     done = search.get(run.id)
-    assert len(search.posts(done)) == 5  # 3 per query, but $0.01 pays for 5
-    assert done.cost_usd == Decimal("0.01")
+    assert [p.query for p in search.posts(done)] == [queries[0]] * 3  # 3 a query, and $0.005 covers one $0.004 page
+    assert done.cost_usd == Decimal("0.002")
 
 
 def test_each_fake_satisfies_its_interface() -> None:

@@ -14,7 +14,7 @@ def test_defaults_need_nothing_set(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.run_budget_usd == Decimal("3.00")
     assert settings.daily_cap_usd == Decimal("20.00")
     assert settings.worker is True
-    assert settings.missing() == ["ANTHROPIC_API_KEY", "APIFY_TOKEN", "APOLLO_API_KEY"]
+    assert settings.missing() == ["ANTHROPIC_API_KEY", "TREG_TOKEN", "APOLLO_API_KEY"]
 
 
 def test_fakes_need_no_keys() -> None:
@@ -23,7 +23,7 @@ def test_fakes_need_no_keys() -> None:
 
 def test_the_keys_are_the_trackers_own(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "a-key")
-    monkeypatch.setenv("APIFY_TOKEN", "an-apify-token")
+    monkeypatch.setenv("TREG_TOKEN", "a-treg-token")
     monkeypatch.setenv("APOLLO_API_KEY", " ")  # blank: not set
     monkeypatch.setenv("EVENTS_DAILY_CAP_USD", "5")
     settings = EventsSettings(providers="real")

@@ -147,7 +147,7 @@ def fail(
 
 
 def defer(session: Session, job_id: int, worker: str, delay: timedelta, *, now: datetime | None = None) -> bool:
-    """Not ready yet (an Apify run still going, a manual AI answer not in): check again later, attempt not counted.
+    """Not ready yet (a search still going, a manual AI answer not in): check again later, attempt not counted.
 
     False: `worker` no longer holds the job (roll back).
     """

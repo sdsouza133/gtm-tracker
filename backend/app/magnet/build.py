@@ -15,7 +15,7 @@ competitors with emails, for prospects who replied. Every paid call draws on the
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Literal, Protocol
 from urllib.parse import urlsplit
 
@@ -27,8 +27,8 @@ from app.magnet import touch
 from app.magnet.brain import ICP, Brain, Competitor, Thinker
 from app.magnet.linkedin import PRICE, PROFILES, Engager, LinkedIn, LinkedInError, Post, Profile
 from app.magnet.site import read_site
-from app.radar.apify import Apify
 from app.radar.fit import domain_of, web_url
+from app.treg import Treg
 
 Mode = Literal["teaser", "full"]
 Progress = Callable[[str, dict[str, Any]], None]
@@ -57,6 +57,9 @@ SAID_KEPT = 2  # comments quoted per lead
 MIN_NAME = 3  # shorter company names match too many headlines by accident
 
 
+POSTS_DAYS = 31  # the competitors' posts mined: the last month's
+
+
 class BuildError(RuntimeError):
     pass
 
@@ -71,7 +74,7 @@ class Plan:
     comments: int  # per post
     profiles: int  # the best-fitting people looked up for location and current job
     emails: bool
-    budget_usd: float  # Apify spend; Claude and Apollo are on top (a few cents and credits)
+    budget_usd: float  # LinkedIn spend (through treg); Claude and Apollo are on top (a few cents and credits)
 
 
 PLANS: dict[Mode, Plan] = {
@@ -121,7 +124,7 @@ class Tools:
 
 
 def default_tools(settings: Settings) -> Tools:
-    """The real network. Raises (BrainError, ApifyError or ApolloError) naming the setting that's missing."""
+    """The real network. Raises (BrainError, TregError or ApolloError) naming the setting that's missing."""
 
     def secret(value: SecretStr | None) -> str:
         return value.get_secret_value() if value else ""
@@ -129,7 +132,7 @@ def default_tools(settings: Settings) -> Tools:
     return Tools(
         read_site=read_site,
         brain=Brain(secret(settings.anthropic_api_key), settings.magnet_icp_model, settings.magnet_screen_model),
-        linkedin=LinkedIn(Apify(secret(settings.apify_token))),
+        linkedin=LinkedIn(Treg(secret(settings.treg_token))),
         apollo=Apollo(secret(settings.apollo_api_key)),
     )
 
@@ -194,7 +197,7 @@ def build(spec: Spec, tools: Tools, today: date, progress: Progress | None = Non
 
     keep_for_profiles = plan.profiles * PRICE[PROFILES]
     say("reading their posts", {"competitors": [r.name for r in rivals]})
-    posts = _posts(rivals, tools.linkedin, plan, budget, keep_for_profiles)
+    posts = _posts(rivals, tools.linkedin, plan, budget, keep_for_profiles, since=today - timedelta(days=POSTS_DAYS))
     if not posts:
         raise BuildError("The competitors haven't posted on LinkedIn in the last month.")
 
@@ -254,7 +257,7 @@ def build(spec: Spec, tools: Tools, today: date, progress: Progress | None = Non
             "in_region": len(leads),
             "tiers": {t: sum(1 for lead in leads if lead["tier"] == t) for t in ("hot", "warm", "touch")},
             "emails": emails,
-            "apify_usd": round(budget.spent, 3),
+            "linkedin_usd": round(budget.spent, 3),
         },
     }
 
@@ -306,7 +309,9 @@ def _decision_makers(apollo: Finder, domain: str, limit: int) -> list[dict[str, 
     return out
 
 
-def _posts(rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, keep: float) -> list[Post]:
+def _posts(
+    rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, keep: float, *, since: date
+) -> list[Post]:
     """Each competitor's most engaged posts from the last month, across its page and its decision makers."""
     by_target: dict[str, Rival] = {}
     for r in rivals:
@@ -315,13 +320,18 @@ def _posts(rivals: list[Rival], linkedin: LinkedIn, plan: Plan, budget: Budget, 
             by_target[_key(p["linkedin"])] = r
     pages = [r.linkedin for r in rivals]
     people = [p["linkedin"] for r in rivals for p in r.people]
-    found, spent = linkedin.posts(pages, plan.posts_per_target, budget.left(keep))
+    try:
+        found, spent = linkedin.posts(pages, plan.posts_per_target, budget.left(keep), since=since)
+    except LinkedInError as e:
+        if not e.posts:
+            raise
+        found, spent = e.posts, e.spent  # a page failed, but the posts read before it still work
     budget.add(spent)
     if people:
         try:
-            more, spent = linkedin.posts(people, plan.posts_per_target, budget.left(keep), people=True)
+            more, spent = linkedin.posts(people, plan.posts_per_target, budget.left(keep), people=True, since=since)
         except LinkedInError as e:
-            more, spent = [], e.spent  # the decision makers are extra; the company pages alone still work
+            more, spent = e.posts, e.spent  # the decision makers are extra; keep what was read before the failure
         budget.add(spent)
         found += more
     chosen: list[Post] = []
@@ -352,7 +362,7 @@ def _engage(
         budget.add(spent)
         engagers += found
     if failed == len(posts) and not engagers:
-        raise BuildError("Apify couldn't read the likes and comments. Try again in a few minutes.")
+        raise BuildError("LinkedIn's likes and comments couldn't be read. Try again in a few minutes.")
     return engagers, failed
 
 

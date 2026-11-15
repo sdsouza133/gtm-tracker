@@ -5,7 +5,7 @@ service it no longer needs.
 
 ## Context
 
-The events pipeline depends on four paid or rate-limited services: Claude, Apify, Apollo and, optionally, Reoon.
+The events pipeline depends on four paid or rate-limited services: Claude, treg (LinkedIn post search; Apify until November 2026), Apollo and, optionally, Reoon.
 Calling them in tests has four problems:
 
 - it is slow;

@@ -50,9 +50,10 @@ function Status({ data }: { data: RadarState }) {
           </p>
         )}
         {s.error && <p className="mt-1 text-[13px] text-bad">{s.error}</p>}
-        {!data.apify && (
+        {!data.treg && (
           <p className="mt-1 text-[13px] text-muted">
-            Job boards are checked for free. LinkedIn and hiring-post searches need an Apify token on the server.
+            Job boards are checked for free. LinkedIn and hiring-post searches need a treg token (TREG_TOKEN) on the
+            server.
           </p>
         )}
       </div>

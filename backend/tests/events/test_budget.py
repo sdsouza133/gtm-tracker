@@ -26,7 +26,7 @@ def _day(db: Session) -> BudgetDay:
 def test_reserve_holds_the_estimate_on_the_day_and_the_run(db: Session) -> None:
     run = make_run(db, budget_usd=Decimal("3.00"))
     spend_id = budget.reserve(
-        db, provider="apify", estimated_usd=Decimal("1.25"), daily_cap_usd=CAP, run_id=run.id, now=NOW
+        db, provider="treg", estimated_usd=Decimal("1.25"), daily_cap_usd=CAP, run_id=run.id, now=NOW
     )
     db.commit()
     assert _day(db).reserved_usd == Decimal("1.25")
@@ -34,20 +34,20 @@ def test_reserve_holds_the_estimate_on_the_day_and_the_run(db: Session) -> None:
     assert run.reserved_usd == Decimal("1.25")
     entry = db.get(SpendEntry, spend_id)
     assert entry is not None
-    assert (entry.status, entry.provider, entry.day) == (SpendStatus.RESERVED, "apify", NOW.date())
+    assert (entry.status, entry.provider, entry.day) == (SpendStatus.RESERVED, "treg", NOW.date())
 
 
 def test_the_daily_cap_stops_a_reservation(db: Session) -> None:
-    budget.reserve(db, provider="apify", estimated_usd=Decimal("19.00"), daily_cap_usd=CAP, now=NOW)
+    budget.reserve(db, provider="treg", estimated_usd=Decimal("19.00"), daily_cap_usd=CAP, now=NOW)
     with pytest.raises(BudgetExceededError) as exc:
-        budget.reserve(db, provider="apify", estimated_usd=Decimal("1.50"), daily_cap_usd=CAP, now=NOW)
+        budget.reserve(db, provider="treg", estimated_usd=Decimal("1.50"), daily_cap_usd=CAP, now=NOW)
     assert exc.value.scope == "day"
     assert exc.value.available == Decimal("1.00")
 
 
 def test_the_run_budget_stops_a_reservation(db: Session) -> None:
     run = make_run(db, budget_usd=Decimal("3.00"))
-    budget.reserve(db, provider="apify", estimated_usd=Decimal("2.50"), daily_cap_usd=CAP, run_id=run.id, now=NOW)
+    budget.reserve(db, provider="treg", estimated_usd=Decimal("2.50"), daily_cap_usd=CAP, run_id=run.id, now=NOW)
     with pytest.raises(BudgetExceededError) as exc:
         budget.reserve(db, provider="claude", estimated_usd=Decimal("0.75"), daily_cap_usd=CAP, run_id=run.id, now=NOW)
     assert exc.value.scope == "run"
@@ -56,7 +56,7 @@ def test_the_run_budget_stops_a_reservation(db: Session) -> None:
 def test_settle_swaps_the_estimate_for_the_actual_cost(db: Session) -> None:
     run = make_run(db)
     spend_id = budget.reserve(
-        db, provider="apify", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, run_id=run.id, now=NOW
+        db, provider="treg", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, run_id=run.id, now=NOW
     )
     budget.settle(db, spend_id, Decimal("0.62"), units=Decimal(310), unit="post", now=NOW)
     db.commit()
@@ -70,7 +70,7 @@ def test_settle_swaps_the_estimate_for_the_actual_cost(db: Session) -> None:
 
 
 def test_settling_twice_counts_once(db: Session) -> None:
-    spend_id = budget.reserve(db, provider="apify", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, now=NOW)
+    spend_id = budget.reserve(db, provider="treg", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, now=NOW)
     budget.settle(db, spend_id, Decimal("0.80"), now=NOW)
     budget.settle(db, spend_id, Decimal("0.80"), now=NOW)  # a retried job settling again
     db.commit()
@@ -78,7 +78,7 @@ def test_settling_twice_counts_once(db: Session) -> None:
 
 
 def test_settling_in_full_counts_the_whole_estimate(db: Session) -> None:
-    spend_id = budget.reserve(db, provider="apify", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, now=NOW)
+    spend_id = budget.reserve(db, provider="treg", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, now=NOW)
     budget.settle_in_full(db, spend_id, now=NOW)
     db.commit()
     assert _day(db).spent_usd == Decimal("1.00")
@@ -89,7 +89,7 @@ def test_settling_in_full_counts_the_whole_estimate(db: Session) -> None:
 def test_release_gives_the_reservation_back(db: Session) -> None:
     run = make_run(db)
     spend_id = budget.reserve(
-        db, provider="apify", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, run_id=run.id, now=NOW
+        db, provider="treg", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, run_id=run.id, now=NOW
     )
     budget.release(db, spend_id, now=NOW)
     db.commit()
@@ -100,7 +100,7 @@ def test_release_gives_the_reservation_back(db: Session) -> None:
 
 
 def test_settling_after_midnight_adjusts_the_day_it_was_reserved_on(db: Session) -> None:
-    spend_id = budget.reserve(db, provider="apify", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, now=NOW)
+    spend_id = budget.reserve(db, provider="treg", estimated_usd=Decimal("1.00"), daily_cap_usd=CAP, now=NOW)
     budget.settle(db, spend_id, Decimal("1.00"), now=datetime(2026, 10, 24, 0, 30, tzinfo=UTC))
     db.commit()
     assert _day(db).spent_usd == Decimal("1.00")
@@ -109,8 +109,8 @@ def test_settling_after_midnight_adjusts_the_day_it_was_reserved_on(db: Session)
 
 def test_negative_amounts_are_refused(db: Session) -> None:
     with pytest.raises(ValueError, match="negative"):
-        budget.reserve(db, provider="apify", estimated_usd=Decimal("-1"), daily_cap_usd=CAP, now=NOW)
-    spend_id = budget.reserve(db, provider="apify", estimated_usd=Decimal(1), daily_cap_usd=CAP, now=NOW)
+        budget.reserve(db, provider="treg", estimated_usd=Decimal("-1"), daily_cap_usd=CAP, now=NOW)
+    spend_id = budget.reserve(db, provider="treg", estimated_usd=Decimal(1), daily_cap_usd=CAP, now=NOW)
     with pytest.raises(ValueError, match="negative"):
         budget.settle(db, spend_id, Decimal("-0.01"), now=NOW)
 
@@ -122,7 +122,7 @@ def test_unknown_run_or_reservation_is_an_error(db: Session) -> None:
 
 def test_remaining_today(db: Session) -> None:
     assert budget.remaining_today(db, CAP, now=NOW) == CAP
-    budget.reserve(db, provider="apify", estimated_usd=Decimal("4.50"), daily_cap_usd=CAP, now=NOW)
+    budget.reserve(db, provider="treg", estimated_usd=Decimal("4.50"), daily_cap_usd=CAP, now=NOW)
     db.commit()
     assert budget.remaining_today(db, CAP, now=NOW) == Decimal("15.50")
 
@@ -143,7 +143,7 @@ def test_concurrent_workers_cannot_pass_the_daily_cap(db: Session) -> None:
         try:
             start.wait()
             budget.reserve(
-                session, provider="apify", estimated_usd=Decimal(3), daily_cap_usd=CAP, run_id=run_id, now=NOW
+                session, provider="treg", estimated_usd=Decimal(3), daily_cap_usd=CAP, run_id=run_id, now=NOW
             )
             session.commit()
             result = "ok"

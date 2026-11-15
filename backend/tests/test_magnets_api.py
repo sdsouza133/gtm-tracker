@@ -16,9 +16,9 @@ from app.magnet.linkedin import LinkedIn
 from app.main import log_path
 from app.models import Activity, Company, Magnet
 from tests import factories as f
-from tests.magnet_fakes import ORGS, FakeApollo, FakeBrain, FakeRunner, runner, site
+from tests.magnet_fakes import ORGS, FakeApollo, FakeBrain, FakeHarvest, runner, site
 
-KEYS = {"anthropic_api_key": "a-key", "apify_token": "an-apify-token", "apollo_api_key": "an-apollo-key"}
+KEYS = {"anthropic_api_key": "a-key", "treg_token": "a-treg-token", "apollo_api_key": "an-apollo-key"}
 
 
 def settings_with(changes: dict[str, Any]) -> Settings:
@@ -27,7 +27,7 @@ def settings_with(changes: dict[str, Any]) -> Settings:
 
 
 @pytest.fixture
-def run() -> FakeRunner:
+def run() -> FakeHarvest:
     return runner()
 
 
@@ -37,7 +37,7 @@ def started() -> list[Callable[[], None]]:
 
 
 @pytest.fixture
-def magnet_client(signed_in: TestClient, connection: Connection, run: FakeRunner) -> TestClient:
+def magnet_client(signed_in: TestClient, connection: Connection, run: FakeHarvest) -> TestClient:
     """Builds run inline, on the test's transaction, against the made-up market in magnet_fakes."""
     factory = sessionmaker(bind=connection, join_transaction_mode="create_savepoint", expire_on_commit=False)
     apollo = FakeApollo(ORGS, emails={"https://www.linkedin.com/in/ana-example": "ana@buyer.example"})
@@ -176,7 +176,7 @@ def test_a_teaser_link_shows_only_its_first_few_leads(magnet_client: TestClient,
     ("changes", "mode", "message"),
     [
         ({"anthropic_api_key": None}, "teaser", "ANTHROPIC_API_KEY"),
-        ({"apify_token": SecretStr("")}, "teaser", "APIFY_TOKEN"),
+        ({"treg_token": SecretStr("")}, "teaser", "TREG_TOKEN"),
         ({"open_access": True}, "full", "sign-in"),
     ],
 )
@@ -212,7 +212,7 @@ def test_one_build_at_a_time_unless_the_last_one_died(
 
 
 def test_a_build_given_up_on_stops_at_its_next_step_and_overwrites_nothing(
-    magnet_client: TestClient, db: Session, run: FakeRunner, started: list[Callable[[], None]]
+    magnet_client: TestClient, db: Session, run: FakeHarvest, started: list[Callable[[], None]]
 ) -> None:
     magnet_client.app.state.magnet_runtime.spawn = started.append  # type: ignore[attr-defined]
     c = a_company(db)
@@ -221,7 +221,7 @@ def test_a_build_given_up_on_stops_at_its_next_step_and_overwrites_nothing(
     db.execute(update(Magnet).where(Magnet.id == first["id"]).values(updated_at=long_ago))
     second = magnet_client.post(f"/api/companies/{c.id}/magnets", json={}).json()
     started[0]()  # the first build's worker was only slow, and wakes up now
-    assert run.runs == []  # it stopped before spending anything
+    assert run.calls == []  # it stopped before spending anything
     assert magnet_client.get(f"/api/magnets/{first['id']}").json()["status"] == "failed"
     started[1]()
     assert magnet_client.get(f"/api/magnets/{second['id']}").json()["status"] == "ready"
@@ -229,7 +229,7 @@ def test_a_build_given_up_on_stops_at_its_next_step_and_overwrites_nothing(
 
 def test_a_failed_build_says_why(magnet_client: TestClient, db: Session) -> None:
     magnet_client.app.state.magnet_runtime.tools = lambda: Tools(  # type: ignore[attr-defined]
-        read_site=site, brain=FakeBrain("rivalco.example"), linkedin=LinkedIn(FakeRunner()), apollo=FakeApollo({})
+        read_site=site, brain=FakeBrain("rivalco.example"), linkedin=LinkedIn(FakeHarvest()), apollo=FakeApollo({})
     )
     c = a_company(db)
     magnet_client.post(f"/api/companies/{c.id}/magnets", json={})
@@ -240,7 +240,7 @@ def test_a_failed_build_says_why(magnet_client: TestClient, db: Session) -> None
 
 
 def test_deleting_turns_the_link_off_and_stops_a_build_in_progress(
-    magnet_client: TestClient, db: Session, run: FakeRunner, started: list[Callable[[], None]]
+    magnet_client: TestClient, db: Session, run: FakeHarvest, started: list[Callable[[], None]]
 ) -> None:
     c = a_company(db)
     magnet_client.post(f"/api/companies/{c.id}/magnets", json={})
@@ -251,9 +251,9 @@ def test_deleting_turns_the_link_off_and_stops_a_build_in_progress(
     magnet_client.app.state.magnet_runtime.spawn = started.append  # type: ignore[attr-defined]
     building = magnet_client.post(f"/api/companies/{c.id}/magnets", json={}).json()
     magnet_client.delete(f"/api/magnets/{building['id']}")
-    runs_before = len(run.runs)
+    runs_before = len(run.calls)
     started[0]()  # the build wakes up to find itself deleted
-    assert len(run.runs) == runs_before  # and spends nothing
+    assert len(run.calls) == runs_before  # and spends nothing
     assert db.get(Magnet, building["id"]) is None
 
 

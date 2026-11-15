@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+from app.events.providers.pricing import POST_SEARCH_PAGE, POST_SEARCH_PAGE_USD
 from app.events.providers.types import (
     Answer,
     EnrichedPerson,
@@ -37,7 +38,7 @@ from app.events.schemas import (
     SizeBand,
 )
 
-FAKE_POST_PRICE_USD = Decimal("0.002")
+FAKE_PAGE_PRICE_USD = Decimal("0.002")  # what a page of post search costs through treg (its list price is $0.004)
 
 
 def _rng(*parts: object) -> random.Random:
@@ -209,10 +210,10 @@ class FakePostSearch:
         run_id = "fake-" + hashlib.sha256("|".join(queries).encode()).hexdigest()[:20]
         self._polls[run_id] = 0
         self._queries[run_id] = list(queries)
-        # Like the real search, it stops once it has charged the cap: each post costs FAKE_POST_PRICE_USD.
+        # Like the real search, it reads no page the reservation can't cover at the list price.
         self._limits[run_id] = (
             min(self.posts_per_query, max_posts_per_query),
-            int(max_charge_usd / FAKE_POST_PRICE_USD),
+            int(max_charge_usd / POST_SEARCH_PAGE_USD),
         )
         return SearchRun(id=run_id, status=SearchStatus.RUNNING)
 
@@ -223,20 +224,25 @@ class FakePostSearch:
         self._polls[run_id] = self._polls.get(run_id, 0) + 1
         if self._polls[run_id] < self.polls_until_done:
             return SearchRun(id=run_id, status=SearchStatus.RUNNING)
-        cost = FAKE_POST_PRICE_USD * len(self._found(run_id))
-        return SearchRun(id=run_id, status=SearchStatus.SUCCEEDED, dataset_id=run_id, cost_usd=cost)
+        cost = FAKE_PAGE_PRICE_USD * self._pages(run_id)
+        return SearchRun(id=run_id, status=SearchStatus.SUCCEEDED, cost_usd=cost)
 
     def posts(self, run: SearchRun) -> list[SearchedPost]:
         return self._found(run.id)
 
+    def _searched(self, run_id: str) -> list[str]:
+        """The queries the reservation covered, in order: each reads whole pages of POST_SEARCH_PAGE posts."""
+        per_query, pages = self._limits.get(run_id, (self.posts_per_query, 10**6))
+        need = max(1, -(-per_query // POST_SEARCH_PAGE))
+        return self._queries.get(run_id, [run_id])[: pages // need]
+
+    def _pages(self, run_id: str) -> int:
+        per_query, _ = self._limits.get(run_id, (self.posts_per_query, 0))
+        return len(self._searched(run_id)) * max(1, -(-per_query // POST_SEARCH_PAGE))
+
     def _found(self, run_id: str) -> list[SearchedPost]:
-        per_query, in_total = self._limits.get(run_id, (self.posts_per_query, None))
-        found = [
-            _fake_post(_event_in(query), query, i)
-            for query in self._queries.get(run_id, [run_id])
-            for i in range(per_query)
-        ]
-        return found[:in_total]
+        per_query, _ = self._limits.get(run_id, (self.posts_per_query, 0))
+        return [_fake_post(_event_in(query), query, i) for query in self._searched(run_id) for i in range(per_query)]
 
 
 def _fake_post(event: str, query: str, index: int) -> SearchedPost:

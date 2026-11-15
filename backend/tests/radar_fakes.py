@@ -1,8 +1,8 @@
-"""Stand-ins for the network and Apify in radar tests. Every board, company and job here is made up."""
+"""Stand-ins for the network in radar tests (treg itself is faked in treg_fakes). Every board, company and job here is
+made up."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
-
-from app.radar.apify import RunResult
 
 
 class FakeWeb:
@@ -26,30 +26,6 @@ class FakeWeb:
         return self.text_by_url[url]
 
 
-class FakeApify:
-    """Returns canned items per actor and records each run's input and cap."""
-
-    def __init__(
-        self, items_by_actor: dict[str, list[dict[str, Any]]] | None = None, fail: set[str] | None = None
-    ) -> None:
-        self.items_by_actor = items_by_actor or {}
-        self.fail = fail or set()
-        self.runs: list[tuple[str, dict[str, Any], float]] = []
-
-    def run(
-        self,
-        actor: str,
-        actor_input: dict[str, Any],
-        max_usd: float,
-        *,
-        partial_ok: bool = False,  # noqa: ARG002
-    ) -> RunResult:
-        self.runs.append((actor, actor_input, max_usd))
-        if actor in self.fail:
-            raise RuntimeError(f"{actor} is down")
-        return RunResult(items=self.items_by_actor.get(actor, []), status="SUCCEEDED", charged_usd=0.1)
-
-
 def ashby(slug: str, *jobs: dict[str, Any]) -> dict[str, Any]:
     return {f"https://api.ashbyhq.com/posting-api/job-board/{slug}?includeCompensation=true": {"jobs": list(jobs)}}
 
@@ -68,16 +44,33 @@ def ashby_job(
 
 
 def linkedin_item(
-    job_id: str, title: str, company: str, location: str = "United States", **extra: Any
+    job_id: str, title: str, company: str, location: str = "United States (Remote)", **extra: Any
 ) -> dict[str, Any]:
+    """A job as LinkedIn's search lists it, posted an hour ago."""
+    slug = company.lower().replace(" ", "-")
     return {
         "id": job_id,
+        "url": f"https://www.linkedin.com/jobs/view/{job_id}",
         "title": title,
-        "companyName": company,
-        "companyLinkedinUrl": f"https://www.linkedin.com/company/{company.lower().replace(' ', '-')}",
-        "companyWebsite": f"https://{company.lower().replace(' ', '')}.example",
-        "location": location,
-        "postedAt": "2026-10-25",
-        "descriptionText": "Remote role building GTM automation.",
+        "postedDate": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+        "company": {"name": company, "universalName": slug, "linkedinUrl": f"https://www.linkedin.com/company/{slug}"},
+        "location": {"linkedinText": location},
         **extra,
     }
+
+
+def job_details(**by_id: dict[str, Any]) -> Any:
+    """Full postings by job ID; any other job gets a plain remote posting."""
+
+    def reply(query: dict[str, Any], _body: Any) -> dict[str, Any]:
+        job_id = str(query.get("jobId"))
+        element = {
+            "id": job_id,
+            "descriptionText": "Remote role building GTM automation.",
+            "applicants": 12,
+            "salary": {"text": None, "min": None, "max": None},
+            "applyMethod": {"companyApplyUrl": f"https://jobs.example/{job_id}"},
+        }
+        return {"element": {**element, **by_id.get(job_id, {})}}
+
+    return reply

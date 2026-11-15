@@ -27,7 +27,6 @@ from app.magnet.build import BuildError, Spec, Tools, build, default_tools
 from app.magnet.linkedin import LinkedInError
 from app.magnet.site import SiteError
 from app.models import Company, Magnet
-from app.radar.apify import ApifyError
 from app.radar.fit import domain_of
 from app.schemas import (
     MagnetCreate,
@@ -40,6 +39,7 @@ from app.schemas import (
     PublicMagnet,
 )
 from app.services.history import record
+from app.treg import TregError
 
 log = logging.getLogger("gtm_tracker.magnets")
 
@@ -53,7 +53,7 @@ UNLINKED_LOCK = "magnets:no-company"  # one build at a time for websites outside
 TEASER_SHOWN = 5
 STALE_AFTER = timedelta(minutes=30)  # a build reports every step and every post; this quiet, it died with the app
 STOPPED = "The build stopped before it finished (the app restarted). Build it again."
-KNOWN_ERRORS = (BuildError, BrainError, SiteError, LinkedInError, ApolloError, ApifyError)
+KNOWN_ERRORS = (BuildError, BrainError, SiteError, LinkedInError, ApolloError, TregError)
 
 
 class CancelledError(Exception):
@@ -85,7 +85,7 @@ def missing_setup(settings: Settings, mode: str) -> str | None:
     """What has to be set up before a build can run, in words, or None."""
     for value, name in (
         (settings.anthropic_api_key, "ANTHROPIC_API_KEY"),
-        (settings.apify_token, "APIFY_TOKEN"),
+        (settings.treg_token, "TREG_TOKEN"),
         (settings.apollo_api_key, "APOLLO_API_KEY"),
     ):
         if value is None or not value.get_secret_value():
@@ -120,7 +120,7 @@ def _out(m: Magnet) -> MagnetOut:
             emails=int((stats.get("emails") or {}).get("found", 0)),
             fit=int(stats.get("fit", 0)),
             people=int(stats.get("people", 0)),
-            apify_usd=float(stats.get("apify_usd", 0)),
+            linkedin_usd=float(stats.get("linkedin_usd", stats.get("apify_usd", 0))),  # older builds: apify_usd
         )
     token = d.get("token")
     return MagnetOut(

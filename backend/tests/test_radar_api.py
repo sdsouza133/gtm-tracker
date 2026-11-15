@@ -12,7 +12,8 @@ from app.models import Company, Move, MoveType, RadarItem, Setting, Stage
 from app.radar import run as radar
 from tests import factories as f
 from tests.conftest import TODAY
-from tests.radar_fakes import FakeApify, FakeWeb, ashby, ashby_job
+from tests.radar_fakes import FakeWeb, ashby, ashby_job
+from tests.treg_fakes import FakeTreg
 
 UUID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 
@@ -28,7 +29,7 @@ def radar_client(signed_in: TestClient, connection: Connection, web: FakeWeb) ->
     factory = sessionmaker(bind=connection, join_transaction_mode="create_savepoint", expire_on_commit=False)
     signed_in.app.state.radar_runtime = Runtime(  # type: ignore[attr-defined]
         settings=get_settings(),
-        tools=lambda: radar.Tools(web=web, apify=FakeApify()),
+        tools=lambda: radar.Tools(web=web, treg=FakeTreg()),
         spawn=lambda work: work(),
         factory=factory,
     )
@@ -73,7 +74,7 @@ def test_state_and_config(radar_client: TestClient, db: Session) -> None:
     db.flush()
     body = radar_client.get("/api/radar").json()
     assert [i["id"] for i in body["items"]] == ["li-1", "li-2"]
-    assert (body["apify"], body["config"]["hour"], body["posts"][0]["author"]) == (False, 7, "Pat")
+    assert (body["treg"], body["config"]["hour"], body["posts"][0]["author"]) == (False, 7, "Pat")
     r = radar_client.patch("/api/radar/config", json={"hour": 9, "keywords": ["GTM Engineer"]})
     assert (r.json()["hour"], r.json()["keywords"], r.json()["min_usd"]) == (9, ["GTM Engineer"], 100000)
     r = radar_client.patch("/api/radar/config", json={"min_fit": 3})

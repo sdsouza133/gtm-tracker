@@ -13,7 +13,7 @@ left open too long) close what it left behind, by ADR 0002's rules: a reservatio
 one that started but was never settled is settled at its full estimate, because the call may have been billed.
 
 Caps apply to reservations. Providers that can overrun an estimate (token counts) may go over by that difference;
-Apify runs are started with `maxTotalChargeUsd` equal to the reservation, so they can't.
+A post search never starts a page the reservation can't cover, so it can't.
 Days are UTC days.
 """
 

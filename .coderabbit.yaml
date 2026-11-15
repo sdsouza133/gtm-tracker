@@ -28,7 +28,7 @@ reviews:
         Each migration must match app/models.py, include a working downgrade, and avoid long table locks.
     - path: "backend/tests/**"
       instructions: |
-        Tests must never call real third-party APIs (Apify, Apollo, Anthropic) and must not depend on test order.
+        Tests must never call real third-party APIs (treg, Apollo, Anthropic) and must not depend on test order.
         Fixtures must be made up: no real person's name, email or LinkedIn URL. Prefer assertions on behavior.
     - path: "frontend/src/**"
       instructions: |

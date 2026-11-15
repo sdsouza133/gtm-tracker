@@ -6,12 +6,12 @@ export const MODES: { mode: MagnetMode; label: string; cost: string }[] = [
   {
     mode: "teaser",
     label: "Build a teaser",
-    cost: "1 competitor, a few examples; up to $0.40 of Apify, plus a few cents of Claude and an Apollo credit or two",
+    cost: "1 competitor, a few examples; up to $0.40 of LinkedIn data, plus a few cents of Claude and an Apollo credit or two",
   },
   {
     mode: "full",
     label: "Build the full list",
-    cost: "up to 3 competitors, work emails where found; up to $2 of Apify, plus a few cents of Claude and an Apollo credit per email",
+    cost: "up to 3 competitors, work emails where found; up to $2 of LinkedIn data, plus a few cents of Claude and an Apollo credit per email",
   },
 ];
 

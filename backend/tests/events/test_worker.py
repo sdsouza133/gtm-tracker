@@ -420,13 +420,13 @@ def test_without_its_keys_only_housekeeping_and_deletion_run(
     assert set(w.kinds) == {RETENTION}  # personal data is still deleted after 30 days
     assert set(w.hooks) == set(JOBS)  # and a run whose job it gives up on still fails
     [record] = [r for r in caplog.records if r.getMessage() == "events worker running housekeeping only"]
-    assert record.missing == ["APIFY_TOKEN", "APOLLO_API_KEY"]  # type: ignore[attr-defined]
+    assert record.missing == ["TREG_TOKEN", "APOLLO_API_KEY"]  # type: ignore[attr-defined]
 
 
 def test_a_missing_reoon_key_doesnt_stop_the_app_starting(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(Worker, "run_forever", lambda _self: None)
     settings = EventsSettings(
-        providers="real", anthropic_api_key="a", apify_token="b", apollo_api_key="c", reoon_enabled=True
+        providers="real", anthropic_api_key="a", treg_token="b", apollo_api_key="c", reoon_enabled=True
     )
     assert settings.missing() == ["EVENTS_REOON_API_KEY"]
     assert set(worker.start(settings).kinds) == {RETENTION}

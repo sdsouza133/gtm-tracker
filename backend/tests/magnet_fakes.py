@@ -1,10 +1,12 @@
-"""Stand-ins for Apify, Claude and Apollo in lead magnet tests. Every company, person and post here is made up."""
+"""Stand-ins for treg (HarvestAPI's LinkedIn tools), Claude and Apollo in lead magnet tests. Every company, person and
+post here is made up."""
 
+import math
 from typing import Any
 
 from app.magnet import linkedin as li
 from app.magnet.brain import ICP, Competitor, Verdict
-from app.radar.apify import RunResult
+from app.treg import Answer, TregError
 
 RIVAL_PAGE = "https://www.linkedin.com/company/rivalco/"
 OTHER_PAGE = "https://www.linkedin.com/company/otherco/"
@@ -73,8 +75,8 @@ def profile(key: str, public: str, country: str, title: str = "VP Sales", compan
     }
 
 
-class FakeRunner:
-    """Answers each actor run from canned items; engagement runs are answered per post. Records every run."""
+class FakeHarvest:
+    """Answers HarvestAPI's LinkedIn tools from canned items, a page at a time, like treg does. Records every call."""
 
     def __init__(
         self,
@@ -84,46 +86,64 @@ class FakeRunner:
         comments: dict[str, list[dict[str, Any]]] | None = None,
         profiles: list[dict[str, Any]] | None = None,
         fail: set[str] | None = None,
-        status: str = "SUCCEEDED",
-        charged: float = 0.0,
+        price: float = 0.002,
+        page_size: int = 100,
     ) -> None:
-        self.status = status
-        self.charged = charged
         self.posts = posts or []
         self.people_posts = people_posts or []
         self.reactions = reactions or {}
         self.comments = comments or {}
         self.profiles = profiles or []
         self.fail = fail or set()
-        self.runs: list[tuple[str, dict[str, Any], float]] = []
+        self.price = price
+        self.page_size = page_size
+        self.calls: list[tuple[str, dict[str, Any], float]] = []
 
-    def run(
+    def call(
         self,
-        actor: str,
-        actor_input: dict[str, Any],
-        max_usd: float,
+        tool: str,
         *,
-        partial_ok: bool = False,  # noqa: ARG002
-    ) -> RunResult:
-        self.runs.append((actor, actor_input, max_usd))
-        if actor in self.fail:
-            raise RuntimeError(f"{actor} is down")
+        query: dict[str, Any] | None = None,
+        body: dict[str, Any] | None = None,  # noqa: ARG002
+        max_usd: float,
+    ) -> Answer:
+        query = dict(query or {})
+        self.calls.append((tool, query, max_usd))
+        if tool in self.fail:
+            raise TregError(f"{tool} is down")
+        if tool == li.PROFILES:
+            key = query.get("profileId") or str(query.get("url") or "").rstrip("/").rsplit("/", 1)[-1]
+            found = next((p for p in self.profiles if key in (p["id"], p["publicIdentifier"])), None)
+            return Answer({"element": found}, self.price)
         items: list[dict[str, Any]]
-        if actor == li.COMPANY_POSTS:
-            items = [p for p in self.posts if p["query"]["targetUrl"] in actor_input["targetUrls"]]
-        elif actor == li.PROFILE_POSTS:
-            items = self.people_posts
-        elif actor == li.REACTIONS:
-            items = self.reactions.get(actor_input["posts"][0], [])[: actor_input["maxItems"]]
-        elif actor == li.COMMENTS:
-            items = self.comments.get(actor_input["posts"][0], [])[: actor_input["maxItems"]]
+        if tool == li.COMPANY_POSTS:
+            items = [p for p in self.posts if _same(_target(p), query["company"])]
+        elif tool == li.PROFILE_POSTS:
+            items = [p for p in self.people_posts if _same(_target(p), query["profile"])]
+        elif tool == li.REACTIONS:
+            items = self.reactions.get(query["post"], [])
         else:
-            wanted = {u.rstrip("/").rsplit("/", 1)[-1] for u in actor_input["urls"]}
-            items = [p for p in self.profiles if p["id"] in wanted or p["publicIdentifier"] in wanted]
-        return RunResult(items=items, status=self.status, charged_usd=self.charged)
+            items = self.comments.get(query["post"], [])
+        page = int(query.get("page") or 1)
+        chunk = items[(page - 1) * self.page_size : page * self.page_size]
+        pagination = {"totalPages": max(1, math.ceil(len(items) / self.page_size)), "pageSize": self.page_size}
+        return Answer({"elements": chunk, "pagination": pagination}, self.price)
 
-    def actors(self) -> list[str]:
-        return [actor for actor, _, _ in self.runs]
+    def tools(self) -> list[str]:
+        return [tool for tool, _, _ in self.calls]
+
+
+def _target(post: dict[str, Any]) -> str:
+    """Whose page a canned post is on: its target, or else its author."""
+    return str((post.get("query") or {}).get("targetUrl") or (post.get("author") or {}).get("linkedinUrl") or "")
+
+
+def _same(a: str, b: str) -> bool:
+    def key(url: str) -> str:
+        bare = url.split("?", maxsplit=1)[0].rsplit("://", maxsplit=1)[-1]
+        return bare.removeprefix("www.").rstrip("/").removesuffix("/posts")
+
+    return key(a) == key(b)
 
 
 def icp(*competitors: str) -> ICP:
@@ -206,7 +226,7 @@ def site(_: str) -> dict[str, Any]:
     return {"url": "https://prospect.example", "pages": ["https://prospect.example"], "text": "Pipeline software"}
 
 
-def runner(**overrides: Any) -> FakeRunner:
+def runner(**overrides: Any) -> FakeHarvest:
     data: dict[str, Any] = {
         "posts": [
             post(P1, RIVAL_PAGE, likes=10, comments=2),
@@ -248,4 +268,4 @@ def runner(**overrides: Any) -> FakeRunner:
         ],
     }
     data.update(overrides)
-    return FakeRunner(**data)
+    return FakeHarvest(**data)
