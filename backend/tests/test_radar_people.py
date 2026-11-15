@@ -97,3 +97,12 @@ def test_asking_for_nobody_costs_nothing() -> None:
     treg = FakeTreg({people.PROFILE_SEARCH: {"elements": []}})
     assert people.find(treg, ACME_PAGE, "Acme", 200, 0, max_usd=1.0) == ([], 0.0)
     assert treg.calls == []
+
+
+def test_a_malformed_profile_is_skipped_and_the_lookup_still_counts_what_it_cost() -> None:
+    bad = {**profile("Bo Example", "GTM Engineering @ Acme", "bo"), "linkedinUrl": 123}
+    good = profile("Ana Example", "GTM Engineering @ Acme", "ana")
+    treg = FakeTreg({people.PROFILE_SEARCH: {"elements": [bad, good]}}, price=0.002)
+    found, spent = people.find(treg, ACME_PAGE, "Acme", 200, 4, max_usd=1.0)
+    assert [p.name for p in found] == ["Ana Example"]
+    assert spent == pytest.approx(0.006)  # three title words, each charged

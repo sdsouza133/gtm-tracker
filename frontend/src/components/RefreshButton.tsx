@@ -57,15 +57,18 @@ export function RefreshButton() {
         <RefreshCw size={14} aria-hidden="true" className={clsx(running && "animate-spin")} />
         {running ? "Refreshing…" : "Refresh"}
       </Button>
-      <p className="text-[12px] text-muted" aria-live="polite">
-        {line}
-        {radar.isError && !radar.data && (
-          <button type="button" className="ml-1 underline" onClick={() => void radar.refetch()}>
-            Reload status
-          </button>
-        )}
-      </p>
-      {s.error && !running && <p className="max-w-md text-[12px] text-bad sm:text-right">{s.error}</p>}
+      {/* one live region that's always there, so the status line and a pass's error are both announced */}
+      <div role="status" aria-live="polite" className="flex flex-col items-start gap-1 sm:items-end">
+        <p className="text-[12px] text-muted">
+          {line}
+          {radar.isError && !radar.data && (
+            <button type="button" className="ml-1 underline" onClick={() => void radar.refetch()}>
+              Reload status
+            </button>
+          )}
+        </p>
+        {s.error && !running && <p className="max-w-md text-[12px] text-bad sm:text-right">{s.error}</p>}
+      </div>
       {radar.data && !radar.data.treg && (
         <p className="max-w-md text-[12px] text-muted sm:text-right">
           Without a treg token (TREG_TOKEN) on the server, only the job boards of companies you track are checked.

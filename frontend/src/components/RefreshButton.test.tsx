@@ -60,6 +60,20 @@ describe("Refresh", () => {
     expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
   });
 
+  it("announces a pass's error in the same live region as the status line", async () => {
+    mockApi({
+      ...SIGNED_IN,
+      "GET /api/stats": { body: STATS },
+      "GET /api/today": today,
+      "GET /api/radar": { body: radar({ ...lastRun, error: "LinkedIn search failed: busy" }) },
+    });
+    renderApp(<App />);
+    const error = await screen.findByText("LinkedIn search failed: busy");
+    const region = error.closest("[role=status]");
+    expect(region).toHaveAttribute("aria-live", "polite");
+    expect(region).toContainElement(screen.getByText(/2 companies added/));
+  });
+
   it("says so when it can't tell when the board was last refreshed, and lets you try again", async () => {
     let fail = true;
     mockApi({

@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
 
-from sqlalchemy import Connection, Engine, func, select, text
+from sqlalchemy import Connection, Engine, func, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings, get_settings
@@ -53,6 +53,7 @@ STARTING_GRACE = timedelta(minutes=2)  # a pass asked for this recently counts a
 CHECK_EVERY_S = 300
 HELD_STAGES = frozenset({Stage.BENCH, Stage.PARKED, Stage.REJECTED})  # a refresh never adds to these
 AUTO_ADD_SCAN = 300  # the newest inbox roles a pass looks at for adding (this pass's are among them)
+APPLY_SCAN = 200  # a company's Apply moves read for a same-title match: far more than any company has had
 APPLY_WHY_BOARD = (
     "New posting on their job board, found by the job radar on {day}. "
     "Apply today, then email the hiring manager and say you've applied."
@@ -222,12 +223,15 @@ def _unpark(session: Session, c: Company, why: str) -> None:
 
 def matching_apply(session: Session, c: Company, title: str, url: str) -> Move | None:
     """The company's open Apply move, or one for this role from before (same link, or the same title: reposts get new
-    links)."""
+    links). The open and same-link checks are one query; the title, compared as `norm` sees it, is checked against the
+    company's most recent `APPLY_SCAN` Apply moves."""
     t, url = norm(title), web_url(url)
-    for m in session.scalars(select(Move).where(Move.company_id == c.id, Move.type == MoveType.APPLY)):
-        if m.status is MoveStatus.OPEN or m.url == url or norm(m.title.removeprefix("Apply: ")) == t:
-            return m
-    return None
+    applies = select(Move).where(Move.company_id == c.id, Move.type == MoveType.APPLY)
+    hit = session.scalars(applies.where(or_(Move.status == MoveStatus.OPEN, Move.url == url)).limit(1)).first()
+    if hit is not None:
+        return hit
+    recent = session.scalars(applies.order_by(Move.due.desc()).limit(APPLY_SCAN))
+    return next((m for m in recent if norm(m.title.removeprefix("Apply: ")) == t), None)
 
 
 def apply_if_new(session: Session, c: Company, title: str, url: str, today: date, why: str) -> bool:

@@ -268,6 +268,23 @@ def test_two_postings_of_one_role_get_one_apply_move(db: Session, factory: sessi
     assert [i.state for i in db.scalars(select(RadarItem))] == ["added", "added"]
 
 
+def test_a_role_handled_before_is_matched_by_its_link_or_its_title(db: Session) -> None:
+    c = f.company(db, name="Epsilon")
+    old = Move(
+        company_id=c.id,
+        type=MoveType.APPLY,
+        title="Apply: GTM Engineer",
+        due=date(2026, 9, 1),
+        status=MoveStatus.DONE,
+        url="https://jobs.example.com/1",
+    )
+    db.add(old)
+    db.flush()
+    assert radar.matching_apply(db, c, "Something else", "https://jobs.example.com/1") is old  # same link
+    assert radar.matching_apply(db, c, "GTM engineer!", "https://jobs.example.com/2") is old  # a repost: same title
+    assert radar.matching_apply(db, c, "Growth Engineer", "https://jobs.example.com/3") is None
+
+
 def test_a_refresh_leaves_a_company_you_benched_since_the_role_was_found(
     db: Session, factory: sessionmaker[Session], today: date
 ) -> None:

@@ -118,7 +118,8 @@ def find(
         for p in elements if isinstance(elements, list) else []:
             if not isinstance(p, dict):
                 continue
-            url, name = web_url(p.get("linkedinUrl")).split("?")[0], " ".join(str(p.get("name") or "").split())
+            url = web_url(str(p.get("linkedinUrl") or "")).split("?")[0]  # a malformed profile is skipped
+            name = " ".join(str(p.get("name") or "").split())
             headline = " ".join(str(p.get("position") or p.get("headline") or "").split())
             role = guess(headline, company)
             if not url or not name or url in seen or role is None:
