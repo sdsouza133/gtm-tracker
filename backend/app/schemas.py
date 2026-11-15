@@ -613,6 +613,11 @@ class RadarConfigPatch(BaseModel):
     toronto_ok: bool | None = None
     min_usd: int | None = Field(default=None, ge=0, le=1_000_000)
     min_cad: int | None = Field(default=None, ge=0, le=1_000_000)
+    auto_add: bool | None = None
+    auto_add_fit: int | None = Field(default=None, ge=1, le=3)
+    auto_add_max: int | None = Field(default=None, ge=0, le=50)
+    people_per_company: int | None = Field(default=None, ge=0, le=10)
+    people_usd: float | None = Field(default=None, ge=0, le=5)
 
 
 class RadarConfigOut(BaseModel):
@@ -630,6 +635,11 @@ class RadarConfigOut(BaseModel):
     toronto_ok: bool
     min_usd: int
     min_cad: int
+    auto_add: bool
+    auto_add_fit: int
+    auto_add_max: int
+    people_per_company: int
+    people_usd: float
 
 
 class RadarItemOut(BaseModel):

@@ -112,6 +112,11 @@ class RadarConfig:
     toronto_ok: bool = True  # only roles workable from Toronto: remote in the US or North America, or in Canada
     min_usd: int = 100_000  # the top of a listed USD range must reach this
     min_cad: int = 137_000  # the same for a CAD range
+    auto_add: bool = True  # a pass puts the strongest new roles straight on the board, with people to write to
+    auto_add_fit: int = 3  # how strong: 3 = the role itself
+    auto_add_max: int = 10  # the most companies one pass adds
+    people_per_company: int = 4  # people looked up at each company added
+    people_usd: float = 0.30  # the most one pass spends looking people up
 
     @classmethod
     def from_setting(cls, value: Any) -> "RadarConfig":

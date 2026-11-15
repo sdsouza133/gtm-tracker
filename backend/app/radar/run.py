@@ -12,10 +12,14 @@ everything in one transaction:
   day (`start_ttl_scheduler`), so it keeps rolling when the radar's schedule is off;
 - hiring posts are kept for two weeks for the daily research to qualify.
 
+Then, unless `auto_add` is off, the strongest new inbox roles go straight on the board, each with the few people to
+write to, found on LinkedIn (see `auto_add`).
+
 A Postgres advisory lock makes sure only one pass runs at a time, across every copy of the app.
 """
 
 import logging
+import re
 import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -24,14 +28,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any
 
-from sqlalchemy import Connection, Engine, func, select, text
+from sqlalchemy import Connection, Engine, func, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings, get_settings
 from app.models import Company, Move, MoveStatus, MoveType, ParkedWhy, RadarItem, Setting, Stage
-from app.radar import boards, sources
+from app.radar import boards, people, sources
 from app.radar.fit import RadarConfig, domain_of, fits, is_overseas, linkedin_slug, norm, web_url
 from app.services.history import record
+from app.services.outreach import NewPerson, RuleError, add_person
 from app.treg import Caller, Treg
 
 log = logging.getLogger("gtm_tracker.radar")
@@ -46,12 +51,20 @@ POSTS_KEEP = 300
 MAX_ATTEMPTS = 3
 STARTING_GRACE = timedelta(minutes=2)  # a pass asked for this recently counts as running before it takes the lock
 CHECK_EVERY_S = 300
+HELD_STAGES = frozenset({Stage.BENCH, Stage.PARKED, Stage.REJECTED})  # a refresh never adds to these
+AUTO_ADD_SCAN = 300  # the newest inbox roles a pass looks at for adding (this pass's are among them)
+APPLY_SCAN = 200  # a company's Apply moves read for a same-title match: far more than any company has had
 APPLY_WHY_BOARD = (
     "New posting on their job board, found by the job radar on {day}. "
     "Apply today, then email the hiring manager and say you've applied."
 )
 APPLY_WHY_LINKEDIN = (
     "Posted {posted}, found by the job radar. Apply today, then email the hiring manager and say you've applied."
+)
+FIND_THEM_NOTES = (
+    "Their likely boss: Head of RevOps, VP Sales or Marketing, or the founder at a small company. Two lines: ask if "
+    "you can send your 2-minute video on why you should be their GTM Engineer, then the one revenue idea you'd build "
+    "first for them. Add them in People and they get a reach-out of their own."
 )
 
 
@@ -208,13 +221,24 @@ def _unpark(session: Session, c: Company, why: str) -> None:
     record(session, "stage", f"{c.name}: back from parked, {why}", company_id=c.id)
 
 
-def apply_if_new(session: Session, c: Company, title: str, url: str, today: date, why: str) -> bool:
-    """An Apply move for today, unless one is open for the company or this role was handled before (same link, or the
-    same title: reposts get new links)."""
+def matching_apply(session: Session, c: Company, title: str, url: str) -> Move | None:
+    """The company's open Apply move, or one for this role from before (same link, or the same title: reposts get new
+    links). The open and same-link checks are one query; the title, compared as `norm` sees it, is checked against the
+    company's most recent `APPLY_SCAN` Apply moves."""
     t, url = norm(title), web_url(url)
-    for m in session.scalars(select(Move).where(Move.company_id == c.id, Move.type == MoveType.APPLY)):
-        if m.status is MoveStatus.OPEN or m.url == url or norm(m.title.removeprefix("Apply: ")) == t:
-            return False
+    applies = select(Move).where(Move.company_id == c.id, Move.type == MoveType.APPLY)
+    hit = session.scalars(applies.where(or_(Move.status == MoveStatus.OPEN, Move.url == url)).limit(1)).first()
+    if hit is not None:
+        return hit
+    recent = session.scalars(applies.order_by(Move.due.desc()).limit(APPLY_SCAN))
+    return next((m for m in recent if norm(m.title.removeprefix("Apply: ")) == t), None)
+
+
+def apply_if_new(session: Session, c: Company, title: str, url: str, today: date, why: str) -> bool:
+    """An Apply move for today, unless one is open for the company or this role was handled before."""
+    url = web_url(url)
+    if matching_apply(session, c, title, url):
+        return False
     session.add(
         Move(company_id=c.id, type=MoveType.APPLY, title=f"Apply: {title}"[:500], due=today, notes=why, url=url or None)
     )
@@ -389,6 +413,206 @@ def company_with_domain(session: Session, domain: str) -> Company | None:
     return next((c for c in rows if domain_of(c.website or "") == domain), None)
 
 
+@dataclass
+class Added:
+    company: Company
+    apply_move: Move
+    new_company: bool
+
+
+def add_to_board(
+    session: Session, item: RadarItem, today: date, *, by: str = "the job radar", one_apply: bool = False
+) -> Added:
+    """Put a radar role into the tracker: the company (if it's new), an Apply move, and a move to find the hiring
+    manager, both for today. With `one_apply` (a refresh's own adds), a company that already has an open Apply move,
+    or one for this role, keeps it instead of getting another; a person adding a role always gets the move they asked
+    for. The caller commits."""
+    j: dict[str, Any] = {**item.data, "company": item.company, "title": item.title, "url": item.url}
+    posting = {
+        "title": item.title,
+        "url": item.url,
+        "location": j.get("location", ""),
+        "posted": item.posted.isoformat() if item.posted else "",
+        "salary": j.get("salary", ""),
+        "fit": item.fit,
+        "first_seen": today.isoformat(),
+    }
+    company = session.get(Company, item.company_id) if item.company_id else None
+    if company is None:  # the company may have been added since the radar found this role
+        company = find_company(session, j)
+    new_company = company is None
+    if company is not None:
+        if company.stage is Stage.BENCH:
+            company.stage = Stage.NOT_STARTED
+        jobs = dict(company.research.get("jobs") or {})
+        jobs["postings"] = [posting, *[p for p in jobs.get("postings") or [] if p.get("url") != item.url]]
+        company.research = {**company.research, "jobs": jobs}
+        if one_apply and (open_apply := matching_apply(session, company, item.title, item.url)) is not None:
+            _mark_added(session, item, company, by)  # one Apply move per company: the open one stands
+            return Added(company, open_apply, False)
+    else:
+        board = j.get("board")
+        domain = domain_of(j.get("website") or "") or None
+        company = Company(
+            name=item.company or "Unknown company",
+            domain=domain if domain and company_with_domain(session, domain) is None else None,
+            website=web_url(j.get("website")) or None,
+            linkedin=web_url(j.get("company_linkedin")) or None,
+            employees=str(j.get("employees") or "") or None,
+            open_role=item.title[:300],
+            job_url=web_url(item.url) or None,
+            posted=item.posted,
+            wave="radar",
+            stage=Stage.NOT_STARTED,
+            research={
+                "industry": j.get("industry", ""),
+                "salary_verdict": j.get("salary", ""),
+                "description": j.get("snippet", ""),
+                "signals": [f"Open role: {item.title} (posted {posting['posted'] or 'recently'})"],
+                "wave_label": "Found by the daily job radar",
+                "jobs": {
+                    "board": {
+                        **board,
+                        "url": boards.BOARD_URL[board["ats"]].format(board["slug"]),
+                        "found_via": "job radar",
+                    }
+                    if board
+                    else None,
+                    "postings": [posting],
+                    "seen": [item.url],
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "note": "From their own job board." if board else "From LinkedIn. Looking for their own job board.",
+                },
+            },
+        )
+        session.add(company)
+        session.flush()
+    warn = (
+        " The post asks for US work authorization or no sponsorship: check you qualify before applying."
+        if "us_only" in (j.get("flags") or [])
+        else ""
+    )
+    apply_move = Move(
+        company_id=company.id,
+        type=MoveType.APPLY,
+        title=f"Apply: {item.title}"[:500],
+        due=today,
+        notes=f"Found by {by}. Apply early: the first applicants get read.{warn}",
+        url=web_url(j.get("apply_url")) or web_url(item.url) or None,
+    )
+    session.add(apply_move)
+    session.add(
+        Move(
+            company_id=company.id,
+            type=MoveType.EMAIL,
+            title=f"Email the hiring manager for {item.title} at {company.name} (find them first)"[:500],
+            due=today,
+            notes=FIND_THEM_NOTES,
+        )
+    )
+    _mark_added(session, item, company, by)
+    return Added(company, apply_move, new_company)
+
+
+def _mark_added(session: Session, item: RadarItem, company: Company, by: str) -> None:
+    item.state = "added"
+    item.company_id = company.id
+    item.data = {**item.data, "added_at": datetime.now(UTC).isoformat()}
+    session.flush()
+    record(session, "radar", f"{company.name}: added by {by} ({item.title})", company_id=company.id)
+
+
+@dataclass(frozen=True)
+class _OnBoard:
+    company_id: str
+    name: str
+    linkedin: str
+    employees: int | None
+    move_id: str
+    title: str
+    new: bool
+
+
+def _headcount(value: str | None) -> int | None:
+    digits = re.match(r"\s*(\d[\d,]*)", value or "")
+    return int(digits.group(1).replace(",", "")) if digits else None
+
+
+def auto_add(
+    factory: sessionmaker[Session], cfg: RadarConfig, tools: "Tools", today: date, since: str
+) -> dict[str, Any]:
+    """This pass's strongest new inbox roles go straight on the board: the role itself (`auto_add_fit`), not at a
+    benched company and not asking for US work authorization, at most `auto_add_max`. Each new company gets up to
+    `people_per_company` people to write to from LinkedIn (all of them within `people_usd`) and a look for its own job
+    board. The rest stay in the inbox."""
+    out: dict[str, Any] = {"auto_added": 0, "people_added": 0, "people_usd": 0.0}
+    with factory() as session:
+        fresh = [
+            item
+            for item in session.scalars(
+                select(RadarItem)
+                .where(RadarItem.state == "new", RadarItem.fit >= cfg.auto_add_fit)
+                .order_by(RadarItem.created_at.desc())
+                .limit(AUTO_ADD_SCAN)
+            )
+            if str((item.data or {}).get("found_at") or "") >= since
+            and not (item.data or {}).get("on_bench")
+            and "us_only" not in ((item.data or {}).get("flags") or [])
+        ]
+        fresh.sort(key=lambda i: (i.posted or date.min, i.id), reverse=True)
+        added: list[_OnBoard] = []
+        for item in fresh:
+            if len(added) >= cfg.auto_add_max:
+                break
+            j = {**item.data, "company": item.company, "title": item.title, "url": item.url}
+            current = session.get(Company, item.company_id) if item.company_id else find_company(session, j)
+            if current is not None and current.stage in HELD_STAGES:
+                continue  # benched, parked or rejected since the role was found: that's your call, not a refresh's
+            a = add_to_board(session, item, today, by="a refresh", one_apply=True)
+            c = a.company
+            added.append(
+                _OnBoard(
+                    c.id, c.name, c.linkedin or "", _headcount(c.employees), a.apply_move.id, item.title, a.new_company
+                )
+            )
+        session.commit()
+    out["auto_added"] = len(added)
+    budget = cfg.people_usd
+    for n in (n for n in added if n.new):
+        if tools.treg and n.linkedin and budget >= people.CALL_USD - 1e-9:
+            try:
+                leads, cost = people.find(tools.treg, n.linkedin, n.name, n.employees, cfg.people_per_company, budget)
+            except Exception:
+                log.exception("people lookup failed for %s", n.name)
+                leads, cost = [], 0.0
+            budget -= cost
+            out["people_usd"] += cost
+            with factory() as session:
+                for lead in leads:
+                    new = NewPerson(
+                        company_id=n.company_id,
+                        name=lead.name,
+                        title=lead.title,
+                        linkedin=lead.linkedin,
+                        location=lead.location,
+                        role_in_hire=lead.role,
+                        sureness=lead.sureness,
+                        why=lead.why,
+                    )
+                    try:
+                        add_person(session, new, today)
+                    except RuleError:
+                        continue
+                    out["people_added"] += 1
+                session.commit()
+        try:
+            find_board_for(factory, tools.web, n.company_id, n.title, n.move_id, today)
+        except Exception:
+            log.exception("job board lookup failed for %s", n.name)
+    out["people_usd"] = round(out["people_usd"], 3)
+    return out
+
+
 def _apply_board_checks(
     session: Session, cfg: RadarConfig, checks: dict[str, BoardCheck], today: date, summary: dict[str, Any]
 ) -> None:
@@ -527,6 +751,8 @@ def describe(summary: dict[str, Any], errors: list[str]) -> str:
         bits.append(f"company job boards: {summary['ats_kept']} GTM roles on {summary['ats_boards']} boards")
     if "posts_scanned" in summary:
         bits.append(f"hiring posts: {summary['posts_new']} new out of {summary['posts_scanned']} scanned")
+    if summary.get("auto_added"):
+        bits.insert(1, f"{summary['auto_added']} added to the board with {summary['people_added']} people to write to")
     return "Job radar: " + ", ".join(bits) + (f". {' '.join(errors)}" if errors else "")
 
 
@@ -567,6 +793,15 @@ def run_once(factory: sessionmaker[Session], settings: Settings, tools: Tools, t
     return got
 
 
+def _step(factory: sessionmaker[Session], step: str) -> None:
+    """Say what the pass is doing, for the Refresh button and the Radar page."""
+    with factory() as session:
+        status = dict(get_setting(session, "radar_status", {}))
+        status["step"] = step
+        put_setting(session, "radar_status", status)
+        session.commit()
+
+
 def _run(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigger: str) -> None:
     today = datetime.now(settings.tz).date()
     started_at = datetime.now(UTC).isoformat()
@@ -596,9 +831,17 @@ def _run(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigg
                 )
             ]
         checks = check_boards(tools.web, tracked, today, cfg.min_fit)
+        if tools.treg:
+            _step(factory, "searching LinkedIn and job boards")
         found = search_all(tools.treg, tools.web, cfg, status, today) if tools.treg else Searches()
         with factory() as session:
             summary = apply_results(session, cfg, checks, found, today)
+            session.commit()
+        if cfg.auto_add:
+            _step(factory, "adding new companies and finding people")
+            summary.update(auto_add(factory, cfg, tools, today, started_at))
+            summary["spent_usd"] = round(summary["spent_usd"] + summary["people_usd"], 2)
+        with factory() as session:
             status = dict(get_setting(session, "radar_status", {}))
             status.update(
                 running=False,

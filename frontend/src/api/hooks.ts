@@ -1,4 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { useCallback } from "react";
 
 import { isoDay } from "@/lib/format";
 
@@ -328,6 +329,15 @@ function useRadarChange<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
 
 export function useRunRadar() {
   return useRadarChange(async () => unwrap(await api.POST("/api/radar/run")));
+}
+
+/** Reload everything a radar run can change: called when a run started from this page finishes. */
+export function useReloadAfterRadar() {
+  const client = useQueryClient();
+  return useCallback(
+    () => Promise.all([RADAR, ...AFFECTED].map((queryKey) => client.invalidateQueries({ queryKey }))),
+    [client],
+  );
 }
 
 export function useAddRadarItem() {

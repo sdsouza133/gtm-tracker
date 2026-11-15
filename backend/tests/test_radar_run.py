@@ -1,6 +1,6 @@
 """A full radar pass against the database, with the network and treg faked."""
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -8,8 +8,23 @@ from sqlalchemy import Connection, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import get_settings
-from app.models import Activity, Company, Move, MoveType, ParkedWhy, RadarItem, Setting, Stage
+from app.models import (
+    Activity,
+    Company,
+    Move,
+    MoveStatus,
+    MoveType,
+    ParkedWhy,
+    Person,
+    RadarItem,
+    RoleInHire,
+    Setting,
+    Stage,
+    Sureness,
+)
+from app.radar import people
 from app.radar import run as radar
+from app.radar.fit import RadarConfig
 from app.radar.sources import JOB_DETAILS, LINKEDIN_JOBS, POST_SEARCH
 from tests import factories as f
 from tests.radar_fakes import FakeWeb, ashby, ashby_job, job_details, linkedin_item
@@ -170,6 +185,139 @@ def test_a_post_search_that_stopped_early_keeps_its_window_open(db: Session, fac
     assert "Hiring-post search failed" in status.value["error"]
     assert "last_posts_at" not in status.value  # searched again, over the same days, on the next run
     assert "last_linkedin_at" not in status.value
+
+
+def test_strong_new_roles_go_on_the_board_with_people_to_write_to(
+    db: Session, factory: sessionmaker[Session], today: date
+) -> None:
+    bench = f.company(db, name="Gamma", stage=Stage.BENCH)
+    db.commit()
+    leads = {
+        "GTM": [
+            {
+                "name": "Val Example",
+                "position": "Head of Revenue Operations at Delta",
+                "linkedinUrl": "https://www.linkedin.com/in/val-example",
+            }
+        ],
+        "revenue operations": [],
+        "growth": [
+            {
+                "name": "Orla Example",
+                "position": "Growth Consultant at Orama",
+                "linkedinUrl": "https://www.linkedin.com/in/orla-example",
+            }
+        ],
+    }
+    treg = FakeTreg(
+        {
+            LINKEDIN_JOBS: pages(
+                [
+                    linkedin_item("21", "GTM Engineer", "Delta"),
+                    linkedin_item("22", "GTM Engineer", "Gamma"),
+                ],
+                25,
+            ),
+            JOB_DETAILS: job_details(**{"21": {"company": {"employeeCount": 120}}}),
+            people.PROFILE_SEARCH: lambda q, _b: {"elements": leads[q["title"]]},
+        },
+        prices={people.PROFILE_SEARCH: 0.002},
+    )
+    radar.run_once(factory, get_settings(), radar.Tools(web=FakeWeb(), treg=treg), "test")
+
+    delta = db.scalars(select(Company).where(Company.name == "Delta")).one()
+    assert (delta.stage, delta.employees, delta.linkedin) == (
+        Stage.NOT_STARTED,
+        "120",
+        "https://www.linkedin.com/company/delta",
+    )
+    moves = db.scalars(select(Move).where(Move.company_id == delta.id).order_by(Move.title)).all()
+    assert [m.type for m in moves if m.status is MoveStatus.OPEN] == [MoveType.APPLY, MoveType.REACH]
+    assert "Found by a refresh" in next(m.notes for m in moves if m.type is MoveType.APPLY)
+    found = db.scalars(select(Person).where(Person.company_id == delta.id)).all()
+    assert [(p.name, p.role_in_hire, p.sureness) for p in found] == [
+        ("Val Example", RoleInHire.HIRING_MANAGER, Sureness.LIKELY)  # the consultant is left out
+    ]
+    inbox = {i.company: i.state for i in db.scalars(select(RadarItem))}
+    assert inbox == {"Delta": "added", "Gamma": "new"}  # a benched company's role waits for you
+    assert db.scalars(select(Company).where(Company.name == "Gamma")).one().stage is Stage.BENCH
+    status = db.get(Setting, "radar_status")
+    assert status is not None
+    summary = status.value["summary"]
+    assert (summary["auto_added"], summary["people_added"]) == (1, 1)
+    assert summary["people_usd"] == pytest.approx(0.006)
+    lines = db.scalars(select(Activity.text).where(Activity.kind == "radar")).all()
+    assert any("1 added to the board with 1 people to write to" in line for line in lines)
+    assert bench.id
+
+
+def test_two_postings_of_one_role_get_one_apply_move(db: Session, factory: sessionmaker[Session]) -> None:
+    db.commit()
+    treg = FakeTreg(
+        {
+            LINKEDIN_JOBS: pages(
+                [linkedin_item("31", "GTM Engineer", "Delta"), linkedin_item("32", "GTM Engineer", "Delta")], 25
+            ),
+            JOB_DETAILS: job_details(),
+        }
+    )
+    radar.run_once(factory, get_settings(), radar.Tools(web=FakeWeb(), treg=treg), "test")
+    delta = db.scalars(select(Company).where(Company.name == "Delta")).one()
+    applies = db.scalars(select(Move).where(Move.company_id == delta.id, Move.type == MoveType.APPLY)).all()
+    assert len(applies) == 1
+    assert [i.state for i in db.scalars(select(RadarItem))] == ["added", "added"]
+
+
+def test_a_role_handled_before_is_matched_by_its_link_or_its_title(db: Session) -> None:
+    c = f.company(db, name="Epsilon")
+    old = Move(
+        company_id=c.id,
+        type=MoveType.APPLY,
+        title="Apply: GTM Engineer",
+        due=date(2026, 9, 1),
+        status=MoveStatus.DONE,
+        url="https://jobs.example.com/1",
+    )
+    db.add(old)
+    db.flush()
+    assert radar.matching_apply(db, c, "Something else", "https://jobs.example.com/1") is old  # same link
+    assert radar.matching_apply(db, c, "GTM engineer!", "https://jobs.example.com/2") is old  # a repost: same title
+    assert radar.matching_apply(db, c, "Growth Engineer", "https://jobs.example.com/3") is None
+
+
+def test_a_refresh_leaves_a_company_you_benched_since_the_role_was_found(
+    db: Session, factory: sessionmaker[Session], today: date
+) -> None:
+    gamma = f.company(db, name="Gamma", stage=Stage.BENCH)
+    since = datetime.now(UTC).isoformat()
+    db.add(
+        RadarItem(
+            id="li-41",
+            company="Gamma",
+            title="GTM Engineer",
+            url="https://www.linkedin.com/jobs/view/41",
+            fit=3,
+            state="new",
+            data={"found_at": datetime.now(UTC).isoformat(), "on_bench": False},  # not benched when it was found
+        )
+    )
+    db.commit()
+    out = radar.auto_add(factory, RadarConfig(), radar.Tools(web=FakeWeb(), treg=None), today, since)
+    db.refresh(gamma)
+    assert (out["auto_added"], gamma.stage) == (0, Stage.BENCH)
+    assert db.get(RadarItem, "li-41").state == "new"  # type: ignore[union-attr]
+
+
+def test_with_auto_add_off_every_new_role_waits_in_the_inbox(db: Session, factory: sessionmaker[Session]) -> None:
+    db.add(Setting(key="radar_config", value={"auto_add": False}))
+    db.commit()
+    treg = FakeTreg(
+        {LINKEDIN_JOBS: pages([linkedin_item("21", "GTM Engineer", "Delta")], 25), JOB_DETAILS: job_details()}
+    )
+    radar.run_once(factory, get_settings(), radar.Tools(web=FakeWeb(), treg=treg), "test")
+    assert db.scalars(select(Company).where(Company.name == "Delta")).first() is None
+    assert [i.state for i in db.scalars(select(RadarItem))] == ["new"]
+    assert people.PROFILE_SEARCH not in treg.tools()
 
 
 def test_only_one_pass_at_a_time(db: Session, factory: sessionmaker[Session], connection: Connection) -> None:

@@ -26,6 +26,11 @@ const state: RadarState = {
     toronto_ok: true,
     min_usd: 100000,
     min_cad: 137000,
+    auto_add: true,
+    auto_add_fit: 3,
+    auto_add_max: 10,
+    people_per_company: 4,
+    people_usd: 0.3,
   },
   items: [
     {

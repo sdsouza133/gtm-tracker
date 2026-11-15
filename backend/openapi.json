@@ -7237,6 +7237,26 @@
      "min_cad": {
       "type": "integer",
       "title": "Min Cad"
+     },
+     "auto_add": {
+      "type": "boolean",
+      "title": "Auto Add"
+     },
+     "auto_add_fit": {
+      "type": "integer",
+      "title": "Auto Add Fit"
+     },
+     "auto_add_max": {
+      "type": "integer",
+      "title": "Auto Add Max"
+     },
+     "people_per_company": {
+      "type": "integer",
+      "title": "People Per Company"
+     },
+     "people_usd": {
+      "type": "number",
+      "title": "People Usd"
      }
     },
     "type": "object",
@@ -7254,7 +7274,12 @@
      "core_only",
      "toronto_ok",
      "min_usd",
-     "min_cad"
+     "min_cad",
+     "auto_add",
+     "auto_add_fit",
+     "auto_add_max",
+     "people_per_company",
+     "people_usd"
     ],
     "title": "RadarConfigOut"
    },
@@ -7441,6 +7466,69 @@
        }
       ],
       "title": "Min Cad"
+     },
+     "auto_add": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Auto Add"
+     },
+     "auto_add_fit": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 3.0,
+        "minimum": 1.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Auto Add Fit"
+     },
+     "auto_add_max": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 50.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Auto Add Max"
+     },
+     "people_per_company": {
+      "anyOf": [
+       {
+        "type": "integer",
+        "maximum": 10.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "People Per Company"
+     },
+     "people_usd": {
+      "anyOf": [
+       {
+        "type": "number",
+        "maximum": 5.0,
+        "minimum": 0.0
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "People Usd"
      }
     },
     "type": "object",
