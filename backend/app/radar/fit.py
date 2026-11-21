@@ -146,6 +146,23 @@ def linkedin_slug(url: str) -> str:
     return urllib.parse.unquote(m.group(1)).lower() if m else ""
 
 
+BRAND_MIN = 4  # letters a company name needs before a job title can name it; shorter ones turn up inside other words
+
+
+def names_company(title: str, name: str) -> bool:
+    """The job title names this company in whole words ("GTM Engineering - ShareGate" names ShareGate). A name that
+    reads as a place or a way of working never counts: "GTM Engineer - Remote" doesn't name Remote."""
+    low = (name or "").lower()
+    words = re.findall(r"[a-z0-9]+", low)
+    if (
+        len("".join(words)) < BRAND_MIN
+        or COUNTRY_WIDE.match(low)
+        or any(rx.search(low) for rx in (REMOTE, ONSITE, CANADA, OVERSEAS))
+    ):
+        return False
+    return bool(re.search(r"\b" + r"[\W_]*".join(map(re.escape, words)) + r"\b", (title or "").lower()))
+
+
 def title_score(title: str) -> int:
     if not title or SKIP_TITLE.search(title):
         return 0

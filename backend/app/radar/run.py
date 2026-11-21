@@ -8,8 +8,9 @@ everything in one transaction:
 - a posting gone from the board puts a warning on its open Apply move;
 - a LinkedIn or board-search role at a tracked company becomes an Apply move; any other role lands in the inbox;
 - untouched companies (not started or bench, nothing done) are parked `ttl_days` after their role was posted, or after
-  they were added when they have no role; one whose role is fresh again comes back. This also runs on its own once a
-  day (`start_ttl_scheduler`), so it keeps rolling when the radar's schedule is off;
+  they were added when they have no role; one whose role is fresh again comes back. A role the radar skips (US-only,
+  not GTM engineering, under the pay floor) doesn't count either way. This also runs on its own once a day
+  (`start_ttl_scheduler`), so it keeps rolling when the radar's schedule is off;
 - hiring posts are kept for two weeks for the daily research to qualify.
 
 Then, unless `auto_add` is off, the strongest new inbox roles go straight on the board, each with the few people to
@@ -21,7 +22,7 @@ A Postgres advisory lock makes sure only one pass runs at a time, across every c
 import logging
 import re
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass, field
@@ -34,7 +35,17 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import Settings, get_settings
 from app.models import Company, Move, MoveStatus, MoveType, ParkedWhy, RadarItem, Setting, Stage
 from app.radar import boards, people, sources
-from app.radar.fit import RadarConfig, domain_of, fits, is_overseas, linkedin_slug, norm, web_url
+from app.radar.fit import (
+    BRAND_MIN,
+    RadarConfig,
+    domain_of,
+    fits,
+    is_overseas,
+    linkedin_slug,
+    names_company,
+    norm,
+    web_url,
+)
 from app.services.history import record
 from app.services.outreach import NewPerson, RuleError, add_person
 from app.treg import Caller, Treg
@@ -127,12 +138,16 @@ def _days_since(iso: str | None, now: datetime) -> float | None:
 # ----------------------------------------------------------------------------- roles and their age
 
 
-def job_date(c: Company) -> str:
-    """When the company's best current role was posted ("" when there's no role)."""
+def job_date(c: Company, cfg: RadarConfig) -> str:
+    """When the company's best current role was posted ("" when there's no role). Only a role the radar would act on
+    counts (`fits`): one it skips, like a US-only or a RevOps role, neither keeps a company in play nor brings a parked
+    one back."""
     postings = [
         p
         for p in ((c.research.get("jobs") or {}).get("postings") or [])
-        if p.get("fit", 0) >= 2 and not is_overseas({"location": p.get("location"), "flags": []})  # noqa: PLR2004
+        if p.get("fit", 0) >= 2  # noqa: PLR2004
+        and not is_overseas({"location": p.get("location"), "flags": []})
+        and fits(p, cfg)[0]
     ]
     best = ""
     if postings:
@@ -142,8 +157,8 @@ def job_date(c: Company) -> str:
     return max(best or fallback, c.research.get("relisted") or "")
 
 
-def role_age(c: Company, today: date) -> int | None:
-    day = job_date(c)[:10]
+def role_age(c: Company, today: date, cfg: RadarConfig) -> int | None:
+    day = job_date(c, cfg)[:10]
     try:
         return (today - date.fromisoformat(day)).days if day else None
     except ValueError:
@@ -164,12 +179,12 @@ UNTOUCHED = (Stage.NOT_STARTED, Stage.BENCH)
 TTL_BATCH = 200
 
 
-def company_age(c: Company, today: date, tz: tzinfo) -> tuple[int | None, str]:
+def company_age(c: Company, today: date, tz: tzinfo, cfg: RadarConfig) -> tuple[int | None, str]:
     """Days since the company's role was posted, or since it was added (a local date, like `today`) when it has no
     role; and which it was."""
-    age = role_age(c, today)
+    age = role_age(c, today, cfg)
     if age is not None:
-        return age, f"Role posted {job_date(c)[:10]} ({age} days ago)"
+        return age, f"Role posted {job_date(c, cfg)[:10]} ({age} days ago)"
     added = c.created_at.astimezone(tz).date()
     return (today - added).days, f"Added {added.isoformat()} with no role ({(today - added).days} days ago)"
 
@@ -184,13 +199,15 @@ def _companies(session: Session, where: Any, size: int = TTL_BATCH) -> Iterator[
         last = batch[-1].id
 
 
-def park_untouched(session: Session, today: date, ttl_days: int, tz: tzinfo | None = None) -> list[str]:
+def park_untouched(session: Session, today: date, cfg: RadarConfig, tz: tzinfo | None = None) -> list[str]:
     """Rolling TTL: park every not-started or bench company where nothing has been done once it's older than
-    `ttl_days`, and bring back one parked for its age whose role is fresh again (re-posted, say)."""
+    `cfg.ttl_days`, and bring back one parked for its age whose role is fresh again (re-posted, say). Only roles the
+    radar would act on count (see `job_date`)."""
     tz = tz or get_settings().tz
+    ttl_days = cfg.ttl_days
     parked = []
     for c in _companies(session, Company.stage.in_(UNTOUCHED)):
-        age, since = company_age(c, today, tz)
+        age, since = company_age(c, today, tz, cfg)
         if age is None or age <= ttl_days or started(session, c.id):
             continue
         c.stage = Stage.PARKED
@@ -202,7 +219,7 @@ def park_untouched(session: Session, today: date, ttl_days: int, tz: tzinfo | No
         parked.append(f"{c.name} ({age}d)")
     parked.sort()
     for c in _companies(session, (Company.stage == Stage.PARKED) & (Company.parked_why == ParkedWhy.STALE_ROLE)):
-        age = role_age(c, today)
+        age = role_age(c, today, cfg)
         if age is not None and age <= ttl_days:
             _unpark(session, c, f"its role is {age} days old")
     if parked:
@@ -347,6 +364,29 @@ def _company_snapshot(c: Company) -> dict[str, Any]:
 
 
 BOARD_SLUG = Company.research["jobs"]["board"]["slug"].as_string()
+SQUASHED_NAME = func.regexp_replace(func.lower(Company.name), "[^a-z0-9]", "", "g")  # the name as `norm` sees it
+BRAND_SCAN = 20  # companies a job title can name: far more than any title does
+
+
+def has_role(session: Session, c: Company, title: str) -> bool:
+    """The company already has this role: a posting on it, or an Apply move, with the same title as `norm` sees it."""
+    t = norm(title)
+    if any(norm(p.get("title") or "") == t for p in (c.research.get("jobs") or {}).get("postings") or []):
+        return True
+    applies = (
+        select(Move.title)
+        .where(Move.company_id == c.id, Move.type == MoveType.APPLY)
+        .order_by(Move.due.desc())
+        .limit(APPLY_SCAN)
+    )
+    return any(norm(m.removeprefix("Apply: ")) == t for m in session.scalars(applies))
+
+
+def brand_of(session: Session, title: str, candidates: Iterable[Company]) -> Company | None:
+    """The tracked company behind a role posted under another name, like a parent company's (Workleap posting "GTM
+    Engineering - ShareGate"): the title names the company, and it already has a role with this very title. The name
+    alone isn't enough: "GTM Engineer (Clay, HubSpot)" at anyone isn't a role at Clay."""
+    return next((c for c in candidates if names_company(title, c.name) and has_role(session, c, title)), None)
 
 
 def _job_keys(job: dict[str, Any]) -> list[tuple[str, str]]:
@@ -359,28 +399,37 @@ def _job_keys(job: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 class Index:
-    """Finds the tracked company behind a job: by LinkedIn page, domain, name, or job-board slug. Built once per pass
-    from the few columns it needs, not whole rows."""
+    """Finds the tracked company behind a job: by LinkedIn page, domain, name, or job-board slug, else the brand its
+    title names (`brand_of`). Built once per pass from the few columns it needs, not whole rows."""
 
     def __init__(self, session: Session) -> None:
         self.session = session
         self.keys: dict[tuple[str, str], str] = {}
+        self.names: list[tuple[str, str]] = []  # (id, squashed name), to spot a company named in a job title
         rows = session.execute(
             select(Company.id, Company.linkedin, Company.domain, Company.website, Company.name, BOARD_SLUG)
         )
         for cid, linkedin, domain, website, name, slug in rows:
+            squashed = norm(name)
             for key in (
                 ("l", linkedin_slug(linkedin or "")),
                 ("d", domain or domain_of(website or "")),
-                ("n", norm(name)),
+                ("n", squashed),
                 ("b", (slug or "").lower()),
             ):
                 if key[1]:
                     self.keys.setdefault(key, cid)
+            if len(squashed) >= BRAND_MIN:
+                self.names.append((cid, squashed))
 
     def match(self, job: dict[str, Any]) -> Company | None:
         cid = next((self.keys[k] for k in _job_keys(job) if k[1] and k in self.keys), None)
-        return self.session.get(Company, cid) if cid else None
+        if cid:
+            return self.session.get(Company, cid)
+        title = job.get("title") or ""
+        t = norm(title)
+        named = (self.session.get(Company, c) for c, squashed in self.names if squashed in t)
+        return brand_of(self.session, title, (c for c in named if c is not None))
 
 
 def find_company(session: Session, job: dict[str, Any]) -> Company | None:
@@ -394,13 +443,18 @@ def find_company(session: Session, job: dict[str, Any]) -> Company | None:
         elif kind == "d":
             hit = company_with_domain(session, value)
         elif kind == "n":
-            squashed = func.regexp_replace(func.lower(Company.name), "[^a-z0-9]", "", "g")
-            hit = session.scalars(select(Company).where(squashed == value).limit(1)).first()
+            hit = session.scalars(select(Company).where(SQUASHED_NAME == value).limit(1)).first()  # noqa: SIM300
         else:
             hit = session.scalars(select(Company).where(func.lower(BOARD_SLUG) == value).limit(1)).first()
         if hit is not None:
             return hit
-    return None
+    title = job.get("title") or ""
+    named = session.scalars(
+        select(Company)
+        .where(func.length(SQUASHED_NAME) >= BRAND_MIN, func.strpos(norm(title), SQUASHED_NAME) > 0)
+        .limit(BRAND_SCAN)
+    )
+    return brand_of(session, title, named)
 
 
 def company_with_domain(session: Session, domain: str) -> Company | None:
@@ -722,7 +776,7 @@ def apply_results(
     _apply_board_checks(session, cfg, checks, today, summary)
     session.flush()
     _apply_found_jobs(session, found, today, summary)
-    park_untouched(session, today, cfg.ttl_days)
+    park_untouched(session, today, cfg)
     cutoff = datetime.now(UTC) - timedelta(days=INBOX_DAYS)
     for item in session.scalars(select(RadarItem).where(RadarItem.created_at < cutoff)):
         session.delete(item)
@@ -913,7 +967,7 @@ def expire_untouched(factory: sessionmaker[Session], settings: Settings) -> list
             return None
         today = datetime.now(settings.tz).date()
         with factory() as session:
-            parked = park_untouched(session, today, config(session).ttl_days, settings.tz)
+            parked = park_untouched(session, today, config(session), settings.tz)
             put_setting(session, TTL_LAST_RUN, today.isoformat())
             session.commit()
         return parked
