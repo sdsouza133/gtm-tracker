@@ -35,7 +35,7 @@ def test_untouched_companies_are_parked_after_15_days(db: Session) -> None:
     new_bench = added(db, f.company(db, name="New Bench", stage=Stage.BENCH), 3)
     relisted = f.company(db, name="Relisted", posted=TODAY - timedelta(days=40), research={"relisted": "2026-11-12"})
 
-    parked = radar.park_untouched(db, TODAY, 15)
+    parked = radar.park_untouched(db, TODAY, RadarConfig())
 
     assert parked == ["Old Bench (20d)", "Old Role (16d)"]
     assert (old_role.stage, old_role.parked_why) == (Stage.PARKED, ParkedWhy.STALE_ROLE)
@@ -57,7 +57,7 @@ def test_companies_with_anything_done_are_never_parked(db: Session) -> None:
     replied = f.company(db, name="Replied", stage=Stage.REPLIED, posted=TODAY - timedelta(days=60))
     by_hand = f.company(db, name="By Hand", stage=Stage.PARKED, parked_why=ParkedWhy.MANUAL, posted=TODAY)
 
-    assert radar.park_untouched(db, TODAY, 15) == []
+    assert radar.park_untouched(db, TODAY, RadarConfig()) == []
     assert (worked.stage, talking.stage, replied.stage) == (Stage.NOT_STARTED, Stage.CONTACTED, Stage.REPLIED)
     assert by_hand.stage is Stage.PARKED  # parked on purpose: a fresh role doesn't bring it back
 
@@ -71,16 +71,58 @@ def test_a_company_parked_for_its_age_comes_back_when_its_role_is_fresh_again(db
     )
     no_role = added(db, f.company(db, name="No Role", stage=Stage.PARKED, parked_why=ParkedWhy.STALE_ROLE), 30)
 
-    radar.park_untouched(db, TODAY, 15)
+    radar.park_untouched(db, TODAY, RadarConfig())
 
     assert (back.stage, back.parked_why) == (Stage.NOT_STARTED, None)
     assert (still_old.stage, no_role.stage) == (Stage.PARKED, Stage.PARKED)
 
 
+def test_a_role_the_radar_skips_neither_brings_a_company_back_nor_keeps_it_in_play(db: Session) -> None:
+    fresh = (TODAY - timedelta(days=1)).isoformat()
+
+    def posting(title: str, location: str) -> dict[str, object]:
+        return {"jobs": {"postings": [{"title": title, "location": location, "posted": fresh, "fit": 3, "url": title}]}}
+
+    long_ago = TODAY - timedelta(days=30)
+    us_on_site = f.company(  # Mia Labs, Nov 20: a GTM Engineer role, but on-site in the US
+        db,
+        name="US On Site",
+        stage=Stage.PARKED,
+        parked_why=ParkedWhy.STALE_ROLE,
+        posted=long_ago,
+        research=posting("GTM Engineer", "San Francisco, CA"),
+    )
+    not_gtm = f.company(  # Horizon3.ai, Nov 20: a RevOps role, not GTM engineering
+        db,
+        name="Not GTM",
+        stage=Stage.PARKED,
+        parked_why=ParkedWhy.STALE_ROLE,
+        posted=long_ago,
+        research=posting("Senior Revenue Operations Manager", "Remote"),
+    )
+    workable = f.company(
+        db,
+        name="Workable",
+        stage=Stage.PARKED,
+        parked_why=ParkedWhy.STALE_ROLE,
+        posted=long_ago,
+        research=posting("GTM Engineer", "United States (Remote)"),
+    )
+    untouched = f.company(db, name="Untouched", posted=long_ago, research=posting("GTM Engineer", "New York, NY"))
+
+    parked = radar.park_untouched(db, TODAY, RadarConfig())
+
+    assert (us_on_site.stage, not_gtm.stage) == (Stage.PARKED, Stage.PARKED)
+    assert (workable.stage, workable.parked_why) == (Stage.NOT_STARTED, None)  # a role you could apply to still does
+    assert parked == ["Untouched (30d)"]  # its only fresh role is one the radar skips
+    assert untouched.parked_reason is not None
+    assert untouched.parked_reason.startswith(f"Role posted {long_ago.isoformat()}")
+
+
 def test_the_ttl_follows_the_radar_setting(db: Session) -> None:
     c = f.company(db, name="Ten Days", posted=TODAY - timedelta(days=10))
-    assert radar.park_untouched(db, TODAY, 15) == []
-    assert radar.park_untouched(db, TODAY, 7) == ["Ten Days (10d)"]
+    assert radar.park_untouched(db, TODAY, RadarConfig()) == []
+    assert radar.park_untouched(db, TODAY, RadarConfig(ttl_days=7)) == ["Ten Days (10d)"]
     assert c.stage is Stage.PARKED
 
 
@@ -131,8 +173,8 @@ def test_a_role_found_for_a_company_keeps_it_in_play(db: Session) -> None:
 def test_the_day_a_company_was_added_is_a_local_date() -> None:
     late_evening_in_toronto = datetime(2026, 10, 28, 3, 30, tzinfo=UTC)  # Oct 27, 11:30 pm in Toronto
     c = Company(name="Late Add", created_at=late_evening_in_toronto, research={})
-    assert radar.company_age(c, date(2026, 11, 12), ZoneInfo("America/Toronto"))[0] == 16
-    assert radar.company_age(c, date(2026, 11, 12), UTC)[0] == 15
+    assert radar.company_age(c, date(2026, 11, 12), ZoneInfo("America/Toronto"), RadarConfig())[0] == 16
+    assert radar.company_age(c, date(2026, 11, 12), UTC, RadarConfig())[0] == 15
 
 
 def test_companies_are_read_in_batches(db: Session) -> None:

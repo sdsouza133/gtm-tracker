@@ -25,7 +25,7 @@ from app.models import (
 from app.radar import people
 from app.radar import run as radar
 from app.radar.fit import RadarConfig
-from app.radar.sources import JOB_DETAILS, LINKEDIN_JOBS, POST_SEARCH
+from app.radar.sources import JOB_DETAILS, LINKEDIN_JOBS, POST_SEARCH, Found
 from tests import factories as f
 from tests.radar_fakes import FakeWeb, ashby, ashby_job, job_details, linkedin_item
 from tests.treg_fakes import FakeTreg, pages
@@ -283,6 +283,85 @@ def test_a_role_handled_before_is_matched_by_its_link_or_its_title(db: Session) 
     assert radar.matching_apply(db, c, "Something else", "https://jobs.example.com/1") is old  # same link
     assert radar.matching_apply(db, c, "GTM engineer!", "https://jobs.example.com/2") is old  # a repost: same title
     assert radar.matching_apply(db, c, "Growth Engineer", "https://jobs.example.com/3") is None
+
+
+def brand_tracked(db: Session, today: date) -> Company:
+    """ShareGate, applied to weeks ago; Workleap, its parent, re-posts the same role on LinkedIn under its own name."""
+    sharegate = f.company(db, name="ShareGate", stage=Stage.REPLIED, domain="sharegate.com")
+    f.move(
+        db,
+        sharegate,
+        type=MoveType.APPLY,
+        due=today - timedelta(days=22),
+        title="Apply: GTM Engineering - ShareGate",
+        status=MoveStatus.DONE,
+    )
+    return sharegate
+
+
+def linkedin_job(job_id: str, title: str, company: str) -> dict[str, Any]:
+    return {
+        "id": f"li-{job_id}",
+        "title": title,
+        "company": company,
+        "company_linkedin": "",
+        "website": "",
+        "location": "Canada (Remote)",
+        "posted": "2026-11-19",
+        "url": f"https://www.linkedin.com/jobs/view/{job_id}",
+        "fit": 3,
+        "flags": ["canada", "remote"],
+    }
+
+
+def test_a_role_posted_under_a_parent_company_stays_with_the_brand_you_track(db: Session, today: date) -> None:
+    sharegate = brand_tracked(db, today)
+    f.company(db, name="Clay", domain="clay.com")  # named in a title below, but it has no such role
+    remote = {"title": "GTM Engineer - Remote", "url": "https://jobs.example.com/r", "fit": 3}
+    f.company(db, name="Remote", domain="remote.com", research={"jobs": {"postings": [remote]}})
+    found = radar.Searches(
+        linkedin=Found(
+            [
+                linkedin_job("61", "GTM Engineering - ShareGate", "Workleap"),
+                linkedin_job("62", "GTM Engineer (Clay)", "Acme"),  # Clay the tool, not the company
+                linkedin_job("63", "GTM Engineer - Remote", "Beta"),  # a way of working, not the company
+            ]
+        )
+    )
+
+    radar.apply_results(db, RadarConfig(), {}, found, today)
+
+    assert {i.company for i in db.scalars(select(RadarItem))} == {"Acme", "Beta"}  # Workleap isn't a new company
+    assert db.scalars(select(Move.title).where(Move.company_id == sharegate.id)).all() == [
+        "Apply: GTM Engineering - ShareGate"  # applied before: no second Apply move
+    ]
+
+
+def test_an_inbox_role_posted_under_a_parent_company_joins_the_brand(
+    db: Session, factory: sessionmaker[Session], today: date
+) -> None:
+    sharegate = brand_tracked(db, today)
+    since = datetime.now(UTC).isoformat()
+    db.add(
+        RadarItem(
+            id="li-61",
+            company="Workleap",
+            title="GTM Engineering - ShareGate",
+            url="https://www.linkedin.com/jobs/view/61",
+            fit=3,
+            state="new",
+            data={"found_at": datetime.now(UTC).isoformat(), "on_bench": False},  # found before brands were matched
+        )
+    )
+    db.commit()
+
+    radar.auto_add(factory, RadarConfig(), radar.Tools(web=FakeWeb(), treg=None), today, since)
+
+    assert db.scalars(select(Company).where(Company.name == "Workleap")).first() is None
+    assert db.scalars(select(Move.title).where(Move.company_id == sharegate.id)).all() == [
+        "Apply: GTM Engineering - ShareGate"
+    ]
+    assert db.get(RadarItem, "li-61").company_id == sharegate.id  # type: ignore[union-attr]
 
 
 def test_a_refresh_leaves_a_company_you_benched_since_the_role_was_found(
