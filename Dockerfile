@@ -24,6 +24,9 @@ WORKDIR /app
 COPY --from=build --chown=appuser:appuser /app /app
 COPY --from=web --chown=appuser:appuser /web/dist /app/static
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PORT=8000 STATIC_DIR=/app/static
+# No sign-in: anyone with the address can use the tracker. In this mode the events tool and email lookups stay off
+# (their lists hold emails). To bring sign-in back, delete this line or set OPEN_ACCESS=false on Railway.
+ENV OPEN_ACCESS=true
 USER appuser
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s CMD python -c "import urllib.request,os;urllib.request.urlopen(f'http://127.0.0.1:{os.environ[\"PORT\"]}/healthz',timeout=2)"
