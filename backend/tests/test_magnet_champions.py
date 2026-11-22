@@ -151,7 +151,9 @@ def test_a_people_search_that_fails_keeps_nothing_and_says_so() -> None:
 def test_a_report_built_again_reuses_what_was_paid_for_and_marks_who_is_new() -> None:
     first = build_champions(SPEC, tools(FakeScout(), market()), TODAY)
     newcomer = mover("nia-new", "Nia New", position("Head of Support", "Gumdrop", "Retail", 1))
-    riley_later = mover("riley-lead", "Riley Lead", position("Head of CX", "Sockfox", "Retail Apparel and Fashion", 2))
+    riley_later = mover(  # still at Sockfox, promoted since the last report
+        "riley-lead", "Riley Lead", position("VP of Customer Experience", "Sockfox", "Retail Apparel and Fashion", 2)
+    )
     people = [riley_later if p.get("linkedinUrl") == person("riley-lead") else p for p in PEOPLE]
     treg = market(
         movers=[*people, newcomer],
@@ -174,7 +176,12 @@ def test_a_report_built_again_reuses_what_was_paid_for_and_marks_who_is_new() ->
     assert new["Nia New"] is True
     assert new["Riley Lead"] is False
     riley = next(c for c in again["champions"] if c["name"] == "Riley Lead")
-    assert riley["now"]["months"] == 2  # still at Sockfox: the old check holds, the time there is brought up to date
+    # still at Sockfox: the old check holds, and the job is shown as today's search has it
+    assert (riley["now"]["company"], riley["now"]["title"], riley["now"]["months"]) == (
+        "Sockfox",
+        "VP of Customer Experience",
+        2,
+    )
     assert again["stats"]["new"] == sum(1 for flag in new.values() if flag)
     assert again["stats"]["repeat"] is True
 

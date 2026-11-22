@@ -318,10 +318,16 @@ def _same_move(row: dict[str, Any] | None, m: Mover) -> bool:
 
 
 def _brought_up_to_date(row: dict[str, Any], m: Mover) -> dict[str, Any]:
-    """The last report's row for a champion still in the same job: not new, and how long they've been there now."""
+    """The last report's row for a champion still at the same company: not new, with their title, industry and time
+    there as today's search shows them (a promotion since then shows its new title)."""
     job = traps.main_job(m.jobs)
     then = _now_of(row)
-    return {**row, "now": {**then, "months": job.months if job else then.get("months", 0)}, "new": False}
+    if job is None:
+        return {**row, "new": False}
+    now = {**then, "title": job.title or then.get("title", ""), "months": job.months}
+    if job.industry:
+        now["industry"] = job.industry
+    return {**row, "now": now, "new": False}
 
 
 def _now_of(row: dict[str, Any]) -> dict[str, Any]:
