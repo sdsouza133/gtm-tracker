@@ -248,6 +248,8 @@ def test_people_the_site_names_who_moved_go_through_the_same_checks_as_everyone_
         NamedChampion(name="Lou Lawyer", title="CX Lead", company="Mugworth", linkedin="lou-lawyer"),
         NamedChampion(name="Rae Real", title="CX Lead", company="Pillow Lane", linkedin="rae-real"),
         NamedChampion(name="Lena Law", title="CX Lead", company="Glowco", linkedin="lena-law"),  # the search has her
+        NamedChampion(name="Gil Gone", title="CX Lead", company="Glowco", linkedin="gil-gone"),
+        NamedChampion(name="Nell Nojob", title="CX Lead", company="Shoebird", linkedin="nell-nojob"),
     ]
     scout = FakeScout(Customers(customers=CUSTOMERS.customers, champions=named, title_keywords=["Customer Experience"]))
     histories = {
@@ -272,6 +274,17 @@ def test_people_the_site_names_who_moved_go_through_the_same_checks_as_everyone_
             job("Head of CX", "Gumdrop", "gumdrop", (2026, 10), None),
             job("CX Lead", "Pillow Lane", "pillowlane", (2021, 1), (2026, 9)),
         ),
+        person("gil-gone"): history(  # just moved, but left the customer years before
+            "gil-gone",
+            job("Head of CX", "Quokka", "quokka", (2026, 10), None),
+            job("Ops Lead", "Elsewhere", "elsewhere", (2019, 7), (2026, 9)),
+            job("CX Lead", "Glowco Inc.", "glowco", (2015, 1), (2019, 6)),
+        ),
+        person("nell-nojob"): history(  # just moved, but the history shows no job at a customer
+            "nell-nojob",
+            job("Head of CX", "Pinecone", "pinecone", (2026, 10), None),
+            job("Support Lead", "Elsewhere", "elsewhere", (2020, 1), (2026, 9)),
+        ),
     }
     lena = next(p for p in PEOPLE if p.get("linkedinUrl") == person("lena-law"))
     treg = market(movers=[lena], histories=histories)
@@ -279,12 +292,16 @@ def test_people_the_site_names_who_moved_go_through_the_same_checks_as_everyone_
 
     assert [(c["name"], c["grade"]) for c in report["champions"]] == [("Rae Real", "A")]
     assert sorted((p["name"], p["reason"]) for p in report["skipped_people"]) == [
+        ("Gil Gone", "left_customer_long_ago"),
         ("Lena Law", "not_icp"),  # once: the search's screen ruled her out, so she isn't checked again
         ("Lou Lawyer", "not_icp"),
+        ("Nell Nojob", "not_verified"),
         ("Vee Vendor", "joined_vendor"),
     ]
+    rae = report["champions"][0]
+    assert (rae["was"]["company"], rae["was"]["start"], rae["gap_months"]) == ("Pillow Lane", "2021-01-01", 1)
     assert {(w["name"], w["status"]) for w in report["watch"]} == {("Pia Promoted", "moved")}
-    assert scout.abouts == [MOVERS, MOVERS]  # the search's people, then the named who passed the free checks
-    assert len(scout.screened[1]) == 2
+    assert scout.abouts == [MOVERS, MOVERS]  # the search's people, then the named who passed every free check
+    assert len(scout.screened[1]) == 2  # Lou and Rae: the history checks run before anyone is screened
     looked_up = {q["profileUrlOrUrn"] for tool, q, _, _ in treg.calls if tool == HISTORY}
     assert person("lena-law") not in looked_up

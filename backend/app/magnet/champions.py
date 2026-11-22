@@ -432,8 +432,8 @@ def _watch(
 ) -> list[dict[str, str]]:
     """The people the site names who aren't champions already, or ruled out already by the search's checks. Still at
     the customer: the watch list. Moved a while ago, or not checked (no LinkedIn address on the site, or past the cap):
-    listed as such. Moved lately: the same free checks and Claude screen as everyone else, since being named only
-    decides the grade. Those who pass are added to `champions` as A, the rest to `skips`."""
+    listed as such. Moved lately: the same free checks, work-history checks and Claude screen as everyone else, since
+    being named only decides the grade. Those who pass are added to `champions` as A, the rest to `skips`."""
     done = {str(c.get("name") or "").lower() for c in champions} | {p["name"].lower() for p in skips.people}
     named = [c for c in found.champions if c.name.strip() and c.name.lower() not in done]
     lookups = [c for c in named if _profile_url(c.linkedin)][:WATCH_LOOKUPS]
@@ -441,7 +441,7 @@ def _watch(
     looked = {c.name for c in lookups}
     seen = {str(c.get("key")) for c in champions}
     out: list[dict[str, str]] = []
-    moved: list[tuple[NamedChampion, Mover, History]] = []
+    moved: list[tuple[NamedChampion, Mover, traps.Verified]] = []
     for c in named:
         row = {"name": c.name, "title": c.title, "company": c.company, "linkedin": _profile_url(c.linkedin)}
         history = histories.get(row["linkedin"]) if c.name in looked else None
@@ -456,11 +456,14 @@ def _watch(
         mover = Mover(key=url, url=url, name=c.name, location="", jobs=(current,), hidden=False)
         reason = traps.judge(mover, rules, seen)
         seen.add(mover.key)
-        if reason:
-            skips.add(mover, reason)
+        verified = None
+        if not reason:  # their history must show the customer job, left lately enough, like everyone else's
+            reason, verified = traps.verify(mover, history, rules, today)
+        if reason or verified is None:
+            skips.add(mover, reason or "not_verified")
         else:
-            moved.append((c, mover, history))
-    champions.extend(_named_champions(moved, rules, tools.brain, icp, rule_out, skips, prior))
+            moved.append((c, mover, verified))
+    champions.extend(_named_champions(moved, tools.brain, icp, rule_out, skips, prior))
     return out
 
 
@@ -482,26 +485,25 @@ def _watch_status(c: NamedChampion, history: History, rules: traps.Rules, today:
 
 
 def _named_champions(
-    moved: list[tuple[NamedChampion, Mover, History]],
-    rules: traps.Rules,
+    moved: list[tuple[NamedChampion, Mover, traps.Verified]],
     brain: Scout,
     icp: ICP,
     rule_out: list[str],
     skips: Skips,
     prior: set[str],
 ) -> list[dict[str, Any]]:
-    """Named people who just moved and passed the free checks, screened against the ICP like everyone else: one
-    Claude call, made only when there are any. Those who fit are champions, graded A for being named."""
+    """Named people who just moved and passed the free and work-history checks, screened against the ICP like
+    everyone else: one Claude call, made only when there are any. Those who fit are champions, graded A for being
+    named."""
     if not moved:
         return []
     verdicts = brain.screen([_headline(m) for _, m, _ in moved], icp, rule_out, about=MOVERS)
     out: list[dict[str, Any]] = []
-    for i, (c, m, history) in enumerate(moved):
+    for i, (c, m, verified) in enumerate(moved):
         verdict = verdicts.get(i)
         if not (verdict and verdict.fit):
             skips.add(m, "not_icp")
             continue
-        was = next((j for j in history.jobs if traps.at_customer(j, rules) and not traps.side_role(j)), None)
         out.append(
             {
                 "key": m.key,
@@ -510,9 +512,9 @@ def _named_champions(
                 "location": "",
                 "grade": "A",
                 "new": m.key not in prior,
-                "was": _role(was) if was else {"title": c.title, "company": c.company},
-                "now": _role(m.jobs[0]),
-                "gap_months": 0,
+                "was": _role(verified.was),
+                "now": _role(verified.now),
+                "gap_months": verified.gap,
                 "why": f"Named on the site at {c.company or 'a customer'}. {verdict.reason}".strip(),
             }
         )
