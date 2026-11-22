@@ -184,6 +184,7 @@ def build_champions(
             "champions": len(champions),
             "grades": {g: grades.get(g, 0) for g in ("A", "B", "C")},
             "new": sum(1 for c in champions if c.get("new")),
+            "repeat": bool(spec.before),  # built again: who was in the last report isn't new
             "watch": len(watch),
             "linkedin_usd": round(budget.spent, 4),
         },

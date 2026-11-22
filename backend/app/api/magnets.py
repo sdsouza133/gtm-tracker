@@ -174,6 +174,7 @@ def _champions_summary(report: dict[str, Any]) -> ChampionsSummary:
         b=int(grades.get("B", 0)),
         c=int(grades.get("C", 0)),
         new=int(stats.get("new", 0)),
+        repeat=bool(stats.get("repeat")),
         customers=int(stats.get("customers", 0)),
         matched=int(stats.get("matched", 0)),
         movers=int(stats.get("movers", 0)),
@@ -432,6 +433,7 @@ def public_view(built: dict[str, Any], *, full: bool = False) -> PublicMagnet:
     shown = leads[:TEASER_SHOWN] if built.get("mode") == "teaser" and not full else leads
     stats = built.get("stats") or {}
     return PublicMagnet(
+        kind="engagement",
         company=str(built.get("company") or ""),
         mode=str(built.get("mode") or ""),
         built=str(built.get("built") or ""),
@@ -462,6 +464,7 @@ def champions_view(built: dict[str, Any], *, full: bool) -> ChampionsReport:
     raw_skipped = built.get("skipped")
     skipped: dict[str, Any] = raw_skipped if isinstance(raw_skipped, dict) else {}
     return ChampionsReport(
+        kind="champions",
         company=str(built.get("company") or ""),
         website=str(built.get("website") or ""),
         built=str(built.get("built") or ""),
@@ -481,6 +484,7 @@ def champions_view(built: dict[str, Any], *, full: bool) -> ChampionsReport:
         champions=shown,
         more=len(champions) - len(shown),
         movers=int(stats.get("movers", 0)),
+        repeat=bool(stats.get("repeat")),
         skipped={str(k): int(v) for k, v in skipped.items() if isinstance(v, int)},
         watch=[_watch(w) for w in built.get("watch") or [] if isinstance(w, dict)] if full else [],
         skipped_people=[

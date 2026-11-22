@@ -94,6 +94,7 @@ def test_a_report_names_the_champions_who_moved_graded_and_says_why_the_rest_wer
     stats = report["stats"]
     assert (stats["customers"], stats["matched"], stats["movers"], stats["champions"]) == (5, 4, 20, 4)
     assert stats["grades"] == {"A": 2, "B": 1, "C": 1}
+    assert stats["repeat"] is False  # the first report: nobody to compare with
     assert stats["linkedin_usd"] <= TREG_CAP_USD
 
     (search,) = [q for tool, q, _, _ in treg.calls if tool == LEADS_SEARCH]
@@ -166,6 +167,7 @@ def test_a_report_built_again_reuses_what_was_paid_for_and_marks_who_is_new() ->
     assert new["Nia New"] is True
     assert new["Riley Lead"] is False
     assert again["stats"]["new"] == sum(1 for flag in new.values() if flag)
+    assert again["stats"]["repeat"] is True
 
 
 def test_the_cost_gate_a_huge_market_never_costs_more_than_the_cap() -> None:

@@ -2933,8 +2933,7 @@
      "kind": {
       "type": "string",
       "const": "champions",
-      "title": "Kind",
-      "default": "champions"
+      "title": "Kind"
      },
      "company": {
       "type": "string",
@@ -2973,6 +2972,10 @@
       "type": "integer",
       "title": "Movers"
      },
+     "repeat": {
+      "type": "boolean",
+      "title": "Repeat"
+     },
      "skipped": {
       "additionalProperties": {
        "type": "integer"
@@ -3001,6 +3004,7 @@
     },
     "type": "object",
     "required": [
+     "kind",
      "company",
      "website",
      "built",
@@ -3009,6 +3013,7 @@
      "champions",
      "more",
      "movers",
+     "repeat",
      "skipped",
      "watch",
      "skipped_people",
@@ -3039,6 +3044,10 @@
       "type": "integer",
       "title": "New"
      },
+     "repeat": {
+      "type": "boolean",
+      "title": "Repeat"
+     },
      "customers": {
       "type": "integer",
       "title": "Customers"
@@ -3067,6 +3076,7 @@
      "b",
      "c",
      "new",
+     "repeat",
      "customers",
      "matched",
      "movers",
@@ -7589,8 +7599,7 @@
      "kind": {
       "type": "string",
       "const": "engagement",
-      "title": "Kind",
-      "default": "engagement"
+      "title": "Kind"
      },
      "company": {
       "type": "string",
@@ -7636,6 +7645,7 @@
     },
     "type": "object",
     "required": [
+     "kind",
      "company",
      "mode",
      "built",

@@ -734,6 +734,7 @@ class ChampionsSummary(BaseModel):
     b: int  # held a role that used it at the customer
     c: int  # anyone else who worked there
     new: int  # not in the last report for this company
+    repeat: bool  # there was a last report, so `new` means something
     customers: int  # customers the site shows
     matched: int  # of those, found on LinkedIn
     movers: int  # people who left them in the last 90 days, as LinkedIn counts them
@@ -796,7 +797,7 @@ class PublicIcp(BaseModel):
 
 
 class PublicMagnet(BaseModel):
-    kind: Literal["engagement"] = "engagement"
+    kind: Literal["engagement"]
     company: str
     mode: str
     built: str
@@ -858,7 +859,7 @@ class ChampionsReport(BaseModel):
     """A champion report. The shared link shows the top few champions and counts the rest in `more`; the owner's
     view adds everyone, the watch list and who was ruled out."""
 
-    kind: Literal["champions"] = "champions"
+    kind: Literal["champions"]
     company: str
     website: str
     built: str
@@ -867,6 +868,7 @@ class ChampionsReport(BaseModel):
     champions: list[ChampionOut]
     more: int
     movers: int  # people who left the customers in the last 90 days
+    repeat: bool  # built again for the same company: each champion's `new` says whether the last report had them
     skipped: dict[str, int]  # ruled out, by reason
     watch: list[ChampionWatch]
     skipped_people: list[ChampionSkip]

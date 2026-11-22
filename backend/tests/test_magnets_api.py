@@ -304,6 +304,7 @@ def test_a_champion_report_builds_and_its_link_shows_the_top_three(champion_clie
         "b": 1,
         "c": 1,
         "new": 4,
+        "repeat": False,
         "customers": 5,
         "matched": 4,
         "movers": 20,
@@ -403,11 +404,18 @@ def test_a_failed_champion_report_keeps_its_reservation(champion_client: TestCli
     assert ledger.value["usd"] == pytest.approx(TREG_CAP_USD)
 
 
-def test_a_second_report_for_the_same_company_marks_who_is_new(champion_client: TestClient) -> None:
+def test_a_second_report_for_the_same_company_marks_who_is_new(champion_client: TestClient, db: Session) -> None:
+    first = a_champion_report(champion_client)
+    # one test transaction gives both rows the same created_at: date the first one earlier, as it would be
+    db.execute(update(Magnet).where(Magnet.id == first["id"]).values(created_at=datetime(2026, 11, 1, tzinfo=UTC)))
     a_champion_report(champion_client)
-    a_champion_report(champion_client)
-    newest, _ = champion_client.get("/api/magnets", params={"domain": "cxhero.example"}).json()
+    newest, older = champion_client.get("/api/magnets", params={"domain": "cxhero.example"}).json()
+    assert older["id"] == first["id"]
+    assert (older["champions"]["repeat"], newest["champions"]["repeat"]) == (False, True)
     assert newest["champions"]["new"] == 0  # everyone was in the first report
+    full = champion_client.get(f"/api/magnets/{newest['id']}/report").json()
+    assert full["repeat"] is True
+    assert not any(c["new"] for c in full["champions"])
 
 
 def test_a_champion_report_for_a_tracker_company(champion_client: TestClient, db: Session) -> None:
