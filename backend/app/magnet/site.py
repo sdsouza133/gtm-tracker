@@ -32,9 +32,12 @@ CUSTOMER_PAGES = re.compile(
 )
 CUSTOMER_GUESSES = ("/customers", "/case-studies")  # tried when the home page links to neither
 CUSTOMER_MAX_PAGES = 10
+CUSTOMER_MAX_TRIES = 20  # fetches in all, failed ones too: a site that times out can't hold a build up for long
 CUSTOMER_MAX_CHARS = 48_000
 INDEX_CHARS = 16_000  # a customers page can list dozens of stories
 STORY_CHARS = 4_000
+# a person's LinkedIn profile, as a quote or a case study links their name to it
+LINKEDIN_PROFILE = re.compile(r"^https?://(?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com/in/([\w%.-]+)/?(?:[?#].*)?$", re.I)
 
 
 class SiteError(RuntimeError):
@@ -64,6 +67,9 @@ class _Text(HTMLParser):
             href = dict(attrs).get("href")
             if href:
                 self.links.append(href)
+                profile = linkedin_profile(href) if self.alts and not self._skip else ""
+                if profile:  # kept where the link is, so it sits next to the name it's on
+                    self.parts.append(f"[LinkedIn {profile}]")
         if tag == "meta":
             a = dict(attrs)
             if (a.get("name") or a.get("property") or "").lower() in ("description", "og:description") and a.get(
@@ -82,6 +88,12 @@ class _Text(HTMLParser):
             self.title += data
         elif not self._skip and data.strip():
             self.parts.append(data.strip())
+
+
+def linkedin_profile(href: str) -> str:
+    """The LinkedIn profile a link points to, without its tracking (query or fragment), or "" for any other link."""
+    m = LINKEDIN_PROFILE.match(href.strip())
+    return f"https://www.linkedin.com/in/{m.group(1)}" if m else ""
 
 
 def public_url(url: str) -> str:
@@ -145,9 +157,10 @@ def read_site(url: str, get: Callable[[str], str] | None = None) -> dict[str, ob
 
 def read_customers(url: str, get: Callable[[str], str] | None = None) -> dict[str, object]:
     """The pages where a company shows its customers: the home page (logo walls, quotes), then its customer,
-    case-study and testimonial pages and the stories one level under them, at most CUSTOMER_MAX_PAGES. Images count
-    by their alt text. When the home page links to none of them, the usual addresses are tried. Same shape as
-    `read_site`; `get` returns a page's HTML."""
+    case-study and testimonial pages and the stories one level under them, at most CUSTOMER_MAX_PAGES read and
+    CUSTOMER_MAX_TRIES fetched. Images count by their alt text, and a link to someone's LinkedIn profile by its
+    address. When the home page links to none of them, the usual addresses are tried. Same shape as `read_site`;
+    `get` returns a page's HTML."""
     fetch = get or _get
     home = public_url(url)
     origin = "{0.scheme}://{0.netloc}".format(urlparse(home))
@@ -173,10 +186,12 @@ def read_customers(url: str, get: Callable[[str], str] | None = None) -> dict[st
         (link for link in _links(home, first.links, host) if CUSTOMER_PAGES.search(urlparse(link).path)),
         key=lambda link: urlparse(link).path.rstrip("/").count("/"),  # the customers page before its stories
     ) or [origin + path for path in CUSTOMER_GUESSES]
-    while queue and len(pages) < CUSTOMER_MAX_PAGES:
+    tried = {home}
+    while queue and len(pages) < CUSTOMER_MAX_PAGES and len(tried) < CUSTOMER_MAX_TRIES:
         page = queue.pop(0)
-        if page in pages:
+        if page in tried:  # read, or failed: either way not fetched again when another page links to it
             continue
+        tried.add(page)
         index = urlparse(page).path.rstrip("/").count("/") <= 1
         parsed = read(page, INDEX_CHARS if index else STORY_CHARS)
         if parsed is None or not index:

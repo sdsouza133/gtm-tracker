@@ -103,6 +103,14 @@ def test_no_region_check_when_the_icp_sells_anywhere() -> None:
     assert traps.judge(someone(now("Head of CX"), location="London, England, United Kingdom"), anywhere, set()) is None
 
 
+def test_a_country_named_on_its_own_counts_as_a_region() -> None:
+    assert traps.allowed_regions(["Germany"]) == {"DE"}
+    assert traps.allowed_regions(["United States", "Germany"]) == {"US", "DE"}
+    assert traps.allowed_regions(["DACH: Germany, Austria and Switzerland"]) == {"DE", "AT", "CH"}
+    us_and_germany = traps.Rules(**{**RULES.__dict__, "regions": frozenset({"US", "DE"})})
+    assert traps.judge(someone(now("Head of CX"), location="Berlin, Germany"), us_and_germany, set()) is None
+
+
 def job(title: str, company: str, page: str, start: date, end: date | None) -> Job:
     months = ((end or TODAY).year - start.year) * 12 + (end or TODAY).month - start.month
     return Job(title=title, company=company, company_linkedin=page, industry="", months=months, start=start, end=end)
@@ -169,6 +177,29 @@ VERIFY: list[tuple[str, History | None, str | None]] = [
         "left_customer_long_ago",
     ),
     (
+        "the history's current job isn't the one the search found",
+        History(
+            "",
+            (
+                job("Head of Partnerships", "CXHero", "", date(2026, 9, 1), None),
+                job("CX Manager", "Glowco", GLOWCO, date(2021, 1, 1), date(2026, 8, 1)),
+            ),
+        ),
+        "not_verified",
+    ),
+    (
+        "back at a company they'd left before the customer",
+        History(
+            "",
+            (
+                job("VP CX", "Newbrand", "", date(2026, 10, 1), None),
+                job("CX Manager", "Glowco", GLOWCO, date(2021, 1, 1), date(2026, 8, 1)),
+                job("Support Rep", "Newbrand", "", date(2016, 1, 1), date(2020, 6, 1)),
+            ),
+        ),
+        None,
+    ),
+    (
         "a new title where they've been since 2024",
         History(
             "",
@@ -188,6 +219,35 @@ def test_the_work_history_checks(case: str, history: History | None, reason: str
     got, verified = traps.verify(MOVED, history, RULES, TODAY)
     assert got == reason
     assert (verified is None) == (reason is not None)
+
+
+def test_the_new_job_matches_by_its_linkedin_page_when_the_names_differ() -> None:
+    newbrand = "https://www.linkedin.com/company/newbrand"
+    mover = someone(now("VP CX", "Newbrand", months=2, page=newbrand))
+    history = History(
+        "",
+        (
+            job("VP CX", "NB Labs", newbrand, date(2026, 9, 1), None),
+            job("CX Manager", "Glowco", GLOWCO, date(2021, 1, 1), date(2026, 8, 1)),
+        ),
+    )
+    reason, found = traps.verify(mover, history, RULES, TODAY)
+    assert reason is None
+    assert found is not None
+    assert found.now.company == "NB Labs"
+
+
+def test_a_run_at_a_company_goes_back_across_promotions_but_not_across_a_job_elsewhere() -> None:
+    vp = job("VP CX", "Newbrand", "", date(2026, 9, 1), None)
+    manager = job("CX Manager", "Newbrand", "", date(2024, 2, 1), date(2026, 9, 1))
+    customer = job("CX Lead", "Glowco", GLOWCO, date(2021, 1, 1), date(2024, 1, 1))
+    assert traps.stint_start((vp, manager, customer), vp) == date(2024, 2, 1)  # a promotion: the same run
+    earlier = job("Support Rep", "Newbrand", "", date(2016, 1, 1), date(2020, 6, 1))
+    assert traps.stint_start((vp, customer, earlier), vp) == date(2026, 9, 1)  # back after a customer: a new run
+    advisor = job("Advisor", "Someco", "", date(2025, 1, 1), None)
+    assert traps.stint_start((vp, advisor, manager), vp) == date(2024, 2, 1)  # a side role doesn't break it
+    undated = Job(title="VP CX", company="Newbrand", company_linkedin="", industry="", months=0)
+    assert traps.stint_start((undated,), undated) is None
 
 
 def verified(title: str, start: date, end: date, gap: int) -> traps.Verified:

@@ -40,6 +40,11 @@ export function ChampionsBox({ name, website }: { name: string; website: string 
           {!building && !start.isPending && latest?.status === "failed" && <Chip tone="bad">Didn't finish</Chip>}
         </span>
       </div>
+      {reports.isPending && (
+        <p role="status" className="text-muted">
+          Loading…
+        </p>
+      )}
       {reports.isError && <p className="text-bad">Couldn't load the champion reports. {reports.error.message}</p>}
       {start.isError && <p className="text-bad">{start.error.message}</p>}
       {reports.data && !latest && (

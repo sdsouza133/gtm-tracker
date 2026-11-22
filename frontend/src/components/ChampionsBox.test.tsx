@@ -90,6 +90,13 @@ describe("the champion report on a company's card", () => {
     expect(screen.getByRole("button", { name: /Try again/ })).toBeEnabled();
   });
 
+  it("says it's loading while the reports load", async () => {
+    mockApi({ ...SIGNED_IN, [LIST]: { body: () => new Promise(() => {}) } }); // never answers
+    renderApp(<ChampionsBox name="CXHero" website="cxhero.example" />);
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading…");
+    expect(screen.queryByRole("button", { name: /Build the champion report/ })).not.toBeInTheDocument();
+  });
+
   it("shows nothing for a company with no website", () => {
     const calls = mockApi({ ...SIGNED_IN });
     renderApp(<ChampionsBox name="CXHero" website={null} />);

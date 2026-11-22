@@ -63,8 +63,10 @@ class FakeScout:
         self.found = customers
         self.screened: list[list[str]] = []
         self.abouts: list[str] = []
+        self.icp_calls = 0
 
     def icp(self, site: dict[str, Any], competitors: list[str]) -> ICP:  # noqa: ARG002
+        self.icp_calls += 1
         return champion_icp()
 
     def customers(self, site: dict[str, Any], company: str) -> Customers:  # noqa: ARG002

@@ -56,7 +56,7 @@ export function roleLine(role: ChampionRole): string {
   return [role.title, role.company].filter(Boolean).join(" at ");
 }
 
-const COLUMNS: [string, (c: Champion) => string | number][] = [
+const COLUMNS: [string, (c: Champion, report: ChampionsReport) => string | number][] = [
   ["Name", (c) => c.name],
   ["Grade", (c) => c.grade],
   ["Was", (c) => c.was.title],
@@ -66,7 +66,8 @@ const COLUMNS: [string, (c: Champion) => string | number][] = [
   ["New company", (c) => c.now.company],
   ["Industry", (c) => c.now.industry],
   ["Months in", (c) => c.now.months],
-  ["New since last report", (c) => (c.new ? "yes" : "no")],
+  // only a rebuild can say who's new: on a first report the column is blank, as the page shows no "New" either
+  ["New since last report", (c, r) => (r.repeat ? (c.new ? "yes" : "no") : "")],
   ["LinkedIn", (c) => c.linkedin],
   ["Why they fit", (c) => c.why],
 ];
@@ -74,7 +75,7 @@ const COLUMNS: [string, (c: Champion) => string | number][] = [
 /** A report's champions as CSV, with formula-safe cells. */
 export function championsCsv(report: ChampionsReport): string {
   const header = COLUMNS.map(([name]) => csvCell(name)).join(",");
-  const rows = report.champions.map((c) => COLUMNS.map(([, get]) => csvCell(get(c))).join(","));
+  const rows = report.champions.map((c) => COLUMNS.map(([, get]) => csvCell(get(c, report))).join(","));
   return [header, ...rows].join("\r\n");
 }
 

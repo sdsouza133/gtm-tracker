@@ -62,9 +62,18 @@ describe("champion report wording", () => {
     expect(csv[1]).toContain(`"'=HYPERLINK(1)","A","Senior Manager, Customer Experience","Glowco","2021–2026"`);
   });
 
+  it("says who's new since the last report only on a rebuild", () => {
+    const first = championsCsv(championsReport()).split("\r\n");
+    expect(first[1]).toContain('"2","","https://www.linkedin.com/in/dana-example"'); // blank: nothing to compare with
+    const again = championsReport({ repeat: true, champions: [champion(), champion({ new: false })] });
+    const rows = championsCsv(again).split("\r\n");
+    expect(rows[1]).toContain('"2","yes","https://www.linkedin.com/in/dana-example"');
+    expect(rows[2]).toContain('"2","no","https://www.linkedin.com/in/dana-example"');
+  });
+
   it("matches a website to a company by its bare domain", () => {
     expect(domainOf("https://www.CXHero.example/customers?x=1")).toBe("cxhero.example");
-    expect(domainOf("cxhero.example:8443")).toBe("cxhero.example");
+    expect(domainOf("http://cxhero.example:8443/x")).toBe("cxhero.example:8443"); // a port stays, as on the server
     expect(domainOf("  ")).toBe("");
   });
 });

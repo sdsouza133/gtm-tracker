@@ -22,6 +22,19 @@ export function MagnetPage() {
         <Link className={linkButton} to="/magnets">
           <ArrowLeft size={14} aria-hidden /> Lead magnets
         </Link>
+        {magnet.isPending && (
+          <p role="status" className="text-sm text-muted">
+            Loading the link to send…
+          </p>
+        )}
+        {magnet.isError && (
+          <p className="flex flex-wrap items-center gap-2 text-sm text-bad">
+            Couldn't load the link to send. {magnet.error.message}
+            <Button variant="quiet" onClick={() => void magnet.refetch()}>
+              Try again
+            </Button>
+          </p>
+        )}
         {link && (
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => void copyLink(link)}>

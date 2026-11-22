@@ -201,3 +201,36 @@ def test_customer_pages_need_the_home_page() -> None:
 
     with pytest.raises(SiteError, match="Couldn't read"):
         site.read_customers("prospect.example", get=down)
+
+
+def test_a_link_to_someones_linkedin_profile_is_kept_next_to_their_name() -> None:
+    home = """<html><body><a href="/customers">Customers</a>
+<blockquote>"It changed how we work." <a href="https://ca.linkedin.com/in/dana-named/?utm=x">Dana Named</a>, Glowco
+</blockquote><a href="https://www.linkedin.com/company/glowco">Glowco on LinkedIn</a>
+<a href="javascript:void(0)">Menu</a></body></html>"""
+    read = site.read_customers("prospect.example", get=lambda url: home if url == "https://prospect.example" else "")
+    text = str(read["text"])
+    assert "[LinkedIn https://www.linkedin.com/in/dana-named] Dana Named" in text  # cleaned, and next to the name
+    assert "linkedin.com/company" not in text  # a company page isn't a person
+    assert "javascript" not in text
+    plain = site._Text()
+    plain.feed(home)
+    assert not any("[LinkedIn" in part for part in plain.parts)  # only customer pages keep them
+
+
+def test_failed_fetches_count_toward_a_cap_and_none_is_tried_twice() -> None:
+    asked: list[str] = []
+    stories = "".join(f'<a href="/customers/brand-{n}">Brand {n}</a>' for n in range(50))
+
+    def get(url: str) -> str:
+        asked.append(url)
+        if url == "https://prospect.example":
+            return '<a href="/customers">Customers</a>' + stories[: stories.index("brand-5")]  # links a few stories too
+        if url == "https://prospect.example/customers":
+            return stories
+        raise httpx2.ConnectError("too slow")  # every story fails
+
+    read = site.read_customers("prospect.example", get=get)
+    assert len(asked) == site.CUSTOMER_MAX_TRIES
+    assert len(asked) == len(set(asked))  # a story that failed isn't fetched again when the index links it too
+    assert read["pages"] == ["https://prospect.example", "https://prospect.example/customers"]

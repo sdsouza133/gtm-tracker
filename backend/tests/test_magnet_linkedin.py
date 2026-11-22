@@ -233,7 +233,8 @@ def test_company_lookups_stop_at_what_the_budget_pays_for() -> None:
     found, spent = LinkedIn(treg).companies(
         ["Brand", "Brand", "Other", "Third"], [], max_usd=li.PRICE[li.COMPANY_SEARCH] * 2
     )
-    assert [q["search"] for _, q, _, _ in treg.calls] == ["Brand", "Other"]  # each name once, two calls paid for
+    # each name once, two calls paid for (in either order: the searches run side by side)
+    assert sorted(q["search"] for _, q, _, _ in treg.calls) == ["Brand", "Other"]
     assert all(cap == li.PRICE[li.COMPANY_SEARCH] for *_, cap in treg.calls)
     assert set(found) == {"Brand"}  # "Other" got a page named Brand: not its page
     assert spent == pytest.approx(0.004)

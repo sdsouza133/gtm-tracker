@@ -24,7 +24,7 @@ from pydantic import SecretStr
 
 from app.config import Settings
 from app.magnet import traps
-from app.magnet.brain import ICP, MOVERS, Brain, Customer, Customers, Verdict
+from app.magnet.brain import ICP, MOVERS, Brain, Customer, Customers, NamedChampion, Verdict
 from app.magnet.build import Budget, BuildError, Progress
 from app.magnet.linkedin import (
     HISTORY,
@@ -129,8 +129,7 @@ def build_champions(
     say("reading the website", {"website": spec.website})
     site = tools.read_site(spec.website)
     pages = tools.read_customers(spec.website)
-    say("working out the ICP and the customers", {"pages": len(pages.get("pages") or [])})
-    icp = tools.brain.icp(site, [])
+    say("working out the customers and the ICP", {"pages": len(pages.get("pages") or [])})
     found = tools.brain.customers(pages, spec.company)
     customers = _customers(found.customers, spec)
     if not customers:
@@ -138,6 +137,7 @@ def build_champions(
             "The website doesn't show any customers, so there's no one to track. Try a company that names its "
             "customers (case studies, logos or quotes)."
         )
+    icp = tools.brain.icp(site, [])  # only once there are customers to track: it's a paid call too
 
     say("finding the customers on LinkedIn", {"customers": len(customers)})
     keep = SEARCH_PAGES * PRICE[LEADS_SEARCH] + keep_for_checks
@@ -156,7 +156,7 @@ def build_champions(
     champions, checked = _verified(fits, names, before, rules, tools.linkedin, budget, skips, say, today)
     say("checking the people the site names", {"named": len(found.champions)})
     prior = {str(c.get("key")) for c in before.get("champions") or [] if isinstance(c, dict)}
-    watch = _watch(found, champions, rules, tools.linkedin, budget, today, prior)
+    watch = _watch(found, champions, rules, tools, icp, _rule_out(spec, icp), budget, skips, today, prior)
     champions.sort(key=_champion_order)
 
     grades = Counter(str(c.get("grade")) for c in champions)
@@ -237,8 +237,7 @@ def _filter(
     if not passed:
         return passed, []
     say("screening against the ICP", {"people": len(passed)})
-    rule_out = [spec.company, *[c.name for c in icp.competitors]]
-    verdicts = brain.screen([_headline(m) for m in passed], icp, rule_out, about=MOVERS)
+    verdicts = brain.screen([_headline(m) for m in passed], icp, _rule_out(spec, icp), about=MOVERS)
     fits: list[tuple[Mover, str]] = []
     for i, m in enumerate(passed):
         verdict = verdicts.get(i)
@@ -261,18 +260,20 @@ def _verified(
     today: date,
 ) -> tuple[list[dict[str, Any]], int]:
     """The champions: those who fit, checked against their work history (people named on the site and the newest
-    moves first, at most HISTORY_LOOKUPS), and graded. Champions from the last report are kept without paying for
-    them again, marked not new. Also how many histories were looked up."""
+    moves first, at most HISTORY_LOOKUPS), and graded. Champions from the last report still in the same job are kept
+    without paying for them again, marked not new; one who has moved again is checked afresh. Also how many
+    histories were looked up."""
     fits = sorted(fits, key=lambda f: (not traps.named(f[0], None, names), _months_in(f[0]), f[0].name))
     prior = {str(c.get("key")): c for c in before.get("champions") or [] if isinstance(c, dict) and c.get("key")}
-    checking = [(m, why) for m, why in fits if m.key not in prior][:HISTORY_LOOKUPS]
+    reused = {m.key: prior[m.key] for m, _ in fits if _same_move(prior.get(m.key), m)}
+    checking = [(m, why) for m, why in fits if m.key not in reused][:HISTORY_LOOKUPS]
     say("checking their work history", {"fit": len(fits), "checking": len(checking)})
     histories = _histories([m.url for m, _ in checking], linkedin, budget, WATCH_LOOKUPS * PRICE[HISTORY], today)
     checked = {m.key for m, _ in checking}
     champions: list[dict[str, Any]] = []
     for m, why in fits:
-        if m.key in prior:
-            champions.append({**prior[m.key], "new": False})
+        if m.key in reused:
+            champions.append(_brought_up_to_date(reused[m.key], m))
             continue
         if m.key not in checked:
             skips.add(m, "over_cap")
@@ -297,6 +298,40 @@ def _verified(
             }
         )
     return champions, len(checking)
+
+
+def _same_move(row: dict[str, Any] | None, m: Mover) -> bool:
+    """Whether the last report's row for this person still describes the job the search shows now (the same
+    company), so its paid-for history check still holds."""
+    job = traps.main_job(m.jobs)
+    if row is None or job is None:
+        return False
+    then = _now_of(row)
+    there = Job(
+        title="",
+        company=str(then.get("company") or ""),
+        company_linkedin=str(then.get("company_linkedin") or ""),
+        industry="",
+        months=0,
+    )
+    return traps.same_company(there, job)
+
+
+def _brought_up_to_date(row: dict[str, Any], m: Mover) -> dict[str, Any]:
+    """The last report's row for a champion still in the same job: not new, and how long they've been there now."""
+    job = traps.main_job(m.jobs)
+    then = _now_of(row)
+    return {**row, "now": {**then, "months": job.months if job else then.get("months", 0)}, "new": False}
+
+
+def _now_of(row: dict[str, Any]) -> dict[str, Any]:
+    now = row.get("now")
+    return now if isinstance(now, dict) else {}
+
+
+def _rule_out(spec: ChampionSpec, icp: ICP) -> list[str]:
+    """Who the screen rules out as a new employer: the company itself and its competitors."""
+    return [spec.company, *[c.name for c in icp.competitors]]
 
 
 def _champion_order(c: dict[str, Any]) -> tuple[int, int, str]:
@@ -381,56 +416,105 @@ def _watch(
     found: Customers,
     champions: list[dict[str, Any]],
     rules: traps.Rules,
-    linkedin: LinkedIn,
+    tools: ChampionTools,
+    icp: ICP,
+    rule_out: list[str],
     budget: Budget,
+    skips: Skips,
     today: date,
     prior: set[str],
 ) -> list[dict[str, str]]:
-    """The people the site names who aren't champions already: still at the customer (watch them), moved (a named
-    champion, added to `champions`), or not checked (no LinkedIn address on the site, or past the cap)."""
-    listed = {str(c.get("name") or "").lower() for c in champions}
-    named = [c for c in found.champions if c.name.strip() and c.name.lower() not in listed]
+    """The people the site names who aren't champions already, or ruled out already by the search's checks. Still at
+    the customer: the watch list. Moved a while ago, or not checked (no LinkedIn address on the site, or past the cap):
+    listed as such. Moved lately: the same free checks and Claude screen as everyone else, since being named only
+    decides the grade. Those who pass are added to `champions` as A, the rest to `skips`."""
+    done = {str(c.get("name") or "").lower() for c in champions} | {p["name"].lower() for p in skips.people}
+    named = [c for c in found.champions if c.name.strip() and c.name.lower() not in done]
     lookups = [c for c in named if _profile_url(c.linkedin)][:WATCH_LOOKUPS]
-    histories = _histories([_profile_url(c.linkedin) for c in lookups], linkedin, budget, 0.0, today)
+    histories = _histories([_profile_url(c.linkedin) for c in lookups], tools.linkedin, budget, 0.0, today)
     looked = {c.name for c in lookups}
+    seen = {str(c.get("key")) for c in champions}
     out: list[dict[str, str]] = []
+    moved: list[tuple[NamedChampion, Mover, History]] = []
     for c in named:
         row = {"name": c.name, "title": c.title, "company": c.company, "linkedin": _profile_url(c.linkedin)}
         history = histories.get(row["linkedin"]) if c.name in looked else None
         if history is None:
             out.append({**row, "status": "unchecked" if c.name not in looked else "not_found", "now": ""})
             continue
-        current = traps.main_job([j for j in history.jobs if j.end is None])
-        if (
-            current is None
-            or traps.at_customer(current, rules)
-            or company_key(current.company) == company_key(c.company)
-        ):
-            out.append(
-                {**row, "status": "still_there", "now": f"{current.title} at {current.company}" if current else ""}
-            )
+        status, current = _watch_status(c, history, rules, today)
+        if status or current is None:
+            out.append({**row, "status": status or "still_there", "now": _job_line(current)})
             continue
-        moved_lately = current.start is not None and _months_between(current.start, today) <= traps.MAX_MOVE_MONTHS
-        if moved_lately:
-            was = next((j for j in history.jobs if traps.at_customer(j, rules)), None)
-            key = history.url or row["linkedin"]
-            champions.append(
-                {
-                    "key": key,
-                    "name": c.name,
-                    "linkedin": history.url or row["linkedin"],
-                    "location": "",
-                    "grade": "A",
-                    "new": key not in prior,
-                    "was": _role(was) if was else {"title": c.title, "company": c.company},
-                    "now": _role(current),
-                    "gap_months": 0,
-                    "why": f"Named on the site as a customer at {c.company or 'a customer'}.",
-                }
-            )
-            continue
-        out.append({**row, "status": "moved", "now": f"{current.title} at {current.company}"})
+        url = history.url or row["linkedin"]
+        mover = Mover(key=url, url=url, name=c.name, location="", jobs=(current,), hidden=False)
+        reason = traps.judge(mover, rules, seen)
+        seen.add(mover.key)
+        if reason:
+            skips.add(mover, reason)
+        else:
+            moved.append((c, mover, history))
+    champions.extend(_named_champions(moved, rules, tools.brain, icp, rule_out, skips, prior))
     return out
+
+
+def _watch_status(c: NamedChampion, history: History, rules: traps.Rules, today: date) -> tuple[str, Job | None]:
+    """Where a named person is now, with their current job: "still_there" (still at a customer, or at the company the
+    site names), "moved" (a while ago, or a new title where they've been for a while) or "" (they just moved)."""
+    current_jobs = [j for j in history.jobs if j.end is None and not traps.side_role(j)]
+    current = traps.main_job(current_jobs)
+    if (
+        current is None
+        or any(traps.at_customer(j, rules) for j in current_jobs)
+        or company_key(current.company) == company_key(c.company)
+    ):
+        return "still_there", current
+    joined = traps.stint_start(history.jobs, current)
+    if joined is None or _months_between(joined, today) > traps.MAX_MOVE_MONTHS + 1:  # the 90 days, give or take
+        return "moved", current
+    return "", current
+
+
+def _named_champions(
+    moved: list[tuple[NamedChampion, Mover, History]],
+    rules: traps.Rules,
+    brain: Scout,
+    icp: ICP,
+    rule_out: list[str],
+    skips: Skips,
+    prior: set[str],
+) -> list[dict[str, Any]]:
+    """Named people who just moved and passed the free checks, screened against the ICP like everyone else: one
+    Claude call, made only when there are any. Those who fit are champions, graded A for being named."""
+    if not moved:
+        return []
+    verdicts = brain.screen([_headline(m) for _, m, _ in moved], icp, rule_out, about=MOVERS)
+    out: list[dict[str, Any]] = []
+    for i, (c, m, history) in enumerate(moved):
+        verdict = verdicts.get(i)
+        if not (verdict and verdict.fit):
+            skips.add(m, "not_icp")
+            continue
+        was = next((j for j in history.jobs if traps.at_customer(j, rules) and not traps.side_role(j)), None)
+        out.append(
+            {
+                "key": m.key,
+                "name": c.name,
+                "linkedin": m.url,
+                "location": "",
+                "grade": "A",
+                "new": m.key not in prior,
+                "was": _role(was) if was else {"title": c.title, "company": c.company},
+                "now": _role(m.jobs[0]),
+                "gap_months": 0,
+                "why": f"Named on the site at {c.company or 'a customer'}. {verdict.reason}".strip(),
+            }
+        )
+    return out
+
+
+def _job_line(job: Job | None) -> str:
+    return f"{job.title} at {job.company}" if job else ""
 
 
 def _profile_url(value: str) -> str:

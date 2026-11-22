@@ -37,14 +37,15 @@ export function competitors(text: string): { list: string[]; problem: string } {
 export const CHAMPIONS_COST =
   "the people who used it at their customers and just moved to a company in their ICP; up to $0.60 of LinkedIn data, plus about 30 cents of Claude, in about a minute";
 
-/** A website's domain, as the tracker matches reports to companies: no https://, www. or path. */
+/** A website's domain, as the tracker matches reports to companies (the same rule as the server's `domain_of`): no
+ * http(s)://, www. or path. A port stays, as it does there. */
 export function domainOf(site: string): string {
   return (
     site
       .trim()
       .toLowerCase()
-      .replace(/^[a-z]+:\/\//, "")
+      .replace(/^https?:\/\//, "")
       .replace(/^www\./, "")
-      .split(/[/?#:]/)[0] ?? ""
+      .split(/[/?#]/)[0] ?? ""
   );
 }

@@ -164,7 +164,8 @@ class Rules:
 
 
 def allowed_regions(regions: list[str]) -> frozenset[str]:
-    """The ICP's regions as country codes. Empty (no check) when it sells anywhere or names no place we know."""
+    """The ICP's regions (named regions like "Europe", or countries like "Germany") as country codes. Empty (no check)
+    when it sells anywhere or names no place we know."""
     codes: set[str] = set()
     for region in regions:
         text = region.lower()
@@ -173,6 +174,9 @@ def allowed_regions(regions: list[str]) -> frozenset[str]:
         for name, countries in REGIONS.items():
             if re.search(rf"\b{re.escape(name)}\b", text):
                 codes |= countries
+        for name, code in COUNTRIES.items():  # our own table's names, escaped: no pattern comes from the ICP
+            if re.search(rf"\b{re.escape(name)}\b", text):
+                codes.add(code)
     return frozenset(codes)
 
 
@@ -207,6 +211,38 @@ def main_job(jobs: tuple[Job, ...] | list[Job]) -> Job | None:
 def at_customer(job: Job, rules: Rules) -> bool:
     page = linkedin_slug(job.company_linkedin)
     return bool(page and page in rules.customer_pages) or company_key(job.company) in rules.customers
+
+
+def same_company(a: Job, b: Job) -> bool:
+    """Whether two jobs are at the same company: the same name (as `company_key` reads it) or the same LinkedIn page.
+    Either can differ between sources (a page by number or by name, a name with or without "Inc."): either will do."""
+    key = company_key(a.company)
+    if key and key == company_key(b.company):
+        return True
+    page = linkedin_slug(a.company_linkedin)
+    return bool(page) and page == linkedin_slug(b.company_linkedin)
+
+
+def stint_start(jobs: tuple[Job, ...] | list[Job], now: Job) -> date | None:
+    """When their current run at `now`'s company began: back across their earlier titles there (promotions), until
+    they worked somewhere else in between. Someone who comes back after a job elsewhere starts a new run."""
+    start = now.start
+    if start is None:
+        return None
+    others = [j.start for j in jobs if j.start is not None and not side_role(j) and not same_company(j, now)]
+    earlier = sorted(  # their earlier jobs there, newest first: when each began and ended
+        (
+            (j.start, j.end or j.start)
+            for j in jobs
+            if j.start is not None and j.start < start and not side_role(j) and same_company(j, now)
+        ),
+        reverse=True,
+    )
+    for began, left in earlier:
+        if any(left <= other < start for other in others):  # a job elsewhere began in between: a new run
+            break
+        start = began
+    return start
 
 
 def judge(m: Mover, rules: Rules, seen: set[str]) -> str | None:
@@ -259,25 +295,20 @@ def verify(m: Mover, history: History | None, rules: Rules, today: date) -> tupl
         return "still_at_customer", None
     was = max(customer_jobs, key=lambda j: (j.end or date.min, j.start or date.min))
     found = main_job(m.jobs)
-    company = company_key(found.company) if found else ""
     current = [j for j in history.jobs if j.end is None and not side_role(j) and not at_customer(j, rules)]
-    here = [j for j in current if company and company_key(j.company) == company] or current
-    if not here:
+    # only the job the search found counts: it's the one the checks and the screen passed, so no other is guessed
+    here = [j for j in current if found and same_company(j, found)]
+    if not found or not here:
         return "not_verified", None
-    now = here[0]
-    if found:  # the search knows the company's page and industry; the history knows the dates
-        now = Job(
-            title=now.title or found.title,
-            company=now.company or found.company,
-            company_linkedin=now.company_linkedin or found.company_linkedin,
-            industry=found.industry,
-            months=now.months,
-            start=now.start,
-            end=None,
-        )
-    joined = min(
-        (j.start for j in history.jobs if j.start and company_key(j.company) == company_key(now.company)),
-        default=now.start,
+    joined = stint_start(history.jobs, here[0])
+    now = Job(  # the search knows the company's page and industry; the history knows the dates
+        title=here[0].title or found.title,
+        company=here[0].company or found.company,
+        company_linkedin=here[0].company_linkedin or found.company_linkedin,
+        industry=found.industry,
+        months=here[0].months,
+        start=here[0].start,
+        end=None,
     )
     gap = _months(was.end, now.start) if was.end and now.start else 0
     late = joined is not None and _months(joined, today) > MAX_MOVE_MONTHS + 1  # LinkedIn's 90 days, give or take
