@@ -195,7 +195,8 @@ def build_champions(
 @dataclass(frozen=True)
 class Prior:
     """The last report's champions for this company. The search keys people by LinkedIn's member id and the named
-    path by their profile address, so a person is found by their key or, failing that, by name."""
+    path by their profile address, so a person is found by their key or, failing that, by name: unless both have a
+    public LinkedIn handle and the handles differ, which makes them two people with one name."""
 
     by_key: dict[str, dict[str, Any]]
     by_name: dict[str, dict[str, Any]]
@@ -208,8 +209,13 @@ class Prior:
             by_name={norm(str(c.get("name") or "")): c for c in rows if norm(str(c.get("name") or ""))},
         )
 
-    def find(self, key: str, name: str) -> dict[str, Any] | None:
-        return self.by_key.get(key) or self.by_name.get(norm(name))
+    def find(self, key: str, name: str, url: str = "") -> dict[str, Any] | None:
+        row = self.by_key.get(key)
+        if row is not None:
+            return row
+        row = self.by_name.get(norm(name))
+        mine, theirs = _public_handle(url), _public_handle(str((row or {}).get("linkedin") or ""))
+        return None if mine and theirs and mine != theirs else row
 
 
 @dataclass
@@ -285,7 +291,7 @@ def _verified(
     kept without paying for them again, marked not new, while their move is still recent, and left out once it isn't;
     one who has moved again is checked afresh. Also how many histories were looked up."""
     fits = sorted(fits, key=lambda f: (not traps.named(f[0], None, names), _months_in(f[0]), f[0].name))
-    states = {m.key: _prior_state(prior.find(m.key, m.name), m, today) for m, _ in fits}
+    states = {m.key: _prior_state(prior.find(m.key, m.name, m.url), m, today) for m, _ in fits}
     checking = [(m, why) for m, why in fits if states[m.key][0] == "check"][:HISTORY_LOOKUPS]
     say("checking their work history", {"fit": len(fits), "checking": len(checking)})
     histories = _histories([m.url for m, _ in checking], linkedin, budget, WATCH_LOOKUPS * PRICE[HISTORY], today)
@@ -562,7 +568,7 @@ def _named_champions(
                 "linkedin": m.url,
                 "location": "",
                 "grade": "A",
-                "new": prior.find(m.key, c.name) is None,
+                "new": prior.find(m.key, c.name, m.url) is None,
                 "was": _role(verified.was),
                 "now": _role(verified.now),
                 "gap_months": verified.gap,

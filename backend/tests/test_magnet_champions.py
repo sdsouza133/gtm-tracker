@@ -352,3 +352,27 @@ def test_two_people_with_the_same_name_are_told_apart_by_their_linkedin_handles(
     assert "Dana Named" in names(report["champions"])  # the search's Dana Named (dana-named)
     # the site's Dana Named (dana-named-2) is someone else, still at Shoebird: checked, not taken for the first
     assert ("Dana Named", "still_there") in {(w["name"], w["status"]) for w in report["watch"]}
+
+
+def test_two_people_with_one_name_at_one_company_are_not_mixed_up_on_a_rebuild() -> None:
+    first = build_champions(SPEC, tools(FakeScout(), market()), TODAY)
+    other_riley = mover(
+        "riley-lead-2", "Riley Lead", position("Head of CX", "Sockfox", "Retail Apparel and Fashion", 1)
+    )
+    histories = {
+        **HISTORIES,
+        person("riley-lead-2"): history(
+            "riley-lead-2",
+            job("Head of CX", "Sockfox", "sockfox", (2026, 10), None),
+            job("Support Lead", "Glowco Inc.", "glowco", (2021, 1), (2026, 9)),
+        ),
+    }
+    treg = market(movers=[*PEOPLE, other_riley], histories=histories)
+    again = build_champions(ChampionSpec(VENDOR, SPEC.website, before=first), tools(FakeScout(), treg), TODAY)
+
+    looked_up = [q["profileUrlOrUrn"] for tool, q, _, _ in treg.calls if tool == HISTORY]
+    assert person("riley-lead-2") in looked_up  # not the last report's Riley: their own history is checked
+    assert sorted((c["linkedin"], c["new"]) for c in again["champions"] if c["name"] == "Riley Lead") == [
+        (person("riley-lead"), False),
+        (person("riley-lead-2"), True),
+    ]
