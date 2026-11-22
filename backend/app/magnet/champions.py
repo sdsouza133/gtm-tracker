@@ -14,6 +14,7 @@ before for the same company is reused: its customers' pages and its champions' h
 its champions are marked as not new.
 """
 
+import re
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -39,7 +40,7 @@ from app.magnet.linkedin import (
     parse_mover,
 )
 from app.magnet.site import read_customers, read_site
-from app.radar.fit import domain_of, linkedin_slug, web_url
+from app.radar.fit import domain_of, linkedin_slug, norm, web_url
 from app.treg import Treg
 
 TREG_CAP_USD = 0.60  # LinkedIn spend for one report; Claude's three calls are on top
@@ -153,9 +154,9 @@ def build_champions(
     passed, fits = _filter(movers, rules, spec, icp, tools.brain, skips, say)
 
     names = [(c.name, c.linkedin) for c in found.champions]
-    champions, checked = _verified(fits, names, before, rules, tools.linkedin, budget, skips, say, today)
+    prior = Prior.of(before)
+    champions, checked = _verified(fits, names, prior, rules, tools.linkedin, budget, skips, say, today)
     say("checking the people the site names", {"named": len(found.champions)})
-    prior = {str(c.get("key")) for c in before.get("champions") or [] if isinstance(c, dict)}
     watch = _watch(found, champions, rules, tools, icp, _rule_out(spec, icp), budget, skips, today, prior)
     champions.sort(key=_champion_order)
 
@@ -189,6 +190,26 @@ def build_champions(
             "linkedin_usd": round(budget.spent, 4),
         },
     }
+
+
+@dataclass(frozen=True)
+class Prior:
+    """The last report's champions for this company. The search keys people by LinkedIn's member id and the named
+    path by their profile address, so a person is found by their key or, failing that, by name."""
+
+    by_key: dict[str, dict[str, Any]]
+    by_name: dict[str, dict[str, Any]]
+
+    @classmethod
+    def of(cls, before: dict[str, Any]) -> "Prior":
+        rows = [c for c in before.get("champions") or [] if isinstance(c, dict)]
+        return cls(
+            by_key={str(c["key"]): c for c in rows if c.get("key")},
+            by_name={norm(str(c.get("name") or "")): c for c in rows if norm(str(c.get("name") or ""))},
+        )
+
+    def find(self, key: str, name: str) -> dict[str, Any] | None:
+        return self.by_key.get(key) or self.by_name.get(norm(name))
 
 
 @dataclass
@@ -251,7 +272,7 @@ def _filter(
 def _verified(
     fits: list[tuple[Mover, str]],
     names: list[tuple[str, str]],
-    before: dict[str, Any],
+    prior: Prior,
     rules: traps.Rules,
     linkedin: LinkedIn,
     budget: Budget,
@@ -260,20 +281,23 @@ def _verified(
     today: date,
 ) -> tuple[list[dict[str, Any]], int]:
     """The champions: those who fit, checked against their work history (people named on the site and the newest
-    moves first, at most HISTORY_LOOKUPS), and graded. Champions from the last report still in the same job are kept
-    without paying for them again, marked not new; one who has moved again is checked afresh. Also how many
-    histories were looked up."""
+    moves first, at most HISTORY_LOOKUPS), and graded. Champions from the last report still at the same company are
+    kept without paying for them again, marked not new, while their move is still recent, and left out once it isn't;
+    one who has moved again is checked afresh. Also how many histories were looked up."""
     fits = sorted(fits, key=lambda f: (not traps.named(f[0], None, names), _months_in(f[0]), f[0].name))
-    prior = {str(c.get("key")): c for c in before.get("champions") or [] if isinstance(c, dict) and c.get("key")}
-    reused = {m.key: prior[m.key] for m, _ in fits if _same_move(prior.get(m.key), m)}
-    checking = [(m, why) for m, why in fits if m.key not in reused][:HISTORY_LOOKUPS]
+    states = {m.key: _prior_state(prior.find(m.key, m.name), m, today) for m, _ in fits}
+    checking = [(m, why) for m, why in fits if states[m.key][0] == "check"][:HISTORY_LOOKUPS]
     say("checking their work history", {"fit": len(fits), "checking": len(checking)})
     histories = _histories([m.url for m, _ in checking], linkedin, budget, WATCH_LOOKUPS * PRICE[HISTORY], today)
     checked = {m.key for m, _ in checking}
     champions: list[dict[str, Any]] = []
     for m, why in fits:
-        if m.key in reused:
-            champions.append(_brought_up_to_date(reused[m.key], m))
+        state, row = states[m.key]
+        if state == "stale":  # the last report saw them join, and they're still there: no longer a recent move
+            skips.add(m, "internal_move")
+            continue
+        if state == "reuse" and row is not None:
+            champions.append(_brought_up_to_date(row, m))
             continue
         if m.key not in checked:
             skips.add(m, "over_cap")
@@ -290,14 +314,40 @@ def _verified(
                 "linkedin": history.url if history and history.url else m.url,
                 "location": m.location,
                 "grade": traps.grade(verified, traps.named(m, history, names), rules.keywords),
-                "new": True,
+                "new": row is None,  # the last report had them at this company (its row had no date to reuse)
                 "was": _role(verified.was),
                 "now": _role(verified.now),
                 "gap_months": verified.gap,
+                "joined": _iso(verified.joined),
                 "why": why,
             }
         )
     return champions, len(checking)
+
+
+def _prior_state(row: dict[str, Any] | None, m: Mover, today: date) -> tuple[str, dict[str, Any] | None]:
+    """What the last report says about someone found again, with its row: "reuse" its check (the same company, and
+    they joined it lately enough to still be a recent move), "stale" (the same company, joined too long ago) or
+    "check" their history afresh (moved again, or the row has no date to go by)."""
+    if row is None or not _same_move(row, m):
+        return "check", None
+    joined = _date(row.get("joined"))
+    if joined is None:
+        return "check", row
+    if _months_between(joined, today) > traps.MAX_MOVE_MONTHS + 1:  # the 90 days, give or take
+        return "stale", row
+    return "reuse", row
+
+
+def _date(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)) if value else None
+    except ValueError:
+        return None
+
+
+def _iso(value: date | None) -> str | None:
+    return value.isoformat() if value else None
 
 
 def _same_move(row: dict[str, Any] | None, m: Mover) -> bool:
@@ -428,14 +478,15 @@ def _watch(
     budget: Budget,
     skips: Skips,
     today: date,
-    prior: set[str],
+    prior: Prior,
 ) -> list[dict[str, str]]:
     """The people the site names who aren't champions already, or ruled out already by the search's checks. Still at
     the customer: the watch list. Moved a while ago, or not checked (no LinkedIn address on the site, or past the cap):
     listed as such. Moved lately: the same free checks, work-history checks and Claude screen as everyone else, since
     being named only decides the grade. Those who pass are added to `champions` as A, the rest to `skips`."""
-    done = {str(c.get("name") or "").lower() for c in champions} | {p["name"].lower() for p in skips.people}
-    named = [c for c in found.champions if c.name.strip() and c.name.lower() not in done]
+    handled = [(str(c.get("name") or ""), str(c.get("linkedin") or "")) for c in champions]
+    handled += [(p["name"], p["linkedin"]) for p in skips.people]
+    named = [c for c in found.champions if c.name.strip() and not _handled(c, handled)]
     lookups = [c for c in named if _profile_url(c.linkedin)][:WATCH_LOOKUPS]
     histories = _histories([_profile_url(c.linkedin) for c in lookups], tools.linkedin, budget, 0.0, today)
     looked = {c.name for c in lookups}
@@ -490,7 +541,7 @@ def _named_champions(
     icp: ICP,
     rule_out: list[str],
     skips: Skips,
-    prior: set[str],
+    prior: Prior,
 ) -> list[dict[str, Any]]:
     """Named people who just moved and passed the free and work-history checks, screened against the ICP like
     everyone else: one Claude call, made only when there are any. Those who fit are champions, graded A for being
@@ -511,14 +562,36 @@ def _named_champions(
                 "linkedin": m.url,
                 "location": "",
                 "grade": "A",
-                "new": m.key not in prior,
+                "new": prior.find(m.key, c.name) is None,
                 "was": _role(verified.was),
                 "now": _role(verified.now),
                 "gap_months": verified.gap,
+                "joined": _iso(verified.joined),
                 "why": f"Named on the site at {c.company or 'a customer'}. {verdict.reason}".strip(),
             }
         )
     return out
+
+
+def _handled(c: NamedChampion, handled: list[tuple[str, str]]) -> bool:
+    """Whether a person the site names is someone the build has dealt with already: the same public LinkedIn handle
+    when both have one, else the same name (the search gives LinkedIn's internal ids, not handles)."""
+    mine = _public_handle(_profile_url(c.linkedin))
+    for name, url in handled:
+        theirs = _public_handle(url)
+        if mine and theirs:
+            if mine == theirs:
+                return True
+        elif norm(name) and norm(name) == norm(c.name):
+            return True
+    return False
+
+
+def _public_handle(url: str) -> str:
+    """The public handle in a LinkedIn profile address ("dana-named"), or "" for none or LinkedIn's internal ids."""
+    m = re.search(r"linkedin\.com/in/([^/?#\s]+)", url or "", re.IGNORECASE)
+    handle = m.group(1).lower() if m else ""
+    return "" if handle.startswith("acwaa") else handle
 
 
 def _job_line(job: Job | None) -> str:

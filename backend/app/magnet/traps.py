@@ -280,7 +280,8 @@ def _months(start: date, end: date) -> int:
 class Verified:
     was: Job  # their last job at a customer
     now: Job  # the new job, with its dates from the history
-    gap: int  # months between leaving the customer and starting the new job
+    gap: int  # months between leaving the customer and starting at the new company
+    joined: date | None = None  # when their current run at the new company began (before any promotion there)
 
 
 def verify(m: Mover, history: History | None, rules: Rules, today: date) -> tuple[str | None, Verified | None]:
@@ -298,7 +299,7 @@ def verify(m: Mover, history: History | None, rules: Rules, today: date) -> tupl
     current = [j for j in history.jobs if j.end is None and not side_role(j) and not at_customer(j, rules)]
     # only the job the search found counts: it's the one the checks and the screen passed, so no other is guessed
     here = [j for j in current if found and same_company(j, found)]
-    if not found or not here:
+    if not found or not here or here[0].start is None:  # no start date: how recent the move is can't be checked
         return "not_verified", None
     joined = stint_start(history.jobs, here[0])
     now = Job(  # the search knows the company's page and industry; the history knows the dates
@@ -310,10 +311,11 @@ def verify(m: Mover, history: History | None, rules: Rules, today: date) -> tupl
         start=here[0].start,
         end=None,
     )
-    gap = _months(was.end, now.start) if was.end and now.start else 0
+    started = joined or now.start  # from the start of their run there, so a later promotion doesn't stretch the gap
+    gap = _months(was.end, started) if was.end and started else 0
     late = joined is not None and _months(joined, today) > MAX_MOVE_MONTHS + 1  # LinkedIn's 90 days, give or take
     reason = "left_customer_long_ago" if gap > MAX_GAP_MONTHS else "internal_move" if late else None
-    return (reason, None) if reason else (None, Verified(was=was, now=now, gap=max(0, gap)))
+    return (reason, None) if reason else (None, Verified(was=was, now=now, gap=max(0, gap), joined=joined))
 
 
 def named(m: Mover, history: History | None, champions: list[tuple[str, str]]) -> bool:

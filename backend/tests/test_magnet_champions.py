@@ -1,6 +1,7 @@
 """A champion report from start to finish, against the made-up market in champion_fakes."""
 
 from collections import Counter
+from datetime import date
 from typing import Any
 
 import pytest
@@ -305,3 +306,49 @@ def test_people_the_site_names_who_moved_go_through_the_same_checks_as_everyone_
     assert len(scout.screened[1]) == 2  # Lou and Rae: the history checks run before anyone is screened
     looked_up = {q["profileUrlOrUrn"] for tool, q, _, _ in treg.calls if tool == HISTORY}
     assert person("lena-law") not in looked_up
+
+
+def test_a_champion_whose_move_is_no_longer_recent_is_left_out_on_a_rebuild_without_a_lookup() -> None:
+    first = build_champions(SPEC, tools(FakeScout(), market()), TODAY)
+    promoted = mover(  # a new title at Sockfox, which they joined in October 2026
+        "riley-lead", "Riley Lead", position("VP of Customer Experience", "Sockfox", "Retail Apparel and Fashion", 0)
+    )
+    people = [promoted if p.get("linkedinUrl") == person("riley-lead") else p for p in PEOPLE]
+    treg = market(movers=people)
+    again = build_champions(
+        ChampionSpec(VENDOR, SPEC.website, before=first), tools(FakeScout(), treg), date(2027, 3, 1)
+    )
+
+    looked_up = [q["profileUrlOrUrn"] for tool, q, _, _ in treg.calls if tool == HISTORY]
+    assert person("riley-lead") not in looked_up  # the last report saw them join: nothing to pay for again
+    assert "Riley Lead" not in names(again["champions"])
+    assert ("Riley Lead", "internal_move") in {(p["name"], p["reason"]) for p in again["skipped_people"]}
+
+
+def test_a_named_champion_the_search_finds_next_time_is_recognised() -> None:
+    first = build_champions(SPEC, tools(FakeScout(), market()), TODAY)
+    moe = next(c for c in first["champions"] if c["name"] == "Moe Moved")
+    assert moe["key"] == person("moe-moved")  # found through the site, keyed by profile
+    found_by_search = mover("moe-moved", "Moe Moved", position("Head of Support", "Figleaf", "Retail", 1))
+    treg = market(movers=[*PEOPLE, found_by_search])  # keyed by LinkedIn's member id this time
+    again = build_champions(ChampionSpec(VENDOR, SPEC.website, before=first), tools(FakeScout(), treg), TODAY)
+
+    looked_up = [q["profileUrlOrUrn"] for tool, q, _, _ in treg.calls if tool == HISTORY]
+    assert person("moe-moved") not in looked_up  # not by the search's checks, nor the named-people check
+    assert next(c for c in again["champions"] if c["name"] == "Moe Moved")["new"] is False
+
+
+def test_two_people_with_the_same_name_are_told_apart_by_their_linkedin_handles() -> None:
+    other_dana = [NamedChampion(name="Dana Named", title="CX Lead", company="Shoebird", linkedin="dana-named-2")]
+    scout = FakeScout(Customers(customers=CUSTOMERS.customers, champions=other_dana, title_keywords=["Support"]))
+    histories = {
+        **HISTORIES,
+        person("dana-named-2"): history(
+            "dana-named-2", job("Head of Support", "Shoebird", "shoebird", (2020, 5), None)
+        ),
+    }
+    report = build_champions(SPEC, tools(scout, market(histories=histories)), TODAY)
+
+    assert "Dana Named" in names(report["champions"])  # the search's Dana Named (dana-named)
+    # the site's Dana Named (dana-named-2) is someone else, still at Shoebird: checked, not taken for the first
+    assert ("Dana Named", "still_there") in {(w["name"], w["status"]) for w in report["watch"]}

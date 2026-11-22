@@ -188,6 +188,17 @@ VERIFY: list[tuple[str, History | None, str | None]] = [
         "not_verified",
     ),
     (
+        "the current job has no start date",
+        History(
+            "",
+            (
+                Job(title="VP CX", company="Newbrand", company_linkedin="", industry="", months=0),
+                job("CX Manager", "Glowco", GLOWCO, date(2021, 1, 1), date(2026, 8, 1)),
+            ),
+        ),
+        "not_verified",
+    ),
+    (
         "back at a company they'd left before the customer",
         History(
             "",
@@ -235,6 +246,21 @@ def test_the_new_job_matches_by_its_linkedin_page_when_the_names_differ() -> Non
     assert reason is None
     assert found is not None
     assert found.now.company == "NB Labs"
+
+
+def test_the_gap_runs_to_the_start_of_their_run_at_the_new_company_not_to_a_promotion() -> None:
+    history = History(
+        "",
+        (
+            job("VP CX", "Newbrand", "", date(2026, 11, 1), None),
+            job("CX Manager", "Newbrand", "", date(2026, 8, 1), date(2026, 11, 1)),
+            job("CX Lead", "Glowco", GLOWCO, date(2019, 1, 1), date(2023, 8, 1)),
+        ),
+    )
+    reason, found = traps.verify(MOVED, history, RULES, TODAY)
+    assert reason is None  # 36 months from leaving Glowco to joining Newbrand: within the limit
+    assert found is not None
+    assert (found.joined, found.gap) == (date(2026, 8, 1), 36)
 
 
 def test_a_run_at_a_company_goes_back_across_promotions_but_not_across_a_job_elsewhere() -> None:
