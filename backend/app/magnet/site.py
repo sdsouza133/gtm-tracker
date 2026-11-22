@@ -1,4 +1,5 @@
-"""Read a prospect's website for free: the home page and a few pages that say what they sell and to whom.
+"""Read a prospect's website for free: the home page and a few pages that say what they sell and to whom, or (for
+a champion report) the pages where it shows its customers.
 
 Only public http(s) addresses are fetched; anything that resolves to a private, loopback or link-local address is
 refused, so a typed URL can't reach inside the network the tracker runs on.
@@ -25,6 +26,15 @@ USEFUL = re.compile(
     r"/(about|company|product|platform|solutions?|pricing|customers?|case-stud|use-cases?|industries)", re.I
 )
 SKIP_TAGS = {"script", "style", "noscript", "svg", "template", "iframe"}
+# where a company shows who uses it: customer and case-study pages, success stories, testimonials, a wall of love
+CUSTOMER_PAGES = re.compile(
+    r"/(customers?|customer-stor\w*|case-stud\w*|success-stor\w*|testimonials?|clients?|wall-of-love)(/|$)", re.I
+)
+CUSTOMER_GUESSES = ("/customers", "/case-studies")  # tried when the home page links to neither
+CUSTOMER_MAX_PAGES = 10
+CUSTOMER_MAX_CHARS = 48_000
+INDEX_CHARS = 16_000  # a customers page can list dozens of stories
+STORY_CHARS = 4_000
 
 
 class SiteError(RuntimeError):
@@ -32,11 +42,12 @@ class SiteError(RuntimeError):
 
 
 class _Text(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, *, alts: bool = False) -> None:
         super().__init__()
         self.parts: list[str] = []
         self.links: list[str] = []
         self.title = ""
+        self.alts = alts  # keep images' alt text: a logo wall names its customers only there
         self._skip = 0
         self._in_title = False
 
@@ -45,6 +56,10 @@ class _Text(HTMLParser):
             self._skip += 1
         if tag == "title":
             self._in_title = True
+        if tag == "img" and self.alts and not self._skip:
+            alt = (dict(attrs).get("alt") or "").strip()
+            if alt:
+                self.parts.append(f"[image] {alt}")
         if tag == "a":
             href = dict(attrs).get("href")
             if href:
@@ -126,6 +141,67 @@ def read_site(url: str, get: Callable[[str], str] | None = None) -> dict[str, ob
                 if same_host and USEFUL.search(target.path) and link not in queue:
                     queue.append(link)
     return {"url": home, "title": title, "pages": pages, "text": "\n\n".join(texts)[:MAX_CHARS]}
+
+
+def read_customers(url: str, get: Callable[[str], str] | None = None) -> dict[str, object]:
+    """The pages where a company shows its customers: the home page (logo walls, quotes), then its customer,
+    case-study and testimonial pages and the stories one level under them, at most CUSTOMER_MAX_PAGES. Images count
+    by their alt text. When the home page links to none of them, the usual addresses are tried. Same shape as
+    `read_site`; `get` returns a page's HTML."""
+    fetch = get or _get
+    home = public_url(url)
+    origin = "{0.scheme}://{0.netloc}".format(urlparse(home))
+    host = _bare(urlparse(home).hostname)
+    pages: list[str] = []
+    texts: list[str] = []
+
+    def read(page: str, limit: int) -> _Text | None:
+        try:
+            html = fetch(page)
+        except (httpx2.HTTPError, httpx2.InvalidURL, SiteError):
+            return None
+        parser = _Text(alts=True)
+        parser.feed(html)
+        pages.append(page)
+        texts.append(f"[{page}]\n" + " ".join(parser.parts)[:limit])
+        return parser
+
+    first = read(home, PAGE_CHARS)
+    if first is None:
+        raise SiteError(f"Couldn't read {home}.")
+    queue = sorted(
+        (link for link in _links(home, first.links, host) if CUSTOMER_PAGES.search(urlparse(link).path)),
+        key=lambda link: urlparse(link).path.rstrip("/").count("/"),  # the customers page before its stories
+    ) or [origin + path for path in CUSTOMER_GUESSES]
+    while queue and len(pages) < CUSTOMER_MAX_PAGES:
+        page = queue.pop(0)
+        if page in pages:
+            continue
+        index = urlparse(page).path.rstrip("/").count("/") <= 1
+        parsed = read(page, INDEX_CHARS if index else STORY_CHARS)
+        if parsed is None or not index:
+            continue
+        under = urlparse(page).path.rstrip("/") + "/"
+        queue += [link for link in _links(page, parsed.links, host) if urlparse(link).path.startswith(under)]
+    return {"url": home, "title": first.title.strip(), "pages": pages, "text": "\n\n".join(texts)[:CUSTOMER_MAX_CHARS]}
+
+
+def _bare(host: str | None) -> str:
+    return (host or "").lower().removeprefix("www.")
+
+
+def _links(base: str, hrefs: list[str], host: str) -> list[str]:
+    """The page's links on the same site (www. or not), without fragments, each once."""
+    out: list[str] = []
+    for href in hrefs:
+        try:  # the page is someone else's: a malformed link is skipped, not fatal
+            link = urljoin(base, href).split("#")[0]
+            target = urlparse(link)
+        except ValueError:
+            continue
+        if target.scheme in ("http", "https") and _bare(target.hostname) == host and link not in out:
+            out.append(link)
+    return out
 
 
 def _get(url: str) -> str:

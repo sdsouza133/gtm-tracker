@@ -12,6 +12,7 @@ from pydantic import (
     HttpUrl,
     TypeAdapter,
     field_validator,
+    model_validator,
 )
 
 from app.events.schemas import Icp
@@ -686,26 +687,34 @@ class RadarAdded(BaseModel):
 # ----------------------------------------------------------------------------- lead magnets
 
 MagnetMode = Literal["teaser", "full"]
+# engagement: people in the ICP engaging with competitors; champions: people who used it at a customer and just moved
+MagnetKind = Literal["engagement", "champions"]
 CompetitorDomain = Annotated[str, Field(min_length=3, max_length=200)]
 
 
-class MagnetCreate(BaseModel):
+class _MagnetAsk(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    kind: MagnetKind = "engagement"
     mode: MagnetMode = "teaser"
-    website: str | None = Field(default=None, max_length=300)  # the company's own site when left out
     competitors: list[CompetitorDomain] = Field(default_factory=list, max_length=5)
 
+    @model_validator(mode="after")
+    def _champions_take_neither(self) -> "_MagnetAsk":
+        if self.kind == "champions" and (self.mode == "full" or self.competitors):
+            raise ValueError("A champion report has no full mode and takes no competitors.")
+        return self
 
-class MagnetStart(BaseModel):
+
+class MagnetCreate(_MagnetAsk):
+    website: str | None = Field(default=None, max_length=300)  # the company's own site when left out
+
+
+class MagnetStart(_MagnetAsk):
     """A lead magnet for any website, without a company in the tracker."""
 
-    model_config = ConfigDict(extra="forbid")
-
-    mode: MagnetMode = "teaser"
     website: str = Field(min_length=3, max_length=300)
     name: str | None = Field(default=None, max_length=120)  # the company's name; its domain when left out
-    competitors: list[CompetitorDomain] = Field(default_factory=list, max_length=5)
 
 
 class MagnetSummary(BaseModel):
@@ -719,6 +728,19 @@ class MagnetSummary(BaseModel):
     linkedin_usd: float  # what reading LinkedIn cost (through treg)
 
 
+class ChampionsSummary(BaseModel):
+    champions: int
+    a: int  # named on the company's own site
+    b: int  # held a role that used it at the customer
+    c: int  # anyone else who worked there
+    new: int  # not in the last report for this company
+    customers: int  # customers the site shows
+    matched: int  # of those, found on LinkedIn
+    movers: int  # people who left them in the last 90 days, as LinkedIn counts them
+    watch: int  # people the site names, still where they were
+    linkedin_usd: float
+
+
 class MagnetOut(BaseModel):
     id: str
     company_id: str | None
@@ -727,12 +749,14 @@ class MagnetOut(BaseModel):
     title: str
     mode: str
     website: str
+    domain: str  # the website's domain, which ties a report to a Fractional prospect
     step: str
     error: str
     created: datetime
     link: str | None  # the private report's path, once it's ready
     views: int
     summary: MagnetSummary | None
+    champions: ChampionsSummary | None = None
 
 
 class PublicLead(BaseModel):
@@ -772,6 +796,7 @@ class PublicIcp(BaseModel):
 
 
 class PublicMagnet(BaseModel):
+    kind: Literal["engagement"] = "engagement"
     company: str
     mode: str
     built: str
@@ -781,6 +806,74 @@ class PublicMagnet(BaseModel):
     fit: int  # everyone in the ICP who engaged, anywhere
     in_region: int  # of those looked up, in the US or Canada
     more: int  # leads found but not shown (a teaser shows a few)
+
+
+class ChampionRole(BaseModel):
+    title: str
+    company: str
+    company_linkedin: str
+    industry: str
+    start: str | None
+    end: str | None
+    months: int
+
+
+class ChampionOut(BaseModel):
+    name: str
+    linkedin: str
+    location: str
+    grade: Literal["A", "B", "C"]
+    new: bool  # not in the last report for this company
+    was: ChampionRole  # their job at the customer
+    now: ChampionRole  # the job they just started
+    why: str
+
+
+class ChampionCustomer(BaseModel):
+    name: str
+    domain: str
+    evidence: str  # case_study, testimonial, logo or mention
+    linkedin: str  # empty when no page matched
+    linkedin_name: str
+    industry: str
+
+
+class ChampionWatch(BaseModel):
+    name: str
+    title: str
+    company: str
+    linkedin: str
+    status: Literal["still_there", "moved", "not_found", "unchecked"]
+    now: str
+
+
+class ChampionSkip(BaseModel):
+    name: str
+    linkedin: str
+    now: str
+    reason: str
+
+
+class ChampionsReport(BaseModel):
+    """A champion report. The shared link shows the top few champions and counts the rest in `more`; the owner's
+    view adds everyone, the watch list and who was ruled out."""
+
+    kind: Literal["champions"] = "champions"
+    company: str
+    website: str
+    built: str
+    icp: PublicIcp
+    customers: list[ChampionCustomer]
+    champions: list[ChampionOut]
+    more: int
+    movers: int  # people who left the customers in the last 90 days
+    skipped: dict[str, int]  # ruled out, by reason
+    watch: list[ChampionWatch]
+    skipped_people: list[ChampionSkip]
+    linkedin_usd: float
+
+
+MagnetReport = Annotated[PublicMagnet | ChampionsReport, Field(discriminator="kind")]
 
 
 # ----------------------------------------------------------------------------- the events tool

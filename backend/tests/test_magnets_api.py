@@ -12,9 +12,11 @@ from app.api import magnets
 from app.api.magnets import Runtime
 from app.config import Settings, get_settings
 from app.magnet.build import Tools
+from app.magnet.champions import TREG_CAP_USD
 from app.magnet.linkedin import LinkedIn
 from app.main import log_path
-from app.models import Activity, Company, Magnet
+from app.models import Activity, Company, Magnet, Setting
+from tests import champion_fakes
 from tests import factories as f
 from tests.magnet_fakes import ORGS, FakeApollo, FakeBrain, FakeHarvest, runner, site
 
@@ -268,3 +270,149 @@ def test_report_tokens_never_reach_the_log() -> None:
     assert log_path("/m/m123/secret-token") == "/m/m123/***"
     assert log_path("/api/companies/c1/magnets") == "/api/companies/c1/magnets"
     assert log_path("/api/x\nFAKE log line\r") == "/api/x?FAKE log line?"
+
+
+# ----------------------------------------------------------------------------- champion reports
+
+
+@pytest.fixture
+def champion_client(magnet_client: TestClient) -> TestClient:
+    """Champion reports build inline against the made-up market in champion_fakes."""
+    runtime: Runtime = magnet_client.app.state.magnet_runtime  # type: ignore[attr-defined]
+    runtime.champions = champion_fakes.tools
+    return magnet_client
+
+
+def a_champion_report(client: TestClient, **body: Any) -> dict[str, Any]:
+    r = client.post(
+        "/api/magnets", json={"kind": "champions", "website": "https://cxhero.example", "name": "CXHero", **body}
+    )
+    assert r.status_code == 202, r.text
+    return dict(r.json())
+
+
+def test_a_champion_report_builds_and_its_link_shows_the_top_three(champion_client: TestClient, db: Session) -> None:
+    started = a_champion_report(champion_client)
+    assert started["kind"] == "champions"
+    assert started["domain"] == "cxhero.example"
+
+    (m,) = champion_client.get("/api/magnets", params={"kind": "champions", "domain": "cxhero.example"}).json()
+    assert m["status"] == "ready"
+    assert m["champions"] == {
+        "champions": 4,
+        "a": 2,
+        "b": 1,
+        "c": 1,
+        "new": 4,
+        "customers": 5,
+        "matched": 4,
+        "movers": 20,
+        "watch": 2,
+        "linkedin_usd": m["champions"]["linkedin_usd"],
+    }
+    assert m["summary"] is None
+    assert db.query(Activity).filter(Activity.kind == "magnet").one().text.startswith("CXHero: champion report ready")
+
+    full = champion_client.get(f"/api/magnets/{m['id']}/report").json()
+    assert full["kind"] == "champions"
+    assert len(full["champions"]) == 4
+    assert full["more"] == 0
+    assert {w["name"] for w in full["watch"]} == {"Wren Stays", "Kai Nolink"}
+    assert {p["reason"] for p in full["skipped_people"]} >= {"junior", "stale_move", "not_icp"}
+    assert full["linkedin_usd"] > 0
+
+    token = m["link"].rsplit("/", 1)[-1]
+    champion_client.cookies.clear()  # whoever has the link isn't signed in
+    shared = champion_client.get(f"/api/public/magnets/{m['id']}/{token}").json()
+    assert [c["name"] for c in shared["champions"]] == ["Moe Moved", "Dana Named", "Riley Lead"]
+    assert shared["more"] == 1
+    assert shared["watch"] == []
+    assert shared["skipped_people"] == []  # who was ruled out stays with the owner
+    assert shared["linkedin_usd"] == 0
+    assert shared["skipped"]["junior"] == 1
+
+
+def test_only_the_owner_sees_the_full_report(champion_client: TestClient) -> None:
+    a_champion_report(champion_client)
+    (m,) = champion_client.get("/api/magnets").json()
+    champion_client.cookies.clear()
+    assert champion_client.get(f"/api/magnets/{m['id']}/report").status_code == 401
+
+
+def test_a_champion_report_needs_no_apollo_and_runs_without_sign_in(champion_client: TestClient) -> None:
+    no_apollo = settings_with({"apollo_api_key": SecretStr(""), "open_access": True})
+    champion_client.app.dependency_overrides[get_settings] = lambda: no_apollo  # type: ignore[attr-defined]
+    a_champion_report(champion_client)
+    r = champion_client.post("/api/magnets", json={"website": "https://cxhero.example"})
+    assert r.status_code == 409  # an engagement magnet still needs Apollo
+    assert "APOLLO_API_KEY" in r.json()["detail"]
+
+
+def test_a_champion_report_takes_no_full_mode_or_competitors(champion_client: TestClient) -> None:
+    for extra in ({"mode": "full"}, {"competitors": ["rival.example"]}):
+        r = champion_client.post(
+            "/api/magnets", json={"kind": "champions", "website": "https://cxhero.example", **extra}
+        )
+        assert r.status_code == 422
+
+
+def test_one_champion_report_at_a_time(
+    champion_client: TestClient, db: Session, started: list[Callable[[], None]]
+) -> None:
+    runtime: Runtime = champion_client.app.state.magnet_runtime  # type: ignore[attr-defined]
+    runtime.spawn = started.append  # hold the build: it stays running
+    a_champion_report(champion_client)
+    r = champion_client.post("/api/magnets", json={"kind": "champions", "website": "https://other.example"})
+    assert r.status_code == 409
+    assert "already building" in r.json()["detail"]
+    # an engagement magnet isn't held up by it
+    assert champion_client.post("/api/magnets", json={"website": "https://prospect.example"}).status_code == 202
+
+
+def test_the_daily_limit_reserves_each_build_and_gives_back_what_it_did_not_spend(
+    champion_client: TestClient, db: Session
+) -> None:
+    capped = settings_with({"magnet_champions_daily_usd": TREG_CAP_USD * 1.5})
+    champion_client.app.dependency_overrides[get_settings] = lambda: capped  # type: ignore[attr-defined]
+    a_champion_report(champion_client)
+    (m,) = champion_client.get("/api/magnets").json()
+    ledger = db.get(Setting, magnets.LEDGER)
+    assert ledger is not None
+    spent = m["champions"]["linkedin_usd"]
+    assert ledger.value["usd"] == pytest.approx(spent)  # the unused part came back
+
+    runtime: Runtime = champion_client.app.state.magnet_runtime  # type: ignore[attr-defined]
+    runtime.champions = lambda: champion_fakes.tools(treg=champion_fakes.market(orgs={}))
+    a_champion_report(champion_client, website="https://other.example")  # fails, and keeps its whole reservation
+    db.refresh(ledger)
+    assert ledger.value["usd"] == pytest.approx(spent + TREG_CAP_USD)
+    r = champion_client.post("/api/magnets", json={"kind": "champions", "website": "https://cxhero.example"})
+    assert r.status_code == 409
+    assert "daily limit" in r.json()["detail"]
+
+
+def test_a_failed_champion_report_keeps_its_reservation(champion_client: TestClient, db: Session) -> None:
+    runtime: Runtime = champion_client.app.state.magnet_runtime  # type: ignore[attr-defined]
+    runtime.champions = lambda: champion_fakes.tools(treg=champion_fakes.market(orgs={}))
+    a_champion_report(champion_client)
+    (m,) = champion_client.get("/api/magnets").json()
+    assert m["status"] == "failed"
+    assert "LinkedIn page" in m["error"]
+    ledger = db.get(Setting, magnets.LEDGER)
+    assert ledger is not None
+    assert ledger.value["usd"] == pytest.approx(TREG_CAP_USD)
+
+
+def test_a_second_report_for_the_same_company_marks_who_is_new(champion_client: TestClient) -> None:
+    a_champion_report(champion_client)
+    a_champion_report(champion_client)
+    newest, _ = champion_client.get("/api/magnets", params={"domain": "cxhero.example"}).json()
+    assert newest["champions"]["new"] == 0  # everyone was in the first report
+
+
+def test_a_champion_report_for_a_tracker_company(champion_client: TestClient, db: Session) -> None:
+    c = f.company(db, name="CXHero", website="https://cxhero.example")
+    r = champion_client.post(f"/api/companies/{c.id}/magnets", json={"kind": "champions"})
+    assert r.status_code == 202
+    (m,) = champion_client.get(f"/api/companies/{c.id}/magnets").json()
+    assert (m["kind"], m["status"]) == ("champions", "ready")

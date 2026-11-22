@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     magnet_icp_model: str = "claude-opus-5-5"
     magnet_screen_model: str = "claude-haiku-5-5"
+    # The most a day's champion reports may spend on LinkedIn (through treg), all together. Each build reserves its
+    # cap when it starts and gives back what it didn't use; with no sign-in, this is what stops a link from costing a
+    # lot.
+    magnet_champions_daily_usd: float = Field(default=3.0, ge=0)
     # Run the radar every morning (at radar_config.hour, local time). Off in tests and one-off scripts.
     radar_schedule: bool = True
     # Once a day, park companies nobody has touched in radar_config.ttl_days (rolling). Runs even with the radar off;

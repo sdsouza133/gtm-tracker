@@ -1934,19 +1934,63 @@
      "magnets"
     ],
     "summary": "List All",
-    "description": "Every lead magnet, newest first: those built for a tracker company and those built for any website.",
+    "description": "Every lead magnet, newest first: those built for a tracker company and those built for any website. `kind`\nand `domain` narrow it (a Fractional prospect's champion reports, say).",
     "operationId": "list_all_api_magnets_get",
+    "parameters": [
+     {
+      "name": "kind",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Kind"
+      }
+     },
+     {
+      "name": "domain",
+      "in": "query",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Domain"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "description": "Successful Response",
       "content": {
        "application/json": {
         "schema": {
+         "type": "array",
          "items": {
           "$ref": "#/components/schemas/MagnetOut"
          },
-         "type": "array",
          "title": "Response List All Api Magnets Get"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
         }
        }
       }
@@ -1961,14 +2005,14 @@
     "description": "Start one for any website, without a company in the tracker. One such build at a time (a lock held until the\nnew magnet is saved, so two quick clicks can't both start one).",
     "operationId": "start_any_api_magnets_post",
     "requestBody": {
+     "required": true,
      "content": {
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/MagnetStart"
        }
       }
-     },
-     "required": true
+     }
     },
     "responses": {
      "202": {
@@ -2056,6 +2100,64 @@
     "responses": {
      "204": {
       "description": "Successful Response"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/magnets/{magnet_id}/report": {
+   "get": {
+    "tags": [
+     "magnets"
+    ],
+    "summary": "Full Report",
+    "description": "The whole finished report, for the signed-in owner: every lead or champion, and for a champion report the\nwatch list and everyone ruled out, with why.",
+    "operationId": "full_report_api_magnets__magnet_id__report_get",
+    "parameters": [
+     {
+      "name": "magnet_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Magnet Id"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "oneOf": [
+          {
+           "$ref": "#/components/schemas/PublicMagnet"
+          },
+          {
+           "$ref": "#/components/schemas/ChampionsReport"
+          }
+         ],
+         "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+           "engagement": "#/components/schemas/PublicMagnet",
+           "champions": "#/components/schemas/ChampionsReport"
+          }
+         },
+         "title": "Response Full Report Api Magnets  Magnet Id  Report Get"
+        }
+       }
+      }
      },
      "422": {
       "description": "Validation Error",
@@ -2474,7 +2576,22 @@
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/PublicMagnet"
+         "oneOf": [
+          {
+           "$ref": "#/components/schemas/PublicMagnet"
+          },
+          {
+           "$ref": "#/components/schemas/ChampionsReport"
+          }
+         ],
+         "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+           "engagement": "#/components/schemas/PublicMagnet",
+           "champions": "#/components/schemas/ChampionsReport"
+          }
+         },
+         "title": "Response Report Api Public Magnets  Magnet Id   Token  Get"
         }
        }
       }
@@ -2592,6 +2709,371 @@
      "earned"
     ],
     "title": "BadgeOut"
+   },
+   "ChampionCustomer": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "domain": {
+      "type": "string",
+      "title": "Domain"
+     },
+     "evidence": {
+      "type": "string",
+      "title": "Evidence"
+     },
+     "linkedin": {
+      "type": "string",
+      "title": "Linkedin"
+     },
+     "linkedin_name": {
+      "type": "string",
+      "title": "Linkedin Name"
+     },
+     "industry": {
+      "type": "string",
+      "title": "Industry"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "domain",
+     "evidence",
+     "linkedin",
+     "linkedin_name",
+     "industry"
+    ],
+    "title": "ChampionCustomer"
+   },
+   "ChampionOut": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "linkedin": {
+      "type": "string",
+      "title": "Linkedin"
+     },
+     "location": {
+      "type": "string",
+      "title": "Location"
+     },
+     "grade": {
+      "type": "string",
+      "enum": [
+       "A",
+       "B",
+       "C"
+      ],
+      "title": "Grade"
+     },
+     "new": {
+      "type": "boolean",
+      "title": "New"
+     },
+     "was": {
+      "$ref": "#/components/schemas/ChampionRole"
+     },
+     "now": {
+      "$ref": "#/components/schemas/ChampionRole"
+     },
+     "why": {
+      "type": "string",
+      "title": "Why"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "linkedin",
+     "location",
+     "grade",
+     "new",
+     "was",
+     "now",
+     "why"
+    ],
+    "title": "ChampionOut"
+   },
+   "ChampionRole": {
+    "properties": {
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "company": {
+      "type": "string",
+      "title": "Company"
+     },
+     "company_linkedin": {
+      "type": "string",
+      "title": "Company Linkedin"
+     },
+     "industry": {
+      "type": "string",
+      "title": "Industry"
+     },
+     "start": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "months": {
+      "type": "integer",
+      "title": "Months"
+     }
+    },
+    "type": "object",
+    "required": [
+     "title",
+     "company",
+     "company_linkedin",
+     "industry",
+     "start",
+     "end",
+     "months"
+    ],
+    "title": "ChampionRole"
+   },
+   "ChampionSkip": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "linkedin": {
+      "type": "string",
+      "title": "Linkedin"
+     },
+     "now": {
+      "type": "string",
+      "title": "Now"
+     },
+     "reason": {
+      "type": "string",
+      "title": "Reason"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "linkedin",
+     "now",
+     "reason"
+    ],
+    "title": "ChampionSkip"
+   },
+   "ChampionWatch": {
+    "properties": {
+     "name": {
+      "type": "string",
+      "title": "Name"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "company": {
+      "type": "string",
+      "title": "Company"
+     },
+     "linkedin": {
+      "type": "string",
+      "title": "Linkedin"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "still_there",
+       "moved",
+       "not_found",
+       "unchecked"
+      ],
+      "title": "Status"
+     },
+     "now": {
+      "type": "string",
+      "title": "Now"
+     }
+    },
+    "type": "object",
+    "required": [
+     "name",
+     "title",
+     "company",
+     "linkedin",
+     "status",
+     "now"
+    ],
+    "title": "ChampionWatch"
+   },
+   "ChampionsReport": {
+    "properties": {
+     "kind": {
+      "type": "string",
+      "const": "champions",
+      "title": "Kind",
+      "default": "champions"
+     },
+     "company": {
+      "type": "string",
+      "title": "Company"
+     },
+     "website": {
+      "type": "string",
+      "title": "Website"
+     },
+     "built": {
+      "type": "string",
+      "title": "Built"
+     },
+     "icp": {
+      "$ref": "#/components/schemas/PublicIcp"
+     },
+     "customers": {
+      "items": {
+       "$ref": "#/components/schemas/ChampionCustomer"
+      },
+      "type": "array",
+      "title": "Customers"
+     },
+     "champions": {
+      "items": {
+       "$ref": "#/components/schemas/ChampionOut"
+      },
+      "type": "array",
+      "title": "Champions"
+     },
+     "more": {
+      "type": "integer",
+      "title": "More"
+     },
+     "movers": {
+      "type": "integer",
+      "title": "Movers"
+     },
+     "skipped": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "type": "object",
+      "title": "Skipped"
+     },
+     "watch": {
+      "items": {
+       "$ref": "#/components/schemas/ChampionWatch"
+      },
+      "type": "array",
+      "title": "Watch"
+     },
+     "skipped_people": {
+      "items": {
+       "$ref": "#/components/schemas/ChampionSkip"
+      },
+      "type": "array",
+      "title": "Skipped People"
+     },
+     "linkedin_usd": {
+      "type": "number",
+      "title": "Linkedin Usd"
+     }
+    },
+    "type": "object",
+    "required": [
+     "company",
+     "website",
+     "built",
+     "icp",
+     "customers",
+     "champions",
+     "more",
+     "movers",
+     "skipped",
+     "watch",
+     "skipped_people",
+     "linkedin_usd"
+    ],
+    "title": "ChampionsReport",
+    "description": "A champion report. The shared link shows the top few champions and counts the rest in `more`; the owner's\nview adds everyone, the watch list and who was ruled out."
+   },
+   "ChampionsSummary": {
+    "properties": {
+     "champions": {
+      "type": "integer",
+      "title": "Champions"
+     },
+     "a": {
+      "type": "integer",
+      "title": "A"
+     },
+     "b": {
+      "type": "integer",
+      "title": "B"
+     },
+     "c": {
+      "type": "integer",
+      "title": "C"
+     },
+     "new": {
+      "type": "integer",
+      "title": "New"
+     },
+     "customers": {
+      "type": "integer",
+      "title": "Customers"
+     },
+     "matched": {
+      "type": "integer",
+      "title": "Matched"
+     },
+     "movers": {
+      "type": "integer",
+      "title": "Movers"
+     },
+     "watch": {
+      "type": "integer",
+      "title": "Watch"
+     },
+     "linkedin_usd": {
+      "type": "number",
+      "title": "Linkedin Usd"
+     }
+    },
+    "type": "object",
+    "required": [
+     "champions",
+     "a",
+     "b",
+     "c",
+     "new",
+     "customers",
+     "matched",
+     "movers",
+     "watch",
+     "linkedin_usd"
+    ],
+    "title": "ChampionsSummary"
    },
    "Cleared": {
     "properties": {
@@ -4782,6 +5264,15 @@
    },
    "MagnetCreate": {
     "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "engagement",
+       "champions"
+      ],
+      "title": "Kind",
+      "default": "engagement"
+     },
      "mode": {
       "type": "string",
       "enum": [
@@ -4790,6 +5281,16 @@
       ],
       "title": "Mode",
       "default": "teaser"
+     },
+     "competitors": {
+      "items": {
+       "type": "string",
+       "maxLength": 200,
+       "minLength": 3
+      },
+      "type": "array",
+      "maxItems": 5,
+      "title": "Competitors"
      },
      "website": {
       "anyOf": [
@@ -4802,16 +5303,6 @@
        }
       ],
       "title": "Website"
-     },
-     "competitors": {
-      "items": {
-       "type": "string",
-       "maxLength": 200,
-       "minLength": 3
-      },
-      "type": "array",
-      "maxItems": 5,
-      "title": "Competitors"
      }
     },
     "additionalProperties": false,
@@ -4855,6 +5346,10 @@
       "type": "string",
       "title": "Website"
      },
+     "domain": {
+      "type": "string",
+      "title": "Domain"
+     },
      "step": {
       "type": "string",
       "title": "Step"
@@ -4892,6 +5387,16 @@
         "type": "null"
        }
       ]
+     },
+     "champions": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ChampionsSummary"
+       },
+       {
+        "type": "null"
+       }
+      ]
      }
     },
     "type": "object",
@@ -4903,6 +5408,7 @@
      "title",
      "mode",
      "website",
+     "domain",
      "step",
      "error",
      "created",
@@ -4914,6 +5420,15 @@
    },
    "MagnetStart": {
     "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "engagement",
+       "champions"
+      ],
+      "title": "Kind",
+      "default": "engagement"
+     },
      "mode": {
       "type": "string",
       "enum": [
@@ -4922,6 +5437,16 @@
       ],
       "title": "Mode",
       "default": "teaser"
+     },
+     "competitors": {
+      "items": {
+       "type": "string",
+       "maxLength": 200,
+       "minLength": 3
+      },
+      "type": "array",
+      "maxItems": 5,
+      "title": "Competitors"
      },
      "website": {
       "type": "string",
@@ -4940,16 +5465,6 @@
        }
       ],
       "title": "Name"
-     },
-     "competitors": {
-      "items": {
-       "type": "string",
-       "maxLength": 200,
-       "minLength": 3
-      },
-      "type": "array",
-      "maxItems": 5,
-      "title": "Competitors"
      }
     },
     "additionalProperties": false,
@@ -7071,6 +7586,12 @@
    },
    "PublicMagnet": {
     "properties": {
+     "kind": {
+      "type": "string",
+      "const": "engagement",
+      "title": "Kind",
+      "default": "engagement"
+     },
      "company": {
       "type": "string",
       "title": "Company"

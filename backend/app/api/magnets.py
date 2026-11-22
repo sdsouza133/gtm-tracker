@@ -1,5 +1,8 @@
 """Lead magnets: build one for a company in the background, follow it, and share the finished report by a private link.
 
+Two kinds: an engagement magnet (people in the ICP engaging with competitors) and a champion report (people who used
+the product at a customer and just moved to a new company in the ICP).
+
 The report link carries the magnet's id and an unguessable token; it's the only route here that needs no sign-in,
 and it shows the report and nothing else.
 """
@@ -23,14 +26,23 @@ from app.config import Settings
 from app.db import session_factory
 from app.enrich.apollo import ApolloError
 from app.magnet.brain import BrainError
-from app.magnet.build import BuildError, Spec, Tools, build, default_tools
+from app.magnet.build import BuildError, Progress, Spec, Tools, build, default_tools
+from app.magnet.champions import TREG_CAP_USD, ChampionSpec, ChampionTools, build_champions, champion_tools
 from app.magnet.linkedin import LinkedInError
 from app.magnet.site import SiteError
-from app.models import Company, Magnet
+from app.models import Company, Magnet, Setting
 from app.radar.fit import domain_of
 from app.schemas import (
+    ChampionCustomer,
+    ChampionOut,
+    ChampionRole,
+    ChampionSkip,
+    ChampionsReport,
+    ChampionsSummary,
+    ChampionWatch,
     MagnetCreate,
     MagnetOut,
+    MagnetReport,
     MagnetStart,
     MagnetSummary,
     PublicCompetitor,
@@ -47,10 +59,14 @@ router = APIRouter(prefix="/api", tags=["magnets"], dependencies=[SignedIn])
 public = APIRouter(prefix="/api/public", tags=["magnets"])
 
 KIND = "engagement"
+CHAMPIONS = "champions"
 LIST_LIMIT = 20
 ALL_LIMIT = 50
 UNLINKED_LOCK = "magnets:no-company"  # one build at a time for websites outside the tracker
+CHAMPIONS_LOCK = "magnets:champions"  # one champion report at a time, whoever asks: each one is paid for
+LEDGER = "magnet_spend:champions"  # {day, usd}: what today's champion reports have reserved
 TEASER_SHOWN = 5
+CHAMPIONS_SHOWN = 3  # the shared link names the top few champions and counts the rest
 STALE_AFTER = timedelta(minutes=30)  # a build reports every step and every post; this quiet, it died with the app
 STOPPED = "The build stopped before it finished (the app restarted). Build it again."
 KNOWN_ERRORS = (BuildError, BrainError, SiteError, LinkedInError, ApolloError, TregError)
@@ -67,6 +83,7 @@ class Runtime:
     tools: Callable[[], Tools]
     spawn: Callable[[Callable[[], None]], None]
     factory: sessionmaker[Session]
+    champions: Callable[[], ChampionTools] | None = None
 
 
 def _thread(work: Callable[[], None]) -> None:
@@ -75,22 +92,27 @@ def _thread(work: Callable[[], None]) -> None:
 
 def get_runtime(request: Request, settings: AppSettings) -> Runtime:
     runtime = getattr(request.app.state, "magnet_runtime", None)
-    return runtime or Runtime(tools=lambda: default_tools(settings), spawn=_thread, factory=session_factory())
+    return runtime or Runtime(
+        tools=lambda: default_tools(settings),
+        spawn=_thread,
+        factory=session_factory(),
+        champions=lambda: champion_tools(settings),
+    )
 
 
 MagnetRuntime = Annotated[Runtime, Depends(get_runtime)]
 
 
-def missing_setup(settings: Settings, mode: str) -> str | None:
-    """What has to be set up before a build can run, in words, or None."""
-    for value, name in (
-        (settings.anthropic_api_key, "ANTHROPIC_API_KEY"),
-        (settings.treg_token, "TREG_TOKEN"),
-        (settings.apollo_api_key, "APOLLO_API_KEY"),
-    ):
+def missing_setup(settings: Settings, mode: str, kind: str = KIND) -> str | None:
+    """What has to be set up before a build can run, in words, or None. A champion report needs no Apollo, holds no
+    emails, and so also runs without sign-in."""
+    needed = [(settings.anthropic_api_key, "ANTHROPIC_API_KEY"), (settings.treg_token, "TREG_TOKEN")]
+    if kind != CHAMPIONS:
+        needed.append((settings.apollo_api_key, "APOLLO_API_KEY"))
+    for value, name in needed:
         if value is None or not value.get_secret_value():
             return f"Add {name} in the tracker's Railway variables first."
-    if mode == "full" and settings.open_access:
+    if kind != CHAMPIONS and mode == "full" and settings.open_access:
         return "Turn on sign-in before building with emails."
     return None
 
@@ -109,7 +131,8 @@ def _out(m: Magnet) -> MagnetOut:
     stale = _stale(m)
     report = d.get("report") if m.status == "ready" else None
     summary = None
-    if isinstance(report, dict):
+    champions = _champions_summary(report) if m.kind == CHAMPIONS and isinstance(report, dict) else None
+    if isinstance(report, dict) and m.kind != CHAMPIONS:
         stats = report.get("stats") or {}
         tiers = stats.get("tiers") or {}
         summary = MagnetSummary(
@@ -131,12 +154,31 @@ def _out(m: Magnet) -> MagnetOut:
         title=m.title,
         mode=str(d.get("mode") or ""),
         website=str(d.get("website") or ""),
+        domain=str(d.get("domain") or domain_of(str(d.get("website") or ""))),
         step="" if stale else str(d.get("step") or ""),
         error=STOPPED if stale or (m.status == "failed" and not d.get("error")) else str(d.get("error") or ""),
         created=m.created_at,
-        link=f"/m/{m.id}/{token}" if summary and isinstance(token, str) else None,
+        link=f"/m/{m.id}/{token}" if (summary or champions) and isinstance(token, str) else None,
         views=int(d.get("views", 0)),
         summary=summary,
+        champions=champions,
+    )
+
+
+def _champions_summary(report: dict[str, Any]) -> ChampionsSummary:
+    stats = report.get("stats") or {}
+    grades = stats.get("grades") or {}
+    return ChampionsSummary(
+        champions=int(stats.get("champions", 0)),
+        a=int(grades.get("A", 0)),
+        b=int(grades.get("B", 0)),
+        c=int(grades.get("C", 0)),
+        new=int(stats.get("new", 0)),
+        customers=int(stats.get("customers", 0)),
+        matched=int(stats.get("matched", 0)),
+        movers=int(stats.get("movers", 0)),
+        watch=int(stats.get("watch", 0)),
+        linkedin_usd=float(stats.get("linkedin_usd", 0)),
     )
 
 
@@ -160,9 +202,15 @@ def list_for_company(company_id: str, session: DbSession) -> list[MagnetOut]:
 
 
 @router.get("/magnets")
-def list_all(session: DbSession) -> list[MagnetOut]:
-    """Every lead magnet, newest first: those built for a tracker company and those built for any website."""
-    rows = session.scalars(select(Magnet).order_by(Magnet.created_at.desc(), Magnet.id).limit(ALL_LIMIT)).all()
+def list_all(session: DbSession, kind: str | None = None, domain: str | None = None) -> list[MagnetOut]:
+    """Every lead magnet, newest first: those built for a tracker company and those built for any website. `kind`
+    and `domain` narrow it (a Fractional prospect's champion reports, say)."""
+    query = select(Magnet)
+    if kind:
+        query = query.where(Magnet.kind == kind)
+    if domain:
+        query = query.where(Magnet.data["domain"].as_string() == domain_of(domain))
+    rows = session.scalars(query.order_by(Magnet.created_at.desc(), Magnet.id).limit(ALL_LIMIT)).all()
     return [_out(m) for m in rows]
 
 
@@ -176,6 +224,8 @@ def start(
     website = (body.website or company.website or company.domain or "").strip()
     if not website:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Add the company's website first.")
+    if body.kind == CHAMPIONS:
+        session.execute(select(func.pg_advisory_xact_lock(func.hashtext(CHAMPIONS_LOCK))))
     return _begin(session, settings, today, runtime, body, company=company, name=company.name, website=website)
 
 
@@ -189,7 +239,8 @@ def start_any(
     host = domain_of(website)
     if "." not in host or any(ch.isspace() for ch in host):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Type the company's website, like acme.com.")
-    session.execute(select(func.pg_advisory_xact_lock(func.hashtext(UNLINKED_LOCK))))
+    lock = CHAMPIONS_LOCK if body.kind == CHAMPIONS else UNLINKED_LOCK
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtext(lock))))
     name = (body.name or "").strip() or host
     return _begin(session, settings, today, runtime, body, company=None, name=name, website=website)
 
@@ -206,11 +257,13 @@ def _begin(
     website: str,
 ) -> MagnetOut:
     """Save the new magnet as running and start its build. The caller holds the lock that makes this the only one."""
-    problem = missing_setup(settings, body.mode)
+    problem = missing_setup(settings, body.mode, body.kind)
     if problem:
         raise HTTPException(status.HTTP_409_CONFLICT, problem)
+    if body.kind == CHAMPIONS:
+        return _begin_champions(session, settings, today, runtime, company=company, name=name, website=website)
     owner = Magnet.company_id == company.id if company else Magnet.company_id.is_(None)
-    running = owner & (Magnet.status == "running")
+    running = owner & (Magnet.kind != CHAMPIONS) & (Magnet.status == "running")
     cutoff = _now() - STALE_AFTER
     if session.scalar(select(exists().where(running, Magnet.updated_at >= cutoff))):
         busy = "for this company" if company else "for a website outside the tracker"
@@ -239,12 +292,91 @@ def _begin(
     return _out(magnet)
 
 
+def _begin_champions(
+    session: Session,
+    settings: Settings,
+    today: date,
+    runtime: Runtime,
+    *,
+    company: Company | None,
+    name: str,
+    website: str,
+) -> MagnetOut:
+    """Save a new champion report as running and start it: one at a time across the app (the caller holds the lock),
+    and only while today's reports have room under the daily limit. Its cap is reserved now and what it didn't spend
+    is given back when it's done."""
+    champions = runtime.champions
+    if champions is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Champion reports aren't set up on this server.")
+    running = (Magnet.kind == CHAMPIONS) & (Magnet.status == "running")
+    cutoff = _now() - STALE_AFTER
+    if session.scalar(select(exists().where(running, Magnet.updated_at >= cutoff))):
+        raise HTTPException(status.HTTP_409_CONFLICT, "A champion report is already building. Try again in a minute.")
+    session.execute(update(Magnet).where(running, Magnet.updated_at < cutoff).values(status="failed"))
+    ledger = session.get(Setting, LEDGER, with_for_update=True)
+    held = ledger.value if ledger is not None and isinstance(ledger.value, dict) else {}
+    used = float(held.get("usd", 0)) if held.get("day") == today.isoformat() else 0.0
+    cap = settings.magnet_champions_daily_usd
+    if used + TREG_CAP_USD > cap + 1e-9:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Today's champion reports have used ${used:.2f} of the ${cap:.2f} daily limit. Try again tomorrow.",
+        )
+    reserved = {"day": today.isoformat(), "usd": round(used + TREG_CAP_USD, 4)}
+    if ledger is None:
+        session.add(Setting(key=LEDGER, value=reserved))
+    else:
+        ledger.value = reserved
+    domain = domain_of(website)
+    last = session.scalars(
+        select(Magnet)
+        .where(Magnet.kind == CHAMPIONS, Magnet.status == "ready", Magnet.data["domain"].as_string() == domain)
+        .order_by(Magnet.created_at.desc(), Magnet.id)
+        .limit(1)
+    ).first()
+    before = (last.data or {}).get("report") if last else None
+    magnet = Magnet(
+        company_id=company.id if company else None,
+        kind=CHAMPIONS,
+        status="running",
+        title=f"{name}: champion report"[:300],
+        data={
+            "mode": "teaser",
+            "website": website,
+            "domain": domain,
+            "step": "starting",
+            "token": secrets.token_urlsafe(32),
+            "reserved": TREG_CAP_USD,
+            "day": today.isoformat(),
+        },
+    )
+    session.add(magnet)
+    session.commit()
+    spec = ChampionSpec(company=name, website=website, before=before if isinstance(before, dict) else None)
+    magnet_id = magnet.id
+    runtime.spawn(lambda: run_champions(runtime, champions, magnet_id, spec, today))
+    return _out(magnet)
+
+
 @router.get("/magnets/{magnet_id}")
 def get_one(magnet_id: str, session: DbSession) -> MagnetOut:
     m = session.get(Magnet, magnet_id)
     if m is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "That lead magnet is gone.")
     return _out(m)
+
+
+@router.get("/magnets/{magnet_id}/report")
+def full_report(magnet_id: str, session: DbSession) -> MagnetReport:
+    """The whole finished report, for the signed-in owner: every lead or champion, and for a champion report the
+    watch list and everyone ruled out, with why."""
+    m = session.get(Magnet, magnet_id)
+    built = (m.data or {}).get("report") if m else None
+    if m is None or m.status != "ready" or not isinstance(built, dict):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That report isn't ready.")
+    if m.kind == CHAMPIONS:
+        return champions_view(built, full=True)
+    return public_view(built, full=True)
 
 
 @router.delete("/magnets/{magnet_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -258,7 +390,7 @@ def delete(magnet_id: str, session: DbSession) -> Response:
 
 
 @public.get("/magnets/{magnet_id}/{token}")
-def report(magnet_id: str, token: str, session: DbSession) -> PublicMagnet:
+def report(magnet_id: str, token: str, session: DbSession) -> MagnetReport:
     """The finished report, for whoever has the link. A teaser shows its first few leads. The row is locked while the
     view is counted, so two people opening it at once both count."""
     m = session.get(Magnet, magnet_id, with_for_update=True)
@@ -277,26 +409,33 @@ def report(magnet_id: str, token: str, session: DbSession) -> PublicMagnet:
         .execution_options(synchronize_session=False)
     )
     session.commit()
+    if m.kind == CHAMPIONS:
+        return champions_view(built, full=False)
     return public_view(built)
 
 
-def public_view(built: dict[str, Any]) -> PublicMagnet:
+def _public_icp(icp: Any) -> PublicIcp:
+    icp = icp if isinstance(icp, dict) else {}
+    return PublicIcp(
+        sells=str(icp.get("sells") or ""),
+        industries=_strings(icp.get("industries")),
+        company_sizes=_strings(icp.get("company_sizes")),
+        titles=_strings(icp.get("titles")),
+        seniority=_strings(icp.get("seniority")),
+        functions=_strings(icp.get("functions")),
+    )
+
+
+def public_view(built: dict[str, Any], *, full: bool = False) -> PublicMagnet:
+    """An engagement magnet as its link shows it: a teaser's first few leads, unless `full` (the owner's view)."""
     leads = [_public_lead(lead) for lead in built.get("leads") or [] if isinstance(lead, dict)]
-    shown = leads[:TEASER_SHOWN] if built.get("mode") == "teaser" else leads
+    shown = leads[:TEASER_SHOWN] if built.get("mode") == "teaser" and not full else leads
     stats = built.get("stats") or {}
-    icp = built.get("icp") or {}
     return PublicMagnet(
         company=str(built.get("company") or ""),
         mode=str(built.get("mode") or ""),
         built=str(built.get("built") or ""),
-        icp=PublicIcp(
-            sells=str(icp.get("sells") or ""),
-            industries=_strings(icp.get("industries")),
-            company_sizes=_strings(icp.get("company_sizes")),
-            titles=_strings(icp.get("titles")),
-            seniority=_strings(icp.get("seniority")),
-            functions=_strings(icp.get("functions")),
-        ),
+        icp=_public_icp(built.get("icp")),
         competitors=[
             PublicCompetitor(
                 name=str(c.get("name") or ""),
@@ -311,6 +450,97 @@ def public_view(built: dict[str, Any]) -> PublicMagnet:
         fit=int(stats.get("fit", 0)),
         in_region=int(stats.get("in_region", len(leads))),
         more=len(leads) - len(shown),
+    )
+
+
+def champions_view(built: dict[str, Any], *, full: bool) -> ChampionsReport:
+    """A champion report as its link shows it (the top few champions, the rest counted), or in `full` for the owner:
+    every champion, the watch list, everyone ruled out and what it cost."""
+    champions = [_champion(c) for c in built.get("champions") or [] if isinstance(c, dict)]
+    shown = champions if full else champions[:CHAMPIONS_SHOWN]
+    stats = built.get("stats") or {}
+    raw_skipped = built.get("skipped")
+    skipped: dict[str, Any] = raw_skipped if isinstance(raw_skipped, dict) else {}
+    return ChampionsReport(
+        company=str(built.get("company") or ""),
+        website=str(built.get("website") or ""),
+        built=str(built.get("built") or ""),
+        icp=_public_icp(built.get("icp")),
+        customers=[
+            ChampionCustomer(
+                name=str(c.get("name") or ""),
+                domain=str(c.get("domain") or ""),
+                evidence=str(c.get("evidence") or ""),
+                linkedin=str(c.get("linkedin") or ""),
+                linkedin_name=str(c.get("linkedin_name") or ""),
+                industry=str(c.get("industry") or ""),
+            )
+            for c in built.get("customers") or []
+            if isinstance(c, dict)
+        ],
+        champions=shown,
+        more=len(champions) - len(shown),
+        movers=int(stats.get("movers", 0)),
+        skipped={str(k): int(v) for k, v in skipped.items() if isinstance(v, int)},
+        watch=[_watch(w) for w in built.get("watch") or [] if isinstance(w, dict)] if full else [],
+        skipped_people=[
+            ChampionSkip(
+                name=str(p.get("name") or ""),
+                linkedin=str(p.get("linkedin") or ""),
+                now=str(p.get("now") or ""),
+                reason=str(p.get("reason") or ""),
+            )
+            for p in built.get("skipped_people") or []
+            if isinstance(p, dict)
+        ]
+        if full
+        else [],
+        linkedin_usd=float(stats.get("linkedin_usd", 0)) if full else 0.0,
+    )
+
+
+def _role(value: Any) -> ChampionRole:
+    r = value if isinstance(value, dict) else {}
+    return ChampionRole(
+        title=str(r.get("title") or ""),
+        company=str(r.get("company") or ""),
+        company_linkedin=str(r.get("company_linkedin") or ""),
+        industry=str(r.get("industry") or ""),
+        start=str(r["start"]) if r.get("start") else None,
+        end=str(r["end"]) if r.get("end") else None,
+        months=int(r.get("months") or 0),
+    )
+
+
+def _champion(c: dict[str, Any]) -> ChampionOut:
+    grade = str(c.get("grade") or "C")
+    return ChampionOut(
+        name=str(c.get("name") or ""),
+        linkedin=str(c.get("linkedin") or ""),
+        location=str(c.get("location") or ""),
+        grade="A" if grade == "A" else "B" if grade == "B" else "C",
+        new=bool(c.get("new")),
+        was=_role(c.get("was")),
+        now=_role(c.get("now")),
+        why=str(c.get("why") or ""),
+    )
+
+
+def _watch(w: dict[str, Any]) -> ChampionWatch:
+    status_ = str(w.get("status") or "unchecked")
+    return ChampionWatch(
+        name=str(w.get("name") or ""),
+        title=str(w.get("title") or ""),
+        company=str(w.get("company") or ""),
+        linkedin=str(w.get("linkedin") or ""),
+        status="still_there"
+        if status_ == "still_there"
+        else "moved"
+        if status_ == "moved"
+        else "not_found"
+        if status_ == "not_found"
+        else "unchecked",
+        now=str(w.get("now") or ""),
     )
 
 
@@ -341,6 +571,36 @@ def _public_lead(lead: dict[str, Any]) -> PublicLead:
 
 
 def run(runtime: Runtime, magnet_id: str, spec: Spec, today: date) -> None:
+    """Build an engagement magnet and store the result."""
+    _run(
+        runtime,
+        magnet_id,
+        lambda progress: build(spec, runtime.tools(), today, progress),
+        lambda report: f"{spec.company}: lead magnet ready ({len(report['leads'])} leads)",
+    )
+
+
+def run_champions(
+    runtime: Runtime, tools: Callable[[], ChampionTools], magnet_id: str, spec: ChampionSpec, today: date
+) -> None:
+    """Build a champion report and store the result; what it didn't spend of its reservation goes back to the day."""
+    _run(
+        runtime,
+        magnet_id,
+        lambda progress: build_champions(spec, tools(), today, progress),
+        lambda report: f"{spec.company}: champion report ready ({len(report['champions'])} champions)",
+        settle=True,
+    )
+
+
+def _run(
+    runtime: Runtime,
+    magnet_id: str,
+    work: Callable[[Progress], dict[str, Any]],
+    ready: Callable[[dict[str, Any]], str],
+    *,
+    settle: bool = False,
+) -> None:
     """Build it and store the result. Each step is saved as it starts, so the page can show where it is."""
 
     def save(**changes: Any) -> bool:
@@ -355,10 +615,9 @@ def run(runtime: Runtime, magnet_id: str, spec: Spec, today: date) -> None:
             if "status" in changes:
                 m.status = changes["status"]
                 if changes["status"] == "ready":
-                    leads = len(data["report"]["leads"])
-                    record(
-                        session, "magnet", f"{spec.company}: lead magnet ready ({leads} leads)", company_id=m.company_id
-                    )
+                    record(session, "magnet", ready(data["report"]), company_id=m.company_id)
+                    if settle:
+                        _give_back(session, data)
             session.commit()
             return True
 
@@ -367,7 +626,7 @@ def run(runtime: Runtime, magnet_id: str, spec: Spec, today: date) -> None:
             raise CancelledError  # deleted or superseded: stop before spending more
 
     try:
-        report_data = build(spec, runtime.tools(), today, progress)
+        report_data = work(progress)
     except CancelledError:
         return
     except KNOWN_ERRORS as e:
@@ -378,3 +637,15 @@ def run(runtime: Runtime, magnet_id: str, spec: Spec, today: date) -> None:
         save(status="failed", step="", error="Something went wrong while building. Try again.")
         return
     save(status="ready", step="", error="", report=report_data, finished_at=_now().isoformat())
+
+
+def _give_back(session: Session, data: dict[str, Any]) -> None:
+    """Return the part of a finished report's reservation it didn't spend to the day's ledger. A build that failed
+    or was deleted keeps its whole reservation: what it spent isn't known."""
+    spent = float(((data.get("report") or {}).get("stats") or {}).get("linkedin_usd", 0))
+    unused = max(0.0, float(data.get("reserved", 0)) - spent)
+    ledger = session.get(Setting, LEDGER, with_for_update=True)
+    held = ledger.value if ledger is not None and isinstance(ledger.value, dict) else None
+    if ledger is None or held is None or held.get("day") != data.get("day") or not unused:
+        return
+    ledger.value = {**held, "usd": round(max(0.0, float(held.get("usd", 0)) - unused), 4)}

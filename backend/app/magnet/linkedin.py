@@ -11,6 +11,7 @@ from datetime import date
 from typing import Any
 
 from app.magnet.touch import Kind
+from app.radar.fit import norm, web_url
 from app.treg import Caller, TregError
 
 COMPANY_POSTS = "harvestapi.linkedin.company.posts"
@@ -18,9 +19,26 @@ PROFILE_POSTS = "harvestapi.linkedin.user.posts"
 REACTIONS = "harvestapi.linkedin.post.reactions"
 COMMENTS = "harvestapi.linkedin.post.comments"
 PROFILES = "harvestapi.linkedin.user.profile.main"  # the profile as LinkedIn first shows it: enough for where and what
-PRICE = {COMPANY_POSTS: 0.004, PROFILE_POSTS: 0.004, REACTIONS: 0.004, COMMENTS: 0.004, PROFILES: 0.004}  # $ a call
+COMPANY_SEARCH = "harvestapi.linkedin.company.search"  # a company's LinkedIn page by name
+LEADS_SEARCH = "harvestapi.linkedin.leads.search"  # Sales Navigator's filters: past companies, changed jobs lately
+HISTORY = "fetchinio.linkedin.user.profile"  # a profile with its whole work history
+PRICE = {  # $ a call: the most a call may charge
+    COMPANY_POSTS: 0.004,
+    PROFILE_POSTS: 0.004,
+    REACTIONS: 0.004,
+    COMMENTS: 0.004,
+    PROFILES: 0.004,
+    COMPANY_SEARCH: 0.004,
+    LEADS_SEARCH: 0.10,
+    HISTORY: 0.002,
+}
 PROFILE_WORKERS = 3  # treg shares its HarvestAPI account: a few profiles at a time, not a burst
 MEMBER_ID = re.compile(r"/in/(ACo[A-Za-z0-9_-]+)")
+PAST_COMPANIES = 50  # the most companies one people search can filter on
+COMPANY_SUFFIX = re.compile(r"\b(inc|llc|ltd|limited|co|corp|corporation|company|gmbh|plc|pbc)\b\.?", re.I)
+INDUSTRY_NOISE = frozenset(
+    {"and", "of", "the", "services", "service", "products", "product", "companies", "company", "brands", "brand"}
+)
 
 
 class LinkedInError(RuntimeError):
@@ -85,8 +103,11 @@ class LinkedIn:
     def __init__(self, treg: Caller) -> None:
         self.treg = treg
 
-    def _pages(self, tool: str, query: dict[str, str], want: int, max_usd: float) -> tuple[list[dict[str, Any]], float]:
-        """Up to `want` items, a page at a time, while the budget covers a whole call."""
+    def _pages(
+        self, tool: str, query: dict[str, str], want: int, max_usd: float, meta: dict[str, Any] | None = None
+    ) -> tuple[list[dict[str, Any]], float]:
+        """Up to `want` items, a page at a time, while the budget covers a whole call. `meta`, when given, gets the
+        last page's pagination (how many there are in all, say)."""
         items: list[dict[str, Any]] = []
         spent = 0.0
         page, token = 1, ""
@@ -101,6 +122,8 @@ class LinkedIn:
             got = [i for i in body.get("elements") or [] if isinstance(i, dict)]
             items += got
             pagination = body.get("pagination") or {}
+            if meta is not None and isinstance(pagination, dict):
+                meta.update(pagination)
             token = str(pagination.get("paginationToken") or "")
             last = pagination.get("totalPages")
             if not got or (page >= int(last) if last is not None else not token):
@@ -182,6 +205,108 @@ class LinkedIn:
         if errors and len(errors) == len(urls):
             raise LinkedInError(f"{_name(PROFILES)}: {errors[0]}", spent=spent)
         return {p.key: p for p in found}, spent
+
+    # ------------------------------------------------------------------------- champion reports
+
+    def companies(self, names: list[str], industries: list[str], max_usd: float) -> tuple[dict[str, "Org"], float]:
+        """Each name's LinkedIn company page, as many names as the budget covers, in order. A name with no clear match
+        is left out rather than guessed (see `pick_company`)."""
+        names = list(dict.fromkeys(n for n in names if n.strip()))[: affordable(COMPANY_SEARCH, max_usd)]
+        if not names:
+            return {}, 0.0
+
+        def one(name: str) -> tuple[str, Org | None, float]:
+            try:
+                answer = self.treg.call(
+                    COMPANY_SEARCH, query={"search": name, "page": "1"}, max_usd=PRICE[COMPANY_SEARCH]
+                )
+            except TregError as e:
+                return name, None, e.spent
+            body = answer.body if isinstance(answer.body, dict) else {}
+            found = [o for o in (parse_org(i) for i in body.get("elements") or [] if isinstance(i, dict)) if o]
+            return name, pick_company(name, found, industries), answer.cost_usd
+
+        with ThreadPoolExecutor(max_workers=PROFILE_WORKERS) as pool:
+            results = list(pool.map(one, names))
+        return {name: org for name, org, _ in results if org}, sum(cost for _, _, cost in results)
+
+    def movers(
+        self, companies: list[str], titles: list[str], want: int, max_usd: float
+    ) -> tuple[list["Mover"], int, float]:
+        """People who used to work at any of these companies (LinkedIn company pages), changed jobs in the last 90
+        days, and no longer work at one of them; `titles` narrows it to past jobs with those words. Also how many
+        LinkedIn found in all. Raises LinkedInError carrying what was read before a page failed."""
+        pages = ",".join(companies[:PAST_COMPANIES])
+        query = {"pastCompanies": pages, "excludeCurrentCompanies": pages, "recentlyChangedJobs": "true"}
+        if titles:
+            query["pastJobTitles"] = ",".join(titles)
+        meta: dict[str, Any] = {}
+        items, spent = self._pages(LEADS_SEARCH, query, want, max_usd, meta)
+        found = [m for m in (parse_mover(i) for i in items) if m]
+        return found, _int(meta.get("totalElements")) or len(found), spent
+
+    def history(self, urls: list[str], max_usd: float, today: date) -> tuple[dict[str, "History"], float]:
+        """Each profile's work history by the URL asked for, as many as the budget covers. One that can't be read is
+        left out; only all of them failing is an error."""
+        urls = list(dict.fromkeys(urls))[: affordable(HISTORY, max_usd)]
+        if not urls:
+            return {}, 0.0
+
+        def one(url: str) -> tuple[str, History | None, float, TregError | None]:
+            try:
+                answer = self.treg.call(HISTORY, query={"profileUrlOrUrn": url}, max_usd=PRICE[HISTORY])
+            except TregError as e:
+                return url, None, e.spent, e
+            body = answer.body if isinstance(answer.body, dict) else {}
+            return url, parse_history(body, today), answer.cost_usd, None
+
+        with ThreadPoolExecutor(max_workers=PROFILE_WORKERS) as pool:
+            results = list(pool.map(one, urls))
+        spent = sum(cost for _, _, cost, _ in results)
+        errors = [e for _, _, _, e in results if e]
+        if errors and len(errors) == len(urls):
+            raise LinkedInError(f"{_name(HISTORY)}: {errors[0]}", spent=spent)
+        return {url: h for url, h, _, _ in results if h}, spent
+
+
+@dataclass(frozen=True)
+class Org:
+    """A company's LinkedIn page, as the company search shows it."""
+
+    name: str
+    linkedin: str
+    industry: str
+    location: str
+    followers: int
+
+
+@dataclass(frozen=True)
+class Job:
+    title: str
+    company: str
+    company_linkedin: str  # empty when LinkedIn has no page for it
+    industry: str
+    months: int  # time in the job so far, or in all when it's over
+    start: date | None = None
+    end: date | None = None  # None while it's current
+
+
+@dataclass(frozen=True)
+class Mover:
+    """Someone a people search found: who they are and the jobs they hold now."""
+
+    key: str  # LinkedIn's member id
+    url: str
+    name: str
+    location: str
+    jobs: tuple[Job, ...]
+    hidden: bool  # LinkedIn shows them as "LinkedIn Member": no name or link
+
+
+@dataclass(frozen=True)
+class History:
+    url: str  # the public profile address, when the lookup gives one
+    jobs: tuple[Job, ...]  # newest first
 
 
 def _engagers(items: list[dict[str, Any]], kind: Kind, post: Post) -> list[Engager]:
@@ -268,3 +393,135 @@ def parse_profile(item: dict[str, Any]) -> Profile | None:
         company=str(current.get("companyName") or "").strip(),
         company_linkedin=str(current.get("companyLinkedinUrl") or "").strip(),
     )
+
+
+def parse_org(item: dict[str, Any]) -> Org | None:
+    url = web_url(str(item.get("linkedinUrl") or ""))
+    name = str(item.get("name") or "").strip()
+    if "/company/" not in url or not name:
+        return None
+    followers = re.sub(r"[^0-9.KkMm]", "", str(item.get("followers") or ""))
+    scale = 1_000_000 if followers[-1:].lower() == "m" else 1_000 if followers[-1:].lower() == "k" else 1
+    try:
+        count = int(float(followers.rstrip("KkMm") or 0) * scale)
+    except ValueError:
+        count = 0
+    return Org(
+        name=name,
+        linkedin=url.split("?")[0].rstrip("/"),
+        industry=str(item.get("industry") or "").strip(),
+        location=str((item.get("location") or {}).get("linkedinText") or "").strip(),
+        followers=count,
+    )
+
+
+def company_key(name: str) -> str:
+    """A company's name as two spellings of it agree on: no Inc. or LLC, no spaces or punctuation."""
+    return norm(COMPANY_SUFFIX.sub(" ", name or ""))
+
+
+def _name_words(name: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", COMPANY_SUFFIX.sub(" ", (name or "").lower()))
+
+
+def pick_company(name: str, found: list[Org], industries: list[str]) -> Org | None:
+    """The page that is this company: the same name (an Inc. or LLC aside), or the whole name followed by a word or two
+    ("HexClad" is "HexClad Cookware", but "Ghost" isn't "Ghostly Labs"). Among those, one in the ICP's industries
+    first, then the exact name, then the most followed. None when nothing matches: a wrong page would bring in the
+    wrong people."""
+    want = _name_words(name)
+    if not want:
+        return None
+    words = {w for i in industries for w in re.findall(r"[a-z]+", i.lower()) if w not in INDUSTRY_NOISE}
+
+    def in_icp(o: Org) -> bool:
+        return bool(words & {w for w in re.findall(r"[a-z]+", o.industry.lower()) if w not in INDUSTRY_NOISE})
+
+    def exact(o: Org) -> bool:
+        return company_key(o.name) == company_key(name)
+
+    def close(o: Org) -> bool:
+        got = _name_words(o.name)
+        return exact(o) or (got[: len(want)] == want and len(got) <= len(want) + 2)
+
+    return max((o for o in found if close(o)), key=lambda o: (in_icp(o), exact(o), o.followers), default=None)
+
+
+def _company_url(company: dict[str, Any]) -> str:
+    """A LinkedIn company page from what a people search gives: its address, or its id inside a URN."""
+    url = web_url(str(company.get("linkedinUrl") or company.get("url") or ""))
+    if url:
+        return url.split("?")[0].rstrip("/")
+    m = re.search(r":(\d+)$", str(company.get("entityUrn") or ""))
+    return f"https://www.linkedin.com/company/{m.group(1)}" if m else ""
+
+
+def parse_mover(item: dict[str, Any]) -> Mover | None:
+    key = str(item.get("id") or item.get("linkedinUrl") or "")
+    if not key:
+        return None
+    url = web_url(str(item.get("linkedinUrl") or "")).split("?")[0]
+    name = " ".join(str(item.get(k) or "").strip() for k in ("firstName", "lastName")).strip()
+    jobs = []
+    for p in item.get("currentPositions") or []:
+        if not isinstance(p, dict):
+            continue
+        company = _dict(p.get("company"))
+        tenure = p.get("tenureAtPosition") or {}
+        jobs.append(
+            Job(
+                title=str(p.get("title") or "").strip(),
+                company=str(p.get("companyName") or company.get("name") or "").strip(),
+                company_linkedin=_company_url(company),
+                industry=str(company.get("industry") or "").strip(),
+                months=_int(tenure.get("numYears")) * 12 + _int(tenure.get("numMonths")),
+            )
+        )
+    hidden = not url or not name or name.lower() == "linkedin member"
+    location = str((item.get("location") or {}).get("linkedinText") or "").strip()
+    return Mover(key=key, url=url, name=name, location=location, jobs=tuple(jobs), hidden=hidden)
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _month(value: Any) -> date | None:
+    if not isinstance(value, dict) or not value.get("year"):
+        return None
+    try:
+        return date(int(value["year"]), min(12, max(1, int(value.get("month") or 1))), 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_history(body: dict[str, Any], today: date) -> History:
+    """A profile lookup's work history, newest first. The experiences sit at the top or under `raw`, depending on
+    how the answer is wrapped."""
+    raw = _dict(body.get("raw")) or body
+    public = str(raw.get("publicIdentifier") or "")
+    url = web_url(str(raw.get("url") or "")) or (f"https://www.linkedin.com/in/{public}" if public else "")
+    jobs = []
+    for e in raw.get("experiences") or raw.get("experience") or []:
+        if not isinstance(e, dict):
+            continue
+        period = _dict(e.get("timePeriod"))
+        start, end = _month(period.get("startDate")), _month(period.get("endDate"))
+        company = _dict(e.get("company"))
+        months = 0
+        if start:
+            last = end or today
+            months = max(0, (last.year - start.year) * 12 + last.month - start.month)
+        jobs.append(
+            Job(
+                title=str(e.get("jobTitle") or e.get("title") or "").strip(),
+                company=str(company.get("name") or e.get("name") or e.get("companyName") or "").strip(),
+                company_linkedin=web_url(str(company.get("url") or "")).split("?")[0].rstrip("/"),
+                industry="",
+                months=months,
+                start=start,
+                end=end,
+            )
+        )
+    jobs.sort(key=lambda j: (j.end is None, j.end or date.max, j.start or date.min), reverse=True)
+    return History(url=url.split("?")[0].rstrip("/"), jobs=tuple(jobs))
