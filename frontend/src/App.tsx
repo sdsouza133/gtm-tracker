@@ -10,6 +10,7 @@ import { MagnetsPage } from "@/pages/Magnets";
 import { EventsPage } from "@/pages/Events";
 import { FractionalPage } from "@/pages/Fractional";
 import { LoginPage } from "@/pages/Login";
+import { MagnetPage } from "@/pages/MagnetPage";
 import { MagnetReportPage } from "@/pages/MagnetReport";
 import { PeoplePage } from "@/pages/People";
 import { PipelinePage } from "@/pages/Pipeline";
@@ -66,6 +67,7 @@ export function App() {
         <Route path="events" element={<EventsPage />} />
         <Route path="events/:runId" element={<EventRunPage />} />
         <Route path="magnets" element={<MagnetsPage />} />
+        <Route path="magnets/:id" element={<MagnetPage />} />
         <Route path="*" element={<Placeholder title="Not found" />} />
       </Route>
     </Routes>

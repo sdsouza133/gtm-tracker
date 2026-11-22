@@ -1,4 +1,13 @@
-import type { CompanySummary, MoveCard, Person, S } from "@/api/hooks";
+import type {
+  Champion,
+  ChampionsReport,
+  ChampionsSummary,
+  CompanySummary,
+  Magnet,
+  MoveCard,
+  Person,
+  S,
+} from "@/api/hooks";
 
 /** Made-up records for tests. */
 export const TODAY = "2026-10-26";
@@ -99,3 +108,114 @@ export const STATS: S["StatsOut"] = {
   in_play: 12,
   days_left: 40,
 };
+
+/** A made-up champion: ran CX at a customer, now at a new company in the ICP. */
+export function champion(over: Partial<Champion> = {}): Champion {
+  return {
+    name: "Dana Example",
+    linkedin: "https://www.linkedin.com/in/dana-example",
+    location: "Austin, Texas, United States",
+    grade: "A",
+    new: true,
+    was: {
+      title: "Senior Manager, Customer Experience",
+      company: "Glowco",
+      company_linkedin: "https://www.linkedin.com/company/glowco",
+      industry: "",
+      start: "2021-03-01",
+      end: "2026-08-01",
+      months: 65,
+    },
+    now: {
+      title: "VP Customer Experience",
+      company: "Newbrand",
+      company_linkedin: "",
+      industry: "Retail",
+      start: "2026-09-01",
+      end: null,
+      months: 2,
+    },
+    why: "Runs CX at a consumer brand",
+    ...over,
+  };
+}
+
+export function championsReport(over: Partial<ChampionsReport> = {}): ChampionsReport {
+  return {
+    kind: "champions",
+    company: "CXHero",
+    website: "https://cxhero.example",
+    built: "2026-11-22",
+    icp: {
+      sells: "AI agents for customer service at consumer brands",
+      industries: ["Consumer brands", "Retail"],
+      company_sizes: ["11-500"],
+      titles: ["VP Customer Experience"],
+      seniority: ["VP"],
+      functions: ["Customer Experience"],
+    },
+    customers: [
+      {
+        name: "Glowco",
+        domain: "glowco.example",
+        evidence: "case_study",
+        linkedin: "https://www.linkedin.com/company/glowco",
+        linkedin_name: "Glowco Inc.",
+        industry: "Personal Care",
+      },
+      { name: "Ghost Co", domain: "", evidence: "logo", linkedin: "", linkedin_name: "", industry: "" },
+    ],
+    champions: [
+      champion(),
+      champion({ name: "Riley Example", grade: "B", linkedin: "https://www.linkedin.com/in/riley-example" }),
+      champion({ name: "Sam Example", grade: "C", linkedin: "https://www.linkedin.com/in/sam-example" }),
+    ],
+    more: 0,
+    movers: 20,
+    repeat: false,
+    skipped: { junior: 2, stale_move: 1 },
+    watch: [],
+    skipped_people: [],
+    linkedin_usd: 0,
+    ...over,
+  };
+}
+
+export function championsSummary(over: Partial<ChampionsSummary> = {}): ChampionsSummary {
+  return {
+    champions: 4,
+    a: 2,
+    b: 1,
+    c: 1,
+    new: 4,
+    repeat: false,
+    customers: 5,
+    matched: 4,
+    movers: 20,
+    watch: 2,
+    linkedin_usd: 0.21,
+    ...over,
+  };
+}
+
+/** A finished champion report as the tracker lists it. */
+export function championsMagnet(over: Partial<Magnet> = {}): Magnet {
+  return {
+    id: "m1",
+    company_id: null,
+    kind: "champions",
+    status: "ready",
+    title: "CXHero: champion report",
+    mode: "teaser",
+    website: "https://cxhero.example",
+    domain: "cxhero.example",
+    step: "",
+    error: "",
+    created: "2026-11-22T15:00:00Z",
+    link: "/m/m1/tok",
+    views: 0,
+    summary: null,
+    champions: championsSummary(),
+    ...over,
+  };
+}

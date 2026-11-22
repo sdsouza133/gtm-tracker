@@ -1,4 +1,5 @@
-/** Lead magnets: what each build costs, and the competitors typed in. Shared by the company panel and the page. */
+/** Lead magnets: what each build costs, the competitors typed in, and a website's domain. Shared by the company
+ * panel, the Fractional drawer and the page. */
 
 import type { MagnetMode } from "@/api/hooks";
 
@@ -31,4 +32,19 @@ export function competitors(text: string): { list: string[]; problem: string } {
       ? "Name up to 5 competitors."
       : "";
   return { list, problem };
+}
+
+export const CHAMPIONS_COST =
+  "the people who used it at their customers and just moved to a company in their ICP; up to $0.60 of LinkedIn data, plus about 30 cents of Claude, in about a minute";
+
+/** A website's domain, as the tracker matches reports to companies: no https://, www. or path. */
+export function domainOf(site: string): string {
+  return (
+    site
+      .trim()
+      .toLowerCase()
+      .replace(/^[a-z]+:\/\//, "")
+      .replace(/^www\./, "")
+      .split(/[/?#:]/)[0] ?? ""
+  );
 }

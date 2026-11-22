@@ -3,6 +3,7 @@ import { Check, Copy, ExternalLink, Linkedin, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { type ProspectDetail, type S, useFxProspect, useUpdateProspect } from "@/api/hooks";
+import { ChampionsBox } from "@/components/ChampionsBox";
 import { notify } from "@/components/Toast";
 import { Button, Chip } from "@/components/ui";
 import { formatDay, initials, nextWorkday } from "@/lib/format";
@@ -559,6 +560,7 @@ export function ProspectDrawer({ id, today, onClose }: { id: string; today: stri
                   Find more people
                 </a>
               </div>
+              <ChampionsBox name={p.name} website={p.website ?? p.domain} />
               <div role="tablist" aria-label="Sections" className="flex gap-1">
                 {(
                   [

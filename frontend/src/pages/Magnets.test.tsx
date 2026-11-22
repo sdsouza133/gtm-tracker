@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 import type { Magnet } from "@/api/hooks";
 import { MagnetsPage } from "@/pages/Magnets";
-import { SIGNED_IN } from "@/test/fixtures";
+import { championsMagnet, SIGNED_IN } from "@/test/fixtures";
 import { mockApi, renderApp } from "@/test/render";
 
 function magnet(over: Partial<Magnet> = {}): Magnet {
@@ -15,6 +15,7 @@ function magnet(over: Partial<Magnet> = {}): Magnet {
     title: "Northwind Labs: teaser",
     mode: "teaser",
     website: "https://northwind.example",
+    domain: "northwind.example",
     step: "",
     error: "",
     created: "2026-10-26T15:00:00Z",
@@ -84,6 +85,7 @@ describe("the lead magnets page", () => {
 
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+      kind: "engagement",
       mode: "teaser",
       website: "acme.example",
       name: "Acme",
@@ -104,5 +106,84 @@ describe("the lead magnets page", () => {
     expect(await screen.findByText(/doesn't look like a website/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Build a teaser" })).toBeDisabled();
     expect(calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("builds a champion report for any website, asking for no competitors", async () => {
+    let built = false;
+    const calls = mockApi({
+      ...SIGNED_IN,
+      [LIST]: {
+        body: () =>
+          built
+            ? [
+                championsMagnet({
+                  status: "running",
+                  step: "looking for people who left them",
+                  link: null,
+                  champions: null,
+                }),
+              ]
+            : [],
+      },
+      "POST /api/magnets": {
+        status: 202,
+        body: () => {
+          built = true;
+          return championsMagnet({ status: "running", step: "starting", link: null, champions: null });
+        },
+      },
+    });
+    renderApp(<MagnetsPage />);
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("radio", { name: "Champions who moved" }));
+    expect(screen.queryByLabelText(/Competitors you know/)).not.toBeInTheDocument();
+    const build = screen.getByRole("button", { name: "Build the champion report" });
+    expect(build).toBeDisabled(); // a website first
+    await user.type(screen.getByLabelText("Their website"), "cxhero.example");
+    await user.type(screen.getByLabelText(/Company name/), "CXHero");
+    await user.click(build);
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+      kind: "champions",
+      website: "cxhero.example",
+      name: "CXHero",
+    });
+    expect(await screen.findByText("Building: looking for people who left them")).toBeInTheDocument();
+    // one champion report at a time
+    expect(screen.getByRole("button", { name: "Build the champion report" })).toBeDisabled();
+    // an engagement magnet for a website outside the tracker can still start
+    await user.click(screen.getByRole("radio", { name: "Engagers" }));
+    expect(screen.getByRole("button", { name: "Build a teaser" })).toBeEnabled();
+  });
+
+  it("shows a champion report's result and opens its full report", async () => {
+    mockApi({ ...SIGNED_IN, [LIST]: { body: [championsMagnet()] } });
+    renderApp(<MagnetsPage />);
+    expect(await screen.findByText("4 champions moved (2 A, 1 B, 1 C)")).toBeInTheDocument();
+    expect(
+      screen.getByText(/4 of 5 customers found on LinkedIn · 20 left them in the last 90 days/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/new since the last report/)).not.toBeInTheDocument(); // a first report
+    expect(screen.getByRole("link", { name: /Full report/ })).toHaveAttribute("href", "/magnets/m1");
+    expect(screen.getByRole("link", { name: /Open report/ })).toHaveAttribute("href", "/m/m1/tok");
+  });
+
+  it("says why a champion report couldn't start", async () => {
+    mockApi({
+      ...SIGNED_IN,
+      [LIST]: { body: [] },
+      "POST /api/magnets": {
+        status: 409,
+        body: { detail: "Today's champion reports have used $3.00 of the $3.00 daily limit. Try again tomorrow." },
+      },
+    });
+    renderApp(<MagnetsPage />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("radio", { name: "Champions who moved" }));
+    await user.type(screen.getByLabelText("Their website"), "cxhero.example");
+    await user.click(screen.getByRole("button", { name: "Build the champion report" }));
+    expect(await screen.findByText(/daily limit\. Try again tomorrow\./)).toBeInTheDocument();
   });
 });

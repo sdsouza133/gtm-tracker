@@ -679,7 +679,8 @@ export interface paths {
         };
         /**
          * List All
-         * @description Every lead magnet, newest first: those built for a tracker company and those built for any website.
+         * @description Every lead magnet, newest first: those built for a tracker company and those built for any website. `kind`
+         *     and `domain` narrow it (a Fractional prospect's champion reports, say).
          */
         get: operations["list_all_api_magnets_get"];
         put?: never;
@@ -711,6 +712,27 @@ export interface paths {
          * @description Delete it, which also turns its link off.
          */
         delete: operations["delete_api_magnets__magnet_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/magnets/{magnet_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Full Report
+         * @description The whole finished report, for the signed-in owner: every lead or champion, and for a champion report the
+         *     watch list and everyone ruled out, with why.
+         */
+        get: operations["full_report_api_magnets__magnet_id__report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -932,6 +954,151 @@ export interface components {
             description: string;
             /** Earned */
             earned: boolean;
+        };
+        /** ChampionCustomer */
+        ChampionCustomer: {
+            /** Name */
+            name: string;
+            /** Domain */
+            domain: string;
+            /** Evidence */
+            evidence: string;
+            /** Linkedin */
+            linkedin: string;
+            /** Linkedin Name */
+            linkedin_name: string;
+            /** Industry */
+            industry: string;
+        };
+        /** ChampionOut */
+        ChampionOut: {
+            /** Name */
+            name: string;
+            /** Linkedin */
+            linkedin: string;
+            /** Location */
+            location: string;
+            /**
+             * Grade
+             * @enum {string}
+             */
+            grade: "A" | "B" | "C";
+            /** New */
+            new: boolean;
+            was: components["schemas"]["ChampionRole"];
+            now: components["schemas"]["ChampionRole"];
+            /** Why */
+            why: string;
+        };
+        /** ChampionRole */
+        ChampionRole: {
+            /** Title */
+            title: string;
+            /** Company */
+            company: string;
+            /** Company Linkedin */
+            company_linkedin: string;
+            /** Industry */
+            industry: string;
+            /** Start */
+            start: string | null;
+            /** End */
+            end: string | null;
+            /** Months */
+            months: number;
+        };
+        /** ChampionSkip */
+        ChampionSkip: {
+            /** Name */
+            name: string;
+            /** Linkedin */
+            linkedin: string;
+            /** Now */
+            now: string;
+            /** Reason */
+            reason: string;
+        };
+        /** ChampionWatch */
+        ChampionWatch: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Company */
+            company: string;
+            /** Linkedin */
+            linkedin: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "still_there" | "moved" | "not_found" | "unchecked";
+            /** Now */
+            now: string;
+        };
+        /**
+         * ChampionsReport
+         * @description A champion report. The shared link shows the top few champions and counts the rest in `more`; the owner's
+         *     view adds everyone, the watch list and who was ruled out.
+         */
+        ChampionsReport: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "champions";
+            /** Company */
+            company: string;
+            /** Website */
+            website: string;
+            /** Built */
+            built: string;
+            icp: components["schemas"]["PublicIcp"];
+            /** Customers */
+            customers: components["schemas"]["ChampionCustomer"][];
+            /** Champions */
+            champions: components["schemas"]["ChampionOut"][];
+            /** More */
+            more: number;
+            /** Movers */
+            movers: number;
+            /** Repeat */
+            repeat: boolean;
+            /** Skipped */
+            skipped: {
+                [key: string]: number;
+            };
+            /** Watch */
+            watch: components["schemas"]["ChampionWatch"][];
+            /** Skipped People */
+            skipped_people: components["schemas"]["ChampionSkip"][];
+            /** Linkedin Usd */
+            linkedin_usd: number;
+        };
+        /** ChampionsSummary */
+        ChampionsSummary: {
+            /** Champions */
+            champions: number;
+            /** A */
+            a: number;
+            /** B */
+            b: number;
+            /** C */
+            c: number;
+            /** New */
+            new: number;
+            /** Repeat */
+            repeat: boolean;
+            /** Customers */
+            customers: number;
+            /** Matched */
+            matched: number;
+            /** Movers */
+            movers: number;
+            /** Watch */
+            watch: number;
+            /** Linkedin Usd */
+            linkedin_usd: number;
         };
         /** Cleared */
         Cleared: {
@@ -1607,15 +1774,21 @@ export interface components {
         /** MagnetCreate */
         MagnetCreate: {
             /**
+             * Kind
+             * @default engagement
+             * @enum {string}
+             */
+            kind?: "engagement" | "champions";
+            /**
              * Mode
              * @default teaser
              * @enum {string}
              */
             mode?: "teaser" | "full";
-            /** Website */
-            website?: string | null;
             /** Competitors */
             competitors?: string[];
+            /** Website */
+            website?: string | null;
         };
         /** MagnetOut */
         MagnetOut: {
@@ -1633,6 +1806,8 @@ export interface components {
             mode: string;
             /** Website */
             website: string;
+            /** Domain */
+            domain: string;
             /** Step */
             step: string;
             /** Error */
@@ -1647,6 +1822,7 @@ export interface components {
             /** Views */
             views: number;
             summary: components["schemas"]["MagnetSummary"] | null;
+            champions?: components["schemas"]["ChampionsSummary"] | null;
         };
         /**
          * MagnetStart
@@ -1654,17 +1830,23 @@ export interface components {
          */
         MagnetStart: {
             /**
+             * Kind
+             * @default engagement
+             * @enum {string}
+             */
+            kind?: "engagement" | "champions";
+            /**
              * Mode
              * @default teaser
              * @enum {string}
              */
             mode?: "teaser" | "full";
+            /** Competitors */
+            competitors?: string[];
             /** Website */
             website: string;
             /** Name */
             name?: string | null;
-            /** Competitors */
-            competitors?: string[];
         };
         /** MagnetSummary */
         MagnetSummary: {
@@ -2343,6 +2525,11 @@ export interface components {
         };
         /** PublicMagnet */
         PublicMagnet: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "engagement";
             /** Company */
             company: string;
             /** Mode */
@@ -4031,7 +4218,10 @@ export interface operations {
     };
     list_all_api_magnets_get: {
         parameters: {
-            query?: never;
+            query?: {
+                kind?: string | null;
+                domain?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4045,6 +4235,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MagnetOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4130,6 +4329,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    full_report_api_magnets__magnet_id__report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                magnet_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicMagnet"] | components["schemas"]["ChampionsReport"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -4418,7 +4648,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicMagnet"];
+                    "application/json": components["schemas"]["PublicMagnet"] | components["schemas"]["ChampionsReport"];
                 };
             };
             /** @description Validation Error */

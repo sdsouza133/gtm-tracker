@@ -3,6 +3,7 @@ import { screen } from "@testing-library/react";
 import type { PublicLead, PublicMagnet } from "@/api/hooks";
 import { App } from "@/App";
 import { csvCell, toCsv } from "@/lib/leads";
+import { champion, championsReport } from "@/test/fixtures";
 import { mockApi, renderApp } from "@/test/render";
 
 const NOT_SIGNED_IN = { "GET /api/auth/me": { body: { signed_in: false, csrf: null, open_access: false } } };
@@ -32,6 +33,7 @@ function lead(over: Partial<PublicLead> = {}): PublicLead {
 
 function report(over: Partial<PublicMagnet> = {}): PublicMagnet {
   return {
+    kind: "engagement",
     company: "Prospect",
     mode: "full",
     built: "2026-11-01",
@@ -103,6 +105,40 @@ describe("the lead magnet report", () => {
     });
     renderApp(<App />, { path: "/m/g1/old" });
     expect(await screen.findByText("This link doesn't work any more.")).toBeInTheDocument();
+  });
+
+  it("shows a champion report's top three and counts the rest, without the owner's lists", async () => {
+    const shared = championsReport({
+      more: 2,
+      repeat: true,
+      champions: [
+        champion(),
+        champion({ name: "Riley Example", grade: "B", new: false }),
+        champion({ name: "Sam Example", grade: "C" }),
+      ],
+    });
+    mockApi({ ...NOT_SIGNED_IN, "GET /api/public/magnets/m1/tok": { body: shared } });
+    renderApp(<App />, { path: "/m/m1/tok" });
+
+    expect(
+      await screen.findByRole("heading", { name: "Your champions who just moved to new companies" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Dana Example/ })).toHaveAttribute(
+      "href",
+      "https://www.linkedin.com/in/dana-example",
+    );
+    expect(screen.getAllByText(/^Was:/)).toHaveLength(3);
+    expect(screen.getAllByText("Senior Manager, Customer Experience at Glowco (2021–2026)")).toHaveLength(3);
+    expect(screen.getAllByText(/VP Customer Experience at Newbrand · Retail · started 2 months ago/)).toHaveLength(3);
+    expect(screen.getByText(/2 more champions found/)).toBeInTheDocument();
+    expect(screen.getByText(/1 found on LinkedIn/)).toBeInTheDocument();
+    expect(screen.getByText("Ghost Co · no LinkedIn page found")).toBeInTheDocument();
+    // what only the owner sees
+    expect(screen.queryByRole("heading", { name: "Watch list" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Left out, and why" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Download CSV/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("New since the last report")).not.toBeInTheDocument();
+    expect(document.title).toBe("CXHero: champions who moved");
   });
 
   it("writes a CSV a spreadsheet can't run as formulas", () => {

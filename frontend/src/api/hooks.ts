@@ -360,14 +360,22 @@ export function useUpdateRadarConfig() {
 
 export type Magnet = S["MagnetOut"];
 export type MagnetMode = S["MagnetCreate"]["mode"];
+export type MagnetKind = NonNullable<S["MagnetStart"]["kind"]>;
 export type PublicMagnet = S["PublicMagnet"];
 export type PublicLead = S["PublicLead"];
+export type ChampionsReport = S["ChampionsReport"];
+export type Champion = S["ChampionOut"];
+export type ChampionRole = S["ChampionRole"];
+export type ChampionsSummary = S["ChampionsSummary"];
 const BUILDING_POLL_MS = 3000;
 const magnetKeys = {
-  any: ["magnets"] as const, // both lists below
+  any: ["magnets"] as const, // every list below
   forCompany: (companyId: string) => ["magnets", "company", companyId] as const,
   all: ["magnets", "all"] as const,
+  champions: (domain: string) => ["magnets", "champions", domain] as const,
+  one: (id: string) => ["magnets", "one", id] as const,
   report: (id: string, token: string) => ["magnet-report", id, token] as const,
+  full: (id: string) => ["magnet-full", id] as const,
 };
 const buildingPoll = (magnets: Magnet[] | undefined) =>
   magnets?.some((m) => m.status === "running") ? BUILDING_POLL_MS : false;
@@ -388,6 +396,33 @@ export function useAllMagnets() {
     queryKey: magnetKeys.all,
     queryFn: async () => unwrap(await api.GET("/api/magnets")),
     refetchInterval: (query) => buildingPoll(query.state.data),
+  });
+}
+
+/** A company's champion reports, newest first, by its website's domain (a Fractional prospect's, say). */
+export function useChampionReports(domain: string) {
+  return useQuery({
+    queryKey: magnetKeys.champions(domain),
+    queryFn: async () => unwrap(await api.GET("/api/magnets", { params: { query: { kind: "champions", domain } } })),
+    enabled: domain !== "",
+    refetchInterval: (query) => buildingPoll(query.state.data),
+  });
+}
+
+/** One lead magnet: its status, summary and shareable link. */
+export function useMagnet(id: string) {
+  return useQuery({
+    queryKey: magnetKeys.one(id),
+    queryFn: async () => unwrap(await api.GET("/api/magnets/{magnet_id}", { params: { path: { magnet_id: id } } })),
+  });
+}
+
+/** A finished report in full, for the signed-in owner: every champion or lead, and what the shared link leaves out. */
+export function useMagnetReport(id: string) {
+  return useQuery({
+    queryKey: magnetKeys.full(id),
+    queryFn: async () =>
+      unwrap(await api.GET("/api/magnets/{magnet_id}/report", { params: { path: { magnet_id: id } } })),
   });
 }
 
