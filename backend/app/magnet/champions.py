@@ -19,7 +19,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 
 from pydantic import SecretStr
 
@@ -195,8 +195,8 @@ def build_champions(
 @dataclass(frozen=True)
 class Prior:
     """The last report's champions for this company. The search keys people by LinkedIn's member id and the named
-    path by their profile address, so a person is found by their key or, failing that, by name: unless both have a
-    public LinkedIn handle and the handles differ, which makes them two people with one name."""
+    path by their profile address, so a person is found by their key or, failing that, by name. A name match is sure
+    only when both have the same public LinkedIn handle; different handles make them two people with one name."""
 
     by_key: dict[str, dict[str, Any]]
     by_name: dict[str, dict[str, Any]]
@@ -209,13 +209,33 @@ class Prior:
             by_name={norm(str(c.get("name") or "")): c for c in rows if norm(str(c.get("name") or ""))},
         )
 
-    def find(self, key: str, name: str, url: str = "") -> dict[str, Any] | None:
+    def find(self, key: str, name: str, url: str = "") -> "Match":
         row = self.by_key.get(key)
         if row is not None:
-            return row
+            return Match(row, certain=True)
         row = self.by_name.get(norm(name))
-        mine, theirs = _public_handle(url), _public_handle(str((row or {}).get("linkedin") or ""))
-        return None if mine and theirs and mine != theirs else row
+        if row is None:
+            return Match(None, certain=False)
+        mine, theirs = _public_handle(url), _public_handle(str(row.get("linkedin") or ""))
+        if mine and theirs:
+            return Match(row, certain=True) if mine == theirs else Match(None, certain=False)
+        return Match(row, certain=False)  # a name alone (the search gives internal ids): their history settles it
+
+
+class Match(NamedTuple):
+    """The last report's row for someone, and whether it's surely them."""
+
+    row: dict[str, Any] | None
+    certain: bool
+
+
+class PriorState(NamedTuple):
+    """What to do with someone the last report may have had: "reuse" its check, "stale" (the move is old now) or
+    "check" their history afresh; with the row and whether it's surely them."""
+
+    action: str
+    row: dict[str, Any] | None
+    certain: bool
 
 
 @dataclass
@@ -292,18 +312,18 @@ def _verified(
     one who has moved again is checked afresh. Also how many histories were looked up."""
     fits = sorted(fits, key=lambda f: (not traps.named(f[0], None, names), _months_in(f[0]), f[0].name))
     states = {m.key: _prior_state(prior.find(m.key, m.name, m.url), m, today) for m, _ in fits}
-    checking = [(m, why) for m, why in fits if states[m.key][0] == "check"][:HISTORY_LOOKUPS]
+    checking = [(m, why) for m, why in fits if states[m.key].action == "check"][:HISTORY_LOOKUPS]
     say("checking their work history", {"fit": len(fits), "checking": len(checking)})
     histories = _histories([m.url for m, _ in checking], linkedin, budget, WATCH_LOOKUPS * PRICE[HISTORY], today)
     checked = {m.key for m, _ in checking}
     champions: list[dict[str, Any]] = []
     for m, why in fits:
-        state, row = states[m.key]
-        if state == "stale":  # the last report saw them join, and they're still there: no longer a recent move
+        state = states[m.key]
+        if state.action == "stale":  # the last report saw them join, and they're still there: no longer a recent move
             skips.add(m, "internal_move")
             continue
-        if state == "reuse" and row is not None:
-            champions.append(_brought_up_to_date(row, m))
+        if state.action == "reuse" and state.row is not None:
+            champions.append(_brought_up_to_date(state.row, m))
             continue
         if m.key not in checked:
             skips.add(m, "over_cap")
@@ -320,7 +340,7 @@ def _verified(
                 "linkedin": history.url if history and history.url else m.url,
                 "location": m.location,
                 "grade": traps.grade(verified, traps.named(m, history, names), rules.keywords),
-                "new": row is None,  # the last report had them at this company (its row had no date to reuse)
+                "new": not _same_person(state, history),
                 "was": _role(verified.was),
                 "now": _role(verified.now),
                 "gap_months": verified.gap,
@@ -331,18 +351,29 @@ def _verified(
     return champions, len(checking)
 
 
-def _prior_state(row: dict[str, Any] | None, m: Mover, today: date) -> tuple[str, dict[str, Any] | None]:
-    """What the last report says about someone found again, with its row: "reuse" its check (the same company, and
-    they joined it lately enough to still be a recent move), "stale" (the same company, joined too long ago) or
-    "check" their history afresh (moved again, or the row has no date to go by)."""
+def _prior_state(match: Match, m: Mover, today: date) -> PriorState:
+    """What the last report says about someone found again: "reuse" its check (surely them, at the same company, and
+    they joined it lately enough to still be a recent move), "stale" (surely them, joined too long ago) or "check"
+    their history afresh (moved again, maybe someone else with the name, or no date to go by)."""
+    row = match.row
     if row is None or not _same_move(row, m):
-        return "check", None
+        return PriorState("check", None, certain=False)
     joined = _date(row.get("joined"))
-    if joined is None:
-        return "check", row
+    if not match.certain or joined is None:
+        return PriorState("check", row, match.certain)
     if _months_between(joined, today) > traps.MAX_MOVE_MONTHS + 1:  # the 90 days, give or take
-        return "stale", row
-    return "reuse", row
+        return PriorState("stale", row, certain=True)
+    return PriorState("reuse", row, certain=True)
+
+
+def _same_person(state: PriorState, history: History | None) -> bool:
+    """Whether the last report's row is this person: surely, or by the public profile their history shows."""
+    if state.row is None:
+        return False
+    if state.certain:
+        return True
+    mine = _public_handle(history.url if history else "")
+    return bool(mine) and mine == _public_handle(str(state.row.get("linkedin") or ""))
 
 
 def _date(value: Any) -> date | None:
@@ -568,7 +599,7 @@ def _named_champions(
                 "linkedin": m.url,
                 "location": "",
                 "grade": "A",
-                "new": prior.find(m.key, c.name, m.url) is None,
+                "new": not prior.find(m.key, c.name, m.url).certain,
                 "was": _role(verified.was),
                 "now": _role(verified.now),
                 "gap_months": verified.gap,

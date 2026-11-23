@@ -376,3 +376,47 @@ def test_two_people_with_one_name_at_one_company_are_not_mixed_up_on_a_rebuild()
         (person("riley-lead"), False),
         (person("riley-lead-2"), True),
     ]
+
+
+def test_a_same_name_coworker_found_by_an_internal_id_is_checked_not_taken_for_the_last_champion() -> None:
+    first = build_champions(SPEC, tools(FakeScout(), market()), TODAY)
+    internal = "https://www.linkedin.com/in/ACwAAAriley2"  # how the real search gives profiles: no public handle
+    coworker = {
+        **mover("x", "Riley Lead", position("Head of CX", "Sockfox", "Retail Apparel and Fashion", 1)),
+        "id": "id-riley-2",
+        "linkedinUrl": internal,
+    }
+    histories = {
+        **HISTORIES,
+        internal: history(
+            "riley-lead-2",
+            job("Head of CX", "Sockfox", "sockfox", (2026, 10), None),
+            job("Support Lead", "Glowco Inc.", "glowco", (2021, 1), (2026, 9)),
+        ),
+    }
+    treg = market(movers=[*PEOPLE, coworker], histories=histories)
+    again = build_champions(ChampionSpec(VENDOR, SPEC.website, before=first), tools(FakeScout(), treg), TODAY)
+
+    looked_up = [q["profileUrlOrUrn"] for tool, q, _, _ in treg.calls if tool == HISTORY]
+    assert internal in looked_up  # only a name ties them to the last report's Riley: their history settles who it is
+    assert sorted((c["linkedin"], c["new"]) for c in again["champions"] if c["name"] == "Riley Lead") == [
+        (person("riley-lead"), False),
+        (person("riley-lead-2"), True),
+    ]
+
+
+def test_a_named_champion_the_search_finds_by_an_internal_id_is_confirmed_by_their_history() -> None:
+    first = build_champions(SPEC, tools(FakeScout(), market()), TODAY)
+    internal = "https://www.linkedin.com/in/ACwAAAmoe"
+    moe = {
+        **mover("x", "Moe Moved", position("Head of Support", "Figleaf", "Retail", 1)),
+        "id": "id-moe",
+        "linkedinUrl": internal,
+    }
+    treg = market(movers=[*PEOPLE, moe], histories={**HISTORIES, internal: HISTORIES[person("moe-moved")]})
+    again = build_champions(ChampionSpec(VENDOR, SPEC.website, before=first), tools(FakeScout(), treg), TODAY)
+
+    looked_up = [q["profileUrlOrUrn"] for tool, q, _, _ in treg.calls if tool == HISTORY]
+    assert looked_up.count(internal) == 1  # one check: a name alone doesn't prove it's the same Moe
+    assert person("moe-moved") not in looked_up  # and the named-people check doesn't pay for them again
+    assert next(c for c in again["champions"] if c["name"] == "Moe Moved")["new"] is False
