@@ -129,3 +129,108 @@ def test_a_malformed_link_on_the_home_page_is_skipped() -> None:
     home = '<a href="http://[bad/about">Broken</a> <a href="/about">About</a>'
     pages = {"https://prospect.example": home, "https://prospect.example/about": "<p>About us</p>"}
     assert read_site("prospect.example", get=pages.__getitem__)["pages"] == list(pages)
+
+
+CUSTOMER_HOME = """<html><head><title>CXHero</title></head><body>
+<img src="/a.png" alt="Glowco logo"><img src="/b.png" alt=""><svg><title>skip me</title></svg>
+<a href="https://www.prospect.example/customers">Customers</a> <a href="/pricing">Pricing</a>
+<a href="/case-studies/mugworth">Mugworth story</a> <a href="https://elsewhere.example/customers">Elsewhere</a>
+</body></html>"""
+CUSTOMERS_INDEX = """<html><body><h1>Customer stories</h1>
+<a href="/customers/glowco">How Glowco cut handle time in half</a>
+<a href="/customers/shoebird">Shoebird automates 60%</a>
+<a href="/customers">All</a> <a href="/blog/news">News</a></body></html>"""
+
+
+def test_customer_pages_are_read_with_their_stories_and_logo_names() -> None:
+    pages = {
+        "https://prospect.example": CUSTOMER_HOME,
+        "https://www.prospect.example/customers": CUSTOMERS_INDEX,
+        "https://www.prospect.example/customers/glowco": "<p>Dana Named, Senior Manager CX at Glowco</p>",
+        "https://www.prospect.example/customers/shoebird": "<p>Shoebird story</p>",
+        "https://prospect.example/case-studies/mugworth": "<p>Mugworth story</p>",
+    }
+    read = site.read_customers("prospect.example", get=lambda url: pages[url])
+    assert read["pages"] == [
+        "https://prospect.example",
+        "https://www.prospect.example/customers",  # www. or not, it's the same site
+        "https://prospect.example/case-studies/mugworth",
+        "https://www.prospect.example/customers/glowco",
+        "https://www.prospect.example/customers/shoebird",
+    ]
+    text = str(read["text"])
+    assert "[image] Glowco logo" in text
+    assert "skip me" not in text
+    assert "Dana Named, Senior Manager CX at Glowco" in text
+    assert "elsewhere.example" not in " ".join(read["pages"])
+
+
+def test_without_customer_links_the_usual_addresses_are_tried() -> None:
+    asked: list[str] = []
+
+    def get(url: str) -> str:
+        asked.append(url)
+        if url == "https://prospect.example":
+            return "<html><body><a href='/pricing'>Pricing</a></body></html>"
+        if url == "https://prospect.example/customers":
+            raise SiteError("https://prospect.example/customers answered 404.")
+        return "<p>Case studies: Glowco, Shoebird</p>"
+
+    read = site.read_customers("https://prospect.example", get=get)
+    assert asked == [
+        "https://prospect.example",
+        "https://prospect.example/customers",
+        "https://prospect.example/case-studies",
+    ]
+    assert read["pages"] == ["https://prospect.example", "https://prospect.example/case-studies"]
+
+
+def test_customer_pages_stop_at_the_cap() -> None:
+    stories = "".join(f'<a href="/customers/brand-{n}">Brand {n}</a>' for n in range(30))
+    pages = {
+        "https://prospect.example": '<a href="/customers">Customers</a>',
+        "https://prospect.example/customers": stories,
+    }
+    read = site.read_customers("prospect.example", get=lambda url: pages.get(url, "<p>story</p>"))
+    assert len(read["pages"]) == site.CUSTOMER_MAX_PAGES  # type: ignore[arg-type]
+
+
+def test_customer_pages_need_the_home_page() -> None:
+    def down(url: str) -> str:
+        raise httpx2.ConnectError("down")
+
+    with pytest.raises(SiteError, match="Couldn't read"):
+        site.read_customers("prospect.example", get=down)
+
+
+def test_a_link_to_someones_linkedin_profile_is_kept_next_to_their_name() -> None:
+    home = """<html><body><a href="/customers">Customers</a>
+<blockquote>"It changed how we work." <a href="https://ca.linkedin.com/in/dana-named/?utm=x">Dana Named</a>, Glowco
+</blockquote><a href="https://www.linkedin.com/company/glowco">Glowco on LinkedIn</a>
+<a href="javascript:void(0)">Menu</a></body></html>"""
+    read = site.read_customers("prospect.example", get=lambda url: home if url == "https://prospect.example" else "")
+    text = str(read["text"])
+    assert "[LinkedIn https://www.linkedin.com/in/dana-named] Dana Named" in text  # cleaned, and next to the name
+    assert "linkedin.com/company" not in text  # a company page isn't a person
+    assert "javascript" not in text
+    plain = site._Text()
+    plain.feed(home)
+    assert not any("[LinkedIn" in part for part in plain.parts)  # only customer pages keep them
+
+
+def test_failed_fetches_count_toward_a_cap_and_none_is_tried_twice() -> None:
+    asked: list[str] = []
+    stories = "".join(f'<a href="/customers/brand-{n}">Brand {n}</a>' for n in range(50))
+
+    def get(url: str) -> str:
+        asked.append(url)
+        if url == "https://prospect.example":
+            return '<a href="/customers">Customers</a>' + stories[: stories.index("brand-5")]  # links a few stories too
+        if url == "https://prospect.example/customers":
+            return stories
+        raise httpx2.ConnectError("too slow")  # every story fails
+
+    read = site.read_customers("prospect.example", get=get)
+    assert len(asked) == site.CUSTOMER_MAX_TRIES
+    assert len(asked) == len(set(asked))  # a story that failed isn't fetched again when the index links it too
+    assert read["pages"] == ["https://prospect.example", "https://prospect.example/customers"]

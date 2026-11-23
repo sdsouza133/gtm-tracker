@@ -6,7 +6,9 @@ import pytest
 from app.magnet import linkedin as li
 from app.magnet.linkedin import LinkedIn, LinkedInError, Post, parse_post, parse_profile
 from app.treg import Answer, TregError
+from tests.champion_fakes import TODAY, history, job, market, mover, org, person, position
 from tests.magnet_fakes import OTHER_PAGE, RIVAL_PAGE, FakeHarvest, comment, company_reaction, post, profile, reaction
+from tests.treg_fakes import FakeTreg
 
 P1 = "https://www.linkedin.com/posts/rivalco_p1"
 
@@ -184,3 +186,118 @@ def test_a_dropped_connection_counts_its_whole_ceiling() -> None:
     with pytest.raises(LinkedInError, match="couldn't reach") as dropped:
         LinkedIn(Dropped()).posts([RIVAL_PAGE], 5, 1.0)
     assert dropped.value.spent == pytest.approx(0.004)
+
+
+# ----------------------------------------------------------------------------- champion reports
+
+
+def orgs(*items: dict[str, Any]) -> list[li.Org]:
+    return [o for o in (li.parse_org(i) for i in items) if o]
+
+
+@pytest.mark.parametrize(
+    ("name", "candidates", "industries", "picked"),
+    [
+        ("Thrive", [org("Thrive Inc.", "thrive", "Retail")], [], "thrive"),  # an Inc. aside
+        ("HexClad", [org("HexClad Cookware", "hexclad", "Manufacturing")], [], "hexclad"),  # the name plus a word
+        ("Ghost Co", [org("Ghostly Labs", "ghostly", "Software")], [], None),  # a longer word isn't the name
+        ("Bobbie", [org("Evelyn & Bobbie", "eb", "Retail")], [], None),  # the name has to come first
+        ("Acme", [org("Acme Widgets Global Holdings Group", "acme-big", "Retail")], [], None),  # too many extra words
+        (
+            "Dossier",
+            [
+                org("Dossier", "dossier-media", "Media", "18K followers"),
+                org("Dossier Perfumes", "dossierp", "Personal Care Product Manufacturing", "24K followers"),
+            ],
+            ["Personal care"],
+            "dossierp",  # in the ICP's industries beats the exact name elsewhere
+        ),
+        (
+            "Glowco",
+            [org("Glowco", "glowco-1", "Retail", "2K followers"), org("Glowco", "glowco-2", "Retail", "9K followers")],
+            [],
+            "glowco-2",
+        ),
+        ("", [org("Anything", "any", "Retail")], [], None),
+    ],
+)
+def test_a_customer_is_matched_to_its_page_or_to_none(
+    name: str, candidates: list[dict[str, Any]], industries: list[str], picked: str | None
+) -> None:
+    got = li.pick_company(name, orgs(*candidates), industries)
+    assert (got.linkedin.rsplit("/", 1)[-1] if got else None) == picked
+
+
+def test_company_lookups_stop_at_what_the_budget_pays_for() -> None:
+    treg = FakeTreg({li.COMPANY_SEARCH: {"elements": [org("Brand", "brand", "Retail")]}}, price=0.002)
+    found, spent = LinkedIn(treg).companies(
+        ["Brand", "Brand", "Other", "Third"], [], max_usd=li.PRICE[li.COMPANY_SEARCH] * 2
+    )
+    # each name once, two calls paid for (in either order: the searches run side by side)
+    assert sorted(q["search"] for _, q, _, _ in treg.calls) == ["Brand", "Other"]
+    assert all(cap == li.PRICE[li.COMPANY_SEARCH] for *_, cap in treg.calls)
+    assert set(found) == {"Brand"}  # "Other" got a page named Brand: not its page
+    assert spent == pytest.approx(0.004)
+
+
+def test_the_people_search_asks_for_movers_from_the_customers_and_reads_them() -> None:
+    people = [
+        mover("a", "Ann Able", position("Head of CX", "Newco", "Retail", 14)),
+        {"id": "id-x", "firstName": "LinkedIn", "lastName": "Member", "currentPositions": []},
+        {
+            "id": "id-y",
+            "linkedinUrl": person("y"),
+            "firstName": "Yu",
+            "lastName": "Why",
+            "currentPositions": [
+                {
+                    "title": "VP Support",
+                    "companyName": "Urnco",
+                    "company": {"entityUrn": "urn:li:fs_salesCompany:4242", "industry": "Retail"},
+                }
+            ],
+        },
+    ]
+    treg = market(movers=people)
+    found, total, _ = LinkedIn(treg).movers(["https://www.linkedin.com/company/glowco"], ["CX"], want=75, max_usd=0.30)
+    (call,) = treg.calls
+    assert call[1]["recentlyChangedJobs"] == "true"
+    assert call[1]["pastJobTitles"] == "CX"
+    assert call[1]["excludeCurrentCompanies"] == call[1]["pastCompanies"]
+    assert total == 3
+    ann, member, yu = found
+    assert (ann.name, ann.jobs[0].months, ann.jobs[0].industry, ann.hidden) == ("Ann Able", 14, "Retail", False)
+    assert member.hidden
+    assert yu.jobs[0].company_linkedin == "https://www.linkedin.com/company/4242"  # from the URN when there's no link
+
+
+def test_no_title_words_means_no_title_filter() -> None:
+    treg = market(movers=[])
+    LinkedIn(treg).movers(["https://www.linkedin.com/company/glowco"], [], want=25, max_usd=0.10)
+    assert "pastJobTitles" not in treg.calls[0][1]
+
+
+def test_a_work_history_reads_either_shape_newest_first() -> None:
+    body = history(
+        "kim",
+        job("CX Manager", "Glowco Inc.", "glowco", (2020, 1), (2023, 6)),
+        job("Head of CX", "Newco", "newco", (2026, 10), None),
+    )
+    for shape in (body, {"output": {}, "raw": body}):
+        parsed = li.parse_history(shape, TODAY)
+        assert parsed.url == person("kim")
+        assert [j.title for j in parsed.jobs] == ["Head of CX", "CX Manager"]
+        assert parsed.jobs[0].end is None
+        assert parsed.jobs[0].months == 1
+        assert parsed.jobs[1].start == date(2020, 1, 1)
+        assert parsed.jobs[1].months == 41
+
+
+def test_work_histories_stay_in_budget_and_only_all_failing_is_an_error() -> None:
+    treg = market()
+    urls = [person(f"p{n}") for n in range(5)]
+    _, spent = LinkedIn(treg).history(urls, max_usd=li.PRICE[li.HISTORY] * 3, today=TODAY)
+    assert len(treg.calls) == 3
+    assert spent == pytest.approx(0.0045)
+    with pytest.raises(LinkedInError):
+        LinkedIn(market(fail={li.HISTORY})).history(urls, max_usd=1.0, today=TODAY)

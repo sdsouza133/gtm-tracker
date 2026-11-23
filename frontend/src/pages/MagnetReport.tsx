@@ -3,6 +3,8 @@ import { useEffect } from "react";
 import { useParams } from "react-router-dom";
 
 import { type PublicLead, type PublicMagnet, usePublicMagnet } from "@/api/hooks";
+import { ChampionsReportView } from "@/components/ChampionsReport";
+import { IcpCard } from "@/components/IcpCard";
 import { Button, Card, Chip, EmptyState } from "@/components/ui";
 import { formatDay } from "@/lib/format";
 import { SINGLE, TIER, toCsv } from "@/lib/leads";
@@ -66,12 +68,12 @@ function LeadCard({ lead }: { lead: PublicLead }) {
   );
 }
 
-function Report({ report }: { report: PublicMagnet }) {
+/** An engagement magnet's report. The owner's view (`full`) leaves out the teaser's preview note. */
+export function EngagementReport({ report, full = false }: { report: PublicMagnet; full?: boolean }) {
   const rivals = report.competitors.map((c) => c.name).join(", ");
-  const teaser = report.mode === "teaser";
-  const icp = report.icp;
+  const teaser = report.mode === "teaser" && !full;
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10">
+    <article className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
         <span className="text-[13px] font-medium text-muted">
           Prepared for {report.company}
@@ -131,22 +133,7 @@ function Report({ report }: { report: PublicMagnet }) {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card className="flex flex-col gap-2 p-5 text-sm">
-          <h2 className="font-semibold">Your ICP, as we read it</h2>
-          {icp.sells && <p>{icp.sells}</p>}
-          {[
-            ["Industries", icp.industries],
-            ["Company size", icp.company_sizes],
-            ["Titles", icp.titles],
-            ["Seniority", icp.seniority],
-          ].map(([label, values]) =>
-            (values as string[]).length ? (
-              <p key={label as string} className="text-muted">
-                <span className="font-medium text-ink">{label as string}:</span> {(values as string[]).join(", ")}
-              </p>
-            ) : null,
-          )}
-        </Card>
+        <IcpCard icp={report.icp} />
         <Card className="flex flex-col gap-2 p-5 text-sm">
           <h2 className="font-semibold">Competitors we read</h2>
           <ul className="flex flex-col gap-2">
@@ -170,7 +157,7 @@ function Report({ report }: { report: PublicMagnet }) {
           </ul>
         </Card>
       </div>
-    </main>
+    </article>
   );
 }
 
@@ -179,7 +166,9 @@ export function MagnetReportPage() {
   const { id = "", token = "" } = useParams();
   const report = usePublicMagnet(id, token);
   useEffect(() => {
-    if (report.data) document.title = `${report.data.company}: LinkedIn engagers in your ICP`;
+    if (!report.data) return;
+    const what = report.data.kind === "champions" ? "champions who moved" : "LinkedIn engagers in your ICP";
+    document.title = `${report.data.company}: ${what}`;
   }, [report.data]);
   if (report.isPending) return <p className="p-8 text-sm text-muted">Loading…</p>;
   if (report.isError)
@@ -190,5 +179,13 @@ export function MagnetReportPage() {
         </EmptyState>
       </div>
     );
-  return <Report report={report.data} />;
+  return (
+    <main className="mx-auto max-w-3xl px-4 py-10">
+      {report.data.kind === "champions" ? (
+        <ChampionsReportView report={report.data} owner={false} />
+      ) : (
+        <EngagementReport report={report.data} />
+      )}
+    </main>
+  );
 }

@@ -15,6 +15,7 @@ function magnet(over: Partial<Magnet> = {}): Magnet {
     title: "Northwind Labs: teaser",
     mode: "teaser",
     website: "https://northwind.example",
+    domain: "northwind.example",
     step: "",
     error: "",
     created: "2026-10-26T15:00:00Z",
