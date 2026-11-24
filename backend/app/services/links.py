@@ -15,7 +15,7 @@ from datetime import date
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, contains_eager
 
 from app.enrich.apollo import BULK, ApolloError
@@ -172,8 +172,7 @@ def _board_todo(session: Session) -> Iterator[Person]:
         select(Person)
         .join(Person.company)
         .where(
-            Person.left.is_(False),
-            or_(Person.linkedin.is_(None), Person.linkedin.regexp_match(r"^\s*$")),  # blank, as board_to_ask sees it
+            Person.left.is_(False),  # whether the link is blank is left to board_to_ask, the one place that decides it
             Company.domain.is_not(None),
             Company.domain != "",
         )

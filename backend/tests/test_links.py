@@ -154,10 +154,11 @@ def test_people_on_the_board_get_their_link_once_and_nothing_else(
     assert len(apollo.requests) == 1
 
 
-def test_a_blank_link_counts_as_none(db: Session) -> None:
+@pytest.mark.parametrize("blank", [" \t", "\u00a0"])  # a no-break space isn't whitespace to Postgres's \s in C
+def test_a_blank_link_counts_as_none(db: Session, blank: str) -> None:
     c = f.company(db, name="Acme", domain=ACME)
     ana, _ = f.person(db, c, name="Ana Example")
-    ana.linkedin = " \t"  # the import from the old tracker kept such values as they were
+    ana.linkedin = blank  # the import from the old tracker kept such values as they were
     db.flush()
     fake = FakeApollo({"Ana Example": hit("Ana", "Example")})
     assert links.fill_board(db, fake, TODAY, 10) == links.Filled(tried=1, found=1, left=0)
