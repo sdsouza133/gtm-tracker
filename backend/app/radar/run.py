@@ -32,9 +32,11 @@ from sqlalchemy import Connection, Engine, func, or_, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings, get_settings
+from app.enrich.apollo import Apollo
 from app.models import Company, Move, MoveStatus, MoveType, ParkedWhy, RadarItem, Setting, Stage
 from app.radar import boards, people, sources
 from app.radar.fit import RadarConfig, domain_of, fits, is_overseas, linkedin_slug, norm, web_url
+from app.services import contacts
 from app.services.history import record
 from app.services.outreach import NewPerson, RuleError, add_person
 from app.treg import Caller, Treg
@@ -753,7 +755,26 @@ def describe(summary: dict[str, Any], errors: list[str]) -> str:
         bits.append(f"hiring posts: {summary['posts_new']} new out of {summary['posts_scanned']} scanned")
     if summary.get("auto_added"):
         bits.insert(1, f"{summary['auto_added']} added to the board with {summary['people_added']} people to write to")
+    if summary.get("links_found") or summary.get("emails_found"):
+        links, emails = summary.get("links_found", 0), summary.get("emails_found", 0)
+        bits.append(f"Apollo: {links} LinkedIn links and {emails} verified emails")
     return "Job radar: " + ", ".join(bits) + (f". {' '.join(errors)}" if errors else "")
+
+
+RADAR_CONTACTS = 50  # people a pass asks Apollo about, at most: new people arrive a handful a day
+
+
+def find_contacts(factory: sessionmaker[Session], apollo: contacts.ContactFinder, today: date) -> dict[str, int]:
+    """LinkedIn links and verified emails for people missing them, such as those added by this pass or by the inbox
+    check. A failure here never fails the pass: the rest is still saved, and the next pass tries again."""
+    try:
+        with factory() as session:
+            done = contacts.fill(session, apollo, today, RADAR_CONTACTS)
+            session.commit()
+    except Exception as e:  # only the kind: a database error's text carries the values, such as links and emails
+        log.error("finding LinkedIn links and emails failed: %s", type(e).__name__)
+        return {"contacts_tried": 0, "links_found": 0, "emails_found": 0}
+    return {"contacts_tried": done.tried, "links_found": done.links, "emails_found": done.emails}
 
 
 @dataclass
@@ -762,6 +783,7 @@ class Tools:
 
     web: boards.Http
     treg: Caller | None
+    apollo: contacts.ContactFinder | None = None  # links and verified emails for new people; needs APOLLO_API_KEY
 
 
 @contextmanager
@@ -841,6 +863,9 @@ def _run(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigg
             _step(factory, "adding new companies and finding people")
             summary.update(auto_add(factory, cfg, tools, today, started_at))
             summary["spent_usd"] = round(summary["spent_usd"] + summary["people_usd"], 2)
+        if tools.apollo:
+            _step(factory, "finding LinkedIn links and emails")
+            summary.update(find_contacts(factory, tools.apollo, today))
         with factory() as session:
             status = dict(get_setting(session, "radar_status", {}))
             status.update(
@@ -941,7 +966,8 @@ def start_ttl_scheduler(factory: sessionmaker[Session], settings: Settings) -> t
 
 def default_tools(settings: Settings) -> Tools:
     token = settings.treg_token.get_secret_value().strip() if settings.treg_token else ""
-    return Tools(web=boards.Web(), treg=Treg(token) if token else None)
+    key = settings.apollo_api_key.get_secret_value().strip() if settings.apollo_api_key else ""
+    return Tools(web=boards.Web(), treg=Treg(token) if token else None, apollo=Apollo(key) if key else None)
 
 
 def find_board_for(

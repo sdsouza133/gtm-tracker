@@ -5,6 +5,7 @@ from typing import Any
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,7 @@ class FakeApollo:
     def __init__(self, emails: dict[str, str | None], about: str = "Makes made-up widgets.") -> None:
         self.emails = emails
         self.about = about
+        self.status = "verified"
         self.calls: list[str] = []
 
     def match(self, *, name: str, domain: str | None, linkedin: str | None) -> dict[str, Any] | None:  # noqa: ARG002
@@ -27,7 +29,7 @@ class FakeApollo:
         if name == "Broken Example":
             raise ApolloError("Apollo 500")
         email = self.emails.get(name)
-        return {"email": email, "email_status": "verified"} if email is not None else None
+        return {"email": email, "email_status": self.status} if email is not None else None
 
     def organization(self, domain: str) -> dict[str, Any] | None:  # noqa: ARG002
         return {"short_description": self.about}
@@ -149,15 +151,26 @@ def test_research_edited_during_the_company_lookup_wins(signed_in: TestClient, d
     assert c.research == {"pmf_reason": "Typed by hand."}
 
 
-def test_no_emails_while_the_tracker_is_open_or_apollo_isnt_set_up(signed_in: TestClient, db: Session) -> None:
-    c = f.company(db)
+def test_emails_are_found_with_or_without_sign_in_but_need_apollo(signed_in: TestClient, db: Session) -> None:
+    c = f.company(db)  # no domain and nobody to look up: Apollo isn't called
     settings = get_settings()
     app = signed_in.app
-    app.dependency_overrides[get_settings] = lambda: settings.model_copy(update={"open_access": True})  # type: ignore[attr-defined]
-    r = signed_in.post(f"/api/companies/{c.id}/enrich")
-    assert (r.status_code, r.json()["detail"]) == (409, "Turn on sign-in before finding emails.")
+    open_settings = settings.model_copy(update={"open_access": True, "apollo_api_key": SecretStr("made-up-key")})
+    app.dependency_overrides[get_settings] = lambda: open_settings  # type: ignore[attr-defined]
+    assert signed_in.post(f"/api/companies/{c.id}/enrich").json() == {"tried": 0, "found": 0, "companies": 1}
     app.dependency_overrides[get_settings] = lambda: settings.model_copy(update={"apollo_api_key": None})  # type: ignore[attr-defined]
-    assert "APOLLO_API_KEY" in signed_in.post(f"/api/companies/{c.id}/enrich").json()["detail"]
+    r = signed_in.post(f"/api/companies/{c.id}/enrich")
+    assert (r.status_code, r.json()["detail"]) == (409, "Apollo isn't set up (APOLLO_API_KEY).")
+
+
+def test_an_email_apollo_has_not_verified_is_never_kept(signed_in: TestClient, db: Session, apollo: FakeApollo) -> None:
+    c = f.company(db, name="Acme Example", domain="acme.example")
+    ana, _ = f.person(db, c, name="Ana Example")
+    db.flush()
+    apollo.status = "guessed"
+    assert signed_in.post(f"/api/companies/{c.id}/enrich").json() == {"tried": 1, "found": 0, "companies": 1}
+    db.refresh(ana)
+    assert (ana.email, ana.details["apollo_tried"]) == (None, "2026-10-26")
 
 
 def test_the_client_asks_for_work_emails_only() -> None:

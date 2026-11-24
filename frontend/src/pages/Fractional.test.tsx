@@ -141,6 +141,22 @@ describe("Fractional", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("shows a verified email Apollo found as a mail link", async () => {
+    const person = { key: "ana", name: "Ana Example", title: "CEO", linkedin: null, location: "", since: "" };
+    mockApi({
+      ...SIGNED_IN,
+      "GET /api/fx/board": { body: board },
+      "GET /api/settings": { body: {} },
+      "GET /api/fx/prospects/acme": { body: detail({ people: [{ ...person, email: "ana@acme.example" }] }) },
+    });
+    renderApp(<App />, { path: "/fractional?open=acme" });
+    const dialog = await screen.findByRole("dialog", { name: "Acme Example" });
+    expect(within(dialog).getByRole("link", { name: "ana@acme.example" })).toHaveAttribute(
+      "href",
+      "mailto:ana@acme.example",
+    );
+  });
+
   it("keeps Tab inside the dossier and never links a non-http URL", async () => {
     const risky = detail({
       website: "javascript:alert(1)",

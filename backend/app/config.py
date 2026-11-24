@@ -35,7 +35,9 @@ class Settings(BaseSettings):
     # treg (treg.to) reads LinkedIn and Google for the job radar, lead magnets and the events tool. Without it the
     # radar still checks job boards (free), but its LinkedIn, Google and hiring-post searches don't run.
     treg_token: SecretStr | None = None
-    # Apollo finds work emails and what a company does. It only runs once sign-in is on (not OPEN_ACCESS).
+    # Apollo finds LinkedIn profile links and verified work emails (only verified ones are kept), and what a company
+    # does. It runs with or without sign-in: the owner asked for emails always. With OPEN_ACCESS on, anyone with the
+    # tracker's address can see them.
     apollo_api_key: SecretStr | None = None
     # Claude works out a lead magnet's ICP from the prospect's website (the strong model, once per build) and screens
     # the people found against it (the small model, in batches).

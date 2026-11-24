@@ -1,4 +1,4 @@
-"""A small Apollo client: match a person to their work email, and look up what a company does.
+"""A small Apollo client: match people to their work email and LinkedIn profile, and look up what a company does.
 
 The key goes in the X-Api-Key header, never in the URL. Only work emails are asked for; Apollo is told not to reveal
 personal ones.
@@ -10,8 +10,10 @@ import httpx2
 
 API = "https://api.apollo.io/api/v1"
 TIMEOUT_S = 30
+BULK = 10  # Apollo matches at most this many people a request
 LOCKED = "email_not_unlocked"  # Apollo's placeholder when the plan can't show an email
 WEAK = {"low", "none"}  # match_confidence values too unsure to put an email on someone
+VERIFIED = "verified"  # the only email_status whose address is kept
 
 
 class ApolloError(RuntimeError):
@@ -64,6 +66,18 @@ class Apollo:
             return None
         return person
 
+    def bulk_match(self, details: list[dict[str, Any]]) -> list[dict[str, Any] | None]:
+        """The person Apollo matches for each one asked about, in the same order (None where it found no one). Up to
+        ten a request. Personal emails and phone numbers are never asked for."""
+        if len(details) > BULK:
+            raise ValueError(f"Apollo matches at most {BULK} people a request.")
+        if not details:
+            return []
+        body = {"details": details, "reveal_personal_emails": False, "reveal_phone_number": False}
+        matches = self._call("POST", "/people/bulk_match", json=body).get("matches")
+        found = [m if isinstance(m, dict) else None for m in matches] if isinstance(matches, list) else []
+        return (found + [None] * len(details))[: len(details)]
+
     def organization(self, domain: str) -> dict[str, Any] | None:
         org = self._call("GET", "/organizations/enrich", params={"domain": domain}).get("organization")
         return org if isinstance(org, dict) else None
@@ -92,3 +106,9 @@ def work_email(person: dict[str, Any] | None) -> str | None:
     """The match's email, unless it's missing or Apollo's locked placeholder."""
     email = str((person or {}).get("email") or "").strip().lower()
     return email if "@" in email and not email.startswith(LOCKED) else None
+
+
+def verified_email(person: dict[str, Any] | None) -> str | None:
+    """The match's work email, only when Apollo has verified it: a guessed or unverified address is never kept."""
+    status = str((person or {}).get("email_status") or "").strip().lower()
+    return work_email(person) if status == VERIFIED else None

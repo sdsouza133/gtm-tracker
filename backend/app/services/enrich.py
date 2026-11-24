@@ -5,7 +5,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.enrich.apollo import ApolloError, Finder, work_email
+from app.enrich.apollo import ApolloError, Finder, verified_email
 from app.models import Company, Person
 from app.services.history import record
 
@@ -46,7 +46,7 @@ def enrich_company(session: Session, company: Company, apollo: Finder, today: da
         except ApolloError:
             break  # Apollo is down or out of credits: stop, and try the rest another time
         tried += 1
-        email = work_email(hit)
+        email = verified_email(hit)  # only an address Apollo has verified
         session.refresh(person, with_for_update=True)  # an email typed in during the lookup wins
         details = {**person.details, "apollo_tried": today.isoformat()}
         if email and not person.email:

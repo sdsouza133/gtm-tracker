@@ -220,6 +220,13 @@ class EnrichOut(BaseModel):
     companies: int
 
 
+class ContactsOut(BaseModel):
+    tried: int = Field(description="People Apollo was asked about this time")
+    links: int = Field(description="Of them, how many got a LinkedIn profile link")
+    emails: int = Field(description="Of them, how many got a verified work email")
+    left: int = Field(description="People still to ask about: call again while this is above zero")
+
+
 # ----------------------------------------------------------------------------- companies
 
 
@@ -421,6 +428,7 @@ class ProspectPerson(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     title: str = Field(default="", max_length=1000)
     linkedin: Link = None
+    email: str | None = Field(default=None, max_length=320)  # a verified work email Apollo found (never from research)
     location: str = Field(default="", max_length=1000)
     since: str = Field(default="", max_length=1000)
 

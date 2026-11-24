@@ -1772,7 +1772,7 @@
      "enrich"
     ],
     "summary": "Enrich One",
-    "description": "Find work emails for this company's people, and what it does if research left that blank.",
+    "description": "Find verified work emails for this company's people, and what it does if research left that blank.",
     "operationId": "enrich_one_api_companies__company_id__enrich_post",
     "parameters": [
      {
@@ -1824,6 +1824,28 @@
        "application/json": {
         "schema": {
          "$ref": "#/components/schemas/EnrichOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/people/contacts": {
+   "post": {
+    "tags": [
+     "enrich"
+    ],
+    "summary": "Find Contacts",
+    "description": "LinkedIn profile links and verified work emails for people on the board and the Fractional list who lack\neither, up to 100 people a call. Each person is asked about once; only the link and a verified email at their\ncompany's domain are kept. Call again while `left` is above zero; once everyone has been asked, a call costs\nnothing.",
+    "operationId": "find_contacts_api_people_contacts_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ContactsOut"
         }
        }
       }
@@ -3443,6 +3465,38 @@
      "parked_reason"
     ],
     "title": "CompanySummary"
+   },
+   "ContactsOut": {
+    "properties": {
+     "tried": {
+      "type": "integer",
+      "title": "Tried",
+      "description": "People Apollo was asked about this time"
+     },
+     "links": {
+      "type": "integer",
+      "title": "Links",
+      "description": "Of them, how many got a LinkedIn profile link"
+     },
+     "emails": {
+      "type": "integer",
+      "title": "Emails",
+      "description": "Of them, how many got a verified work email"
+     },
+     "left": {
+      "type": "integer",
+      "title": "Left",
+      "description": "People still to ask about: call again while this is above zero"
+     }
+    },
+    "type": "object",
+    "required": [
+     "tried",
+     "links",
+     "emails",
+     "left"
+    ],
+    "title": "ContactsOut"
    },
    "DayBlocks": {
     "properties": {
@@ -6837,6 +6891,18 @@
        }
       ],
       "title": "Linkedin"
+     },
+     "email": {
+      "anyOf": [
+       {
+        "type": "string",
+        "maxLength": 320
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Email"
      },
      "location": {
       "type": "string",
