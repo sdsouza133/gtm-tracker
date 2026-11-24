@@ -142,8 +142,8 @@ def _ask(name: str, company: str, domain: str | None, email: str | None = None) 
     ask: dict[str, Any] = {"name": plain_name(name), "organization_name": plain_name(company)}
     if domain:
         ask["domain"] = domain
-    if email:
-        ask["email"] = email  # a work email we already have pins the person down best
+    if email and domain and same_domain(email.rsplit("@", 1)[-1], domain):
+        ask["email"] = email  # a work email we already have pins the person down best; a personal one is never sent
     return ask
 
 

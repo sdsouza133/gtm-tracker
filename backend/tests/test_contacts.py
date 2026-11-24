@@ -198,16 +198,23 @@ def test_a_blank_link_counts_as_none(db: Session, blank: str) -> None:
     assert ana.linkedin == link("Ana", "Example")
 
 
-def test_a_work_email_we_have_helps_apollo_find_them(db: Session) -> None:
+@pytest.mark.parametrize(
+    ("stored", "sent"),
+    [
+        ("will@acme.example", {"email": "will@acme.example"}),  # a work email pins the person down
+        ("will@eu.acme.example", {"email": "will@eu.acme.example"}),
+        ("will.example@personal.example", {}),  # a personal address never goes to Apollo
+    ],
+)
+def test_only_a_work_email_we_have_is_sent_to_apollo(db: Session, stored: str, sent: dict[str, str]) -> None:
     c = f.company(db, name="Acme (Holdings)", domain=ACME)
-    ana, _ = f.person(db, c, name="William (Will) Example")
-    ana.email = "will@acme.example"
+    will, _ = f.person(db, c, name="William (Will) Example")
+    will.email = stored
+    will.linkedin = None
     db.flush()
     fake = FakeApollo()
     contacts.fill_board(db, fake, TODAY, 10)
-    assert fake.requests == [
-        [{"name": "William Example", "organization_name": "Acme", "domain": ACME, "email": "will@acme.example"}]
-    ]
+    assert fake.requests == [[{"name": "William Example", "organization_name": "Acme", "domain": ACME, **sent}]]
 
 
 def test_ten_people_a_request_and_no_more_than_the_limit(db: Session) -> None:
