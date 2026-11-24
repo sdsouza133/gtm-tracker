@@ -173,7 +173,7 @@ def _board_todo(session: Session) -> Iterator[Person]:
         .join(Person.company)
         .where(
             Person.left.is_(False),
-            or_(Person.linkedin.is_(None), Person.linkedin == ""),
+            or_(Person.linkedin.is_(None), Person.linkedin.regexp_match(r"^\s*$")),  # blank, as board_to_ask sees it
             Company.domain.is_not(None),
             Company.domain != "",
         )
