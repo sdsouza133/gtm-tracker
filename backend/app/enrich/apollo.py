@@ -1,4 +1,4 @@
-"""A small Apollo client: match a person to their work email, and look up what a company does.
+"""A small Apollo client: match people to their work email and LinkedIn profile, and look up what a company does.
 
 The key goes in the X-Api-Key header, never in the URL. Only work emails are asked for; Apollo is told not to reveal
 personal ones.
@@ -13,6 +13,7 @@ TIMEOUT_S = 30
 BULK = 10  # Apollo matches at most this many people a request
 LOCKED = "email_not_unlocked"  # Apollo's placeholder when the plan can't show an email
 WEAK = {"low", "none"}  # match_confidence values too unsure to put an email on someone
+VERIFIED = "verified"  # the only email_status whose address is kept
 
 
 class ApolloError(RuntimeError):
@@ -105,3 +106,9 @@ def work_email(person: dict[str, Any] | None) -> str | None:
     """The match's email, unless it's missing or Apollo's locked placeholder."""
     email = str((person or {}).get("email") or "").strip().lower()
     return email if "@" in email and not email.startswith(LOCKED) else None
+
+
+def verified_email(person: dict[str, Any] | None) -> str | None:
+    """The match's work email, only when Apollo has verified it: a guessed or unverified address is never kept."""
+    status = str((person or {}).get("email_status") or "").strip().lower()
+    return work_email(person) if status == VERIFIED else None

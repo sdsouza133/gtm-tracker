@@ -132,7 +132,7 @@ PROTECTED = [
     ("POST", "/api/moves/clear-backlog"),
     ("POST", "/api/companies/c1/enrich"),
     ("POST", "/api/enrich/today"),
-    ("POST", "/api/people/links"),
+    ("POST", "/api/people/contacts"),
     ("GET", "/api/today"),
     ("GET", "/api/stats"),
     ("GET", "/api/plan"),

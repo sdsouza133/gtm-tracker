@@ -617,7 +617,7 @@ export interface paths {
         put?: never;
         /**
          * Enrich One
-         * @description Find work emails for this company's people, and what it does if research left that blank.
+         * @description Find verified work emails for this company's people, and what it does if research left that blank.
          */
         post: operations["enrich_one_api_companies__company_id__enrich_post"];
         delete?: never;
@@ -648,7 +648,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/people/links": {
+    "/api/people/contacts": {
         parameters: {
             query?: never;
             header?: never;
@@ -658,12 +658,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Find Links
-         * @description LinkedIn profile links for people on the board and the Fractional list who have none, up to 100 people a call.
-         *     Each person is asked about once and only the link is kept. Call again while `left` is above zero; once everyone
-         *     has been asked about, a call costs nothing.
+         * Find Contacts
+         * @description LinkedIn profile links and verified work emails for people on the board and the Fractional list who lack
+         *     either, up to 100 people a call. Each person is asked about once; only the link and a verified email at their
+         *     company's domain are kept. Call again while `left` is above zero; once everyone has been asked, a call costs
+         *     nothing.
          */
-        post: operations["find_links_api_people_links_post"];
+        post: operations["find_contacts_api_people_contacts_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1146,6 +1147,29 @@ export interface components {
             people_count?: number;
             next_move?: components["schemas"]["MoveOut"] | null;
         };
+        /** ContactsOut */
+        ContactsOut: {
+            /**
+             * Tried
+             * @description People Apollo was asked about this time
+             */
+            tried: number;
+            /**
+             * Links
+             * @description Of them, how many got a LinkedIn profile link
+             */
+            links: number;
+            /**
+             * Emails
+             * @description Of them, how many got a verified work email
+             */
+            emails: number;
+            /**
+             * Left
+             * @description People still to ask about: call again while this is above zero
+             */
+            left: number;
+        };
         /** DayBlocks */
         DayBlocks: {
             /**
@@ -1559,24 +1583,6 @@ export interface components {
             next_xp: number | null;
             /** Next Name */
             next_name: string | null;
-        };
-        /** LinksOut */
-        LinksOut: {
-            /**
-             * Tried
-             * @description People Apollo was asked about this time
-             */
-            tried: number;
-            /**
-             * Found
-             * @description Of them, how many now have a LinkedIn profile link
-             */
-            found: number;
-            /**
-             * Left
-             * @description People still to ask about: call again while this is above zero
-             */
-            left: number;
         };
         /** LoginBody */
         LoginBody: {
@@ -2302,6 +2308,8 @@ export interface components {
             title?: string;
             /** Linkedin */
             linkedin?: string | null;
+            /** Email */
+            email?: string | null;
             /**
              * Location
              * @default
@@ -4003,7 +4011,7 @@ export interface operations {
             };
         };
     };
-    find_links_api_people_links_post: {
+    find_contacts_api_people_contacts_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -4018,7 +4026,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LinksOut"];
+                    "application/json": components["schemas"]["ContactsOut"];
                 };
             };
         };

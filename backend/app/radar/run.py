@@ -36,7 +36,7 @@ from app.enrich.apollo import Apollo
 from app.models import Company, Move, MoveStatus, MoveType, ParkedWhy, RadarItem, Setting, Stage
 from app.radar import boards, people, sources
 from app.radar.fit import RadarConfig, domain_of, fits, is_overseas, linkedin_slug, norm, web_url
-from app.services import links
+from app.services import contacts
 from app.services.history import record
 from app.services.outreach import NewPerson, RuleError, add_person
 from app.treg import Caller, Treg
@@ -755,26 +755,26 @@ def describe(summary: dict[str, Any], errors: list[str]) -> str:
         bits.append(f"hiring posts: {summary['posts_new']} new out of {summary['posts_scanned']} scanned")
     if summary.get("auto_added"):
         bits.insert(1, f"{summary['auto_added']} added to the board with {summary['people_added']} people to write to")
-    if summary.get("links_found"):
-        n = summary["links_found"]
-        bits.append(f"LinkedIn links found for {n} {'person' if n == 1 else 'people'}")
+    if summary.get("links_found") or summary.get("emails_found"):
+        links, emails = summary.get("links_found", 0), summary.get("emails_found", 0)
+        bits.append(f"Apollo: {links} LinkedIn links and {emails} verified emails")
     return "Job radar: " + ", ".join(bits) + (f". {' '.join(errors)}" if errors else "")
 
 
-RADAR_LINKS = 50  # people a pass asks Apollo about, at most: new people arrive a handful a day
+RADAR_CONTACTS = 50  # people a pass asks Apollo about, at most: new people arrive a handful a day
 
 
-def find_links(factory: sessionmaker[Session], apollo: links.LinkFinder, today: date) -> dict[str, int]:
-    """LinkedIn links for people with none, such as those the inbox check adds from email threads. A failure here never
-    fails the pass: the rest is still saved, and the next pass tries again."""
+def find_contacts(factory: sessionmaker[Session], apollo: contacts.ContactFinder, today: date) -> dict[str, int]:
+    """LinkedIn links and verified emails for people missing them, such as those added by this pass or by the inbox
+    check. A failure here never fails the pass: the rest is still saved, and the next pass tries again."""
     try:
         with factory() as session:
-            done = links.fill(session, apollo, today, RADAR_LINKS)
+            done = contacts.fill(session, apollo, today, RADAR_CONTACTS)
             session.commit()
-    except Exception as e:  # only the kind: a database error's text carries the values, such as LinkedIn links
-        log.error("finding LinkedIn links failed: %s", type(e).__name__)
-        return {"links_tried": 0, "links_found": 0}
-    return {"links_tried": done.tried, "links_found": done.found}
+    except Exception as e:  # only the kind: a database error's text carries the values, such as links and emails
+        log.error("finding LinkedIn links and emails failed: %s", type(e).__name__)
+        return {"contacts_tried": 0, "links_found": 0, "emails_found": 0}
+    return {"contacts_tried": done.tried, "links_found": done.links, "emails_found": done.emails}
 
 
 @dataclass
@@ -783,7 +783,7 @@ class Tools:
 
     web: boards.Http
     treg: Caller | None
-    apollo: links.LinkFinder | None = None  # LinkedIn links for people who have none; skipped without APOLLO_API_KEY
+    apollo: contacts.ContactFinder | None = None  # links and verified emails for new people; needs APOLLO_API_KEY
 
 
 @contextmanager
@@ -864,8 +864,8 @@ def _run(factory: sessionmaker[Session], settings: Settings, tools: Tools, trigg
             summary.update(auto_add(factory, cfg, tools, today, started_at))
             summary["spent_usd"] = round(summary["spent_usd"] + summary["people_usd"], 2)
         if tools.apollo:
-            _step(factory, "finding LinkedIn links")
-            summary.update(find_links(factory, tools.apollo, today))
+            _step(factory, "finding LinkedIn links and emails")
+            summary.update(find_contacts(factory, tools.apollo, today))
         with factory() as session:
             status = dict(get_setting(session, "radar_status", {}))
             status.update(

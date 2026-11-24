@@ -120,6 +120,11 @@ function Checklist({ p, today }: { p: ProspectDetail; today: string }) {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">{person.name}</p>
               <p className="text-[13px] text-muted">{[person.title, person.location].filter(Boolean).join(" · ")}</p>
+              {person.email && (
+                <a className="text-[13px] text-accent hover:underline" href={`mailto:${person.email}`}>
+                  {person.email}
+                </a>
+              )}
             </div>
             {safeUrl(person.linkedin) && (
               <a

@@ -1,9 +1,10 @@
-"""LinkedIn profile links from Apollo for people the tracker only has a name for, on the board and the Fractional list.
+"""LinkedIn profile links and verified work emails from Apollo, for people on the board and the Fractional list.
 
-Only the link is kept, never an email or anything else Apollo sends back. A link is kept only when Apollo's person has
-the same first name and last name as ours and works at the same company. Apollo's own confidence isn't trusted: it has
-called a stranger with another last name a sure match, and the right person an unsure one. Everyone asked about is
-marked tried, so a miss is never paid for twice, and each batch of ten is saved as it goes.
+One Apollo match per person brings both. A match is used only when Apollo's person has the same first name and last
+name as ours and works at the same company: Apollo's own confidence isn't trusted, because it has called a stranger with
+another last name a sure match, and the right person an unsure one. An email is kept only when Apollo has verified it
+and it's at the company's domain. Nothing else Apollo sends back is kept. Everyone asked about is marked tried, so
+nobody is paid for twice, and each batch of ten is saved as it goes.
 """
 
 import re
@@ -18,7 +19,7 @@ from urllib.parse import urlparse
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, contains_eager
 
-from app.enrich.apollo import BULK, ApolloError
+from app.enrich.apollo import BULK, ApolloError, verified_email
 from app.models import Company, Person, Prospect
 from app.services.history import record
 
@@ -28,18 +29,27 @@ CLOSED = {"lost", "skipped"}  # Fractional prospects not worth a credit
 PAGE = 200  # rows read at a time while looking for people to ask about, so a big table is never loaded whole
 
 
-class LinkFinder(Protocol):
+class ContactFinder(Protocol):
     def bulk_match(self, details: list[dict[str, Any]]) -> list[dict[str, Any] | None]: ...
+
+
+@dataclass(frozen=True)
+class Contact:
+    link: str | None = None
+    email: str | None = None
 
 
 @dataclass(frozen=True)
 class Filled:
     tried: int = 0  # people Apollo was asked about this time
-    found: int = 0  # of them, how many now have a link
+    links: int = 0  # of them, how many got a LinkedIn link
+    emails: int = 0  # of them, how many got a verified email
     left: int = 0  # people still to ask about, past this run's limit
 
     def __add__(self, other: "Filled") -> "Filled":
-        return Filled(self.tried + other.tried, self.found + other.found, self.left + other.left)
+        return Filled(
+            self.tried + other.tried, self.links + other.links, self.emails + other.emails, self.left + other.left
+        )
 
 
 def tokens(text: str) -> list[str]:
@@ -94,10 +104,16 @@ def _same_name(name: str, hit: dict[str, Any]) -> bool:
     return first_ok and any(t in last for t in hit_last)
 
 
+def _org_domain(hit: dict[str, Any]) -> str:
+    raw = hit.get("organization")
+    org: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    return host(str(org.get("primary_domain") or "")) or host(str(org.get("website_url") or ""))
+
+
 def _same_company(company: str, domain: str | None, hit: dict[str, Any]) -> bool:
     raw = hit.get("organization")
     org: dict[str, Any] = raw if isinstance(raw, dict) else {}
-    org_domain = host(str(org.get("primary_domain") or "")) or host(str(org.get("website_url") or ""))
+    org_domain = _org_domain(hit)
     if org_domain:
         return bool(domain) and same_domain(org_domain, domain or "")
     # Apollo has no domain for the employer: its name must carry ours ("Phreesia Network Solutions" for Phreesia)
@@ -105,14 +121,21 @@ def _same_company(company: str, domain: str | None, hit: dict[str, Any]) -> bool
     return bool(ours) and all(t in theirs for t in ours)
 
 
-def verified_link(name: str, company: str, domain: str | None, hit: dict[str, Any] | None) -> str | None:
-    """Apollo's profile link for this person, only when the first name, the last name and the company all agree."""
-    if not hit or not askable(name):
+def _company_email(hit: dict[str, Any], domain: str | None) -> str | None:
+    """Apollo's verified email, only at the company's own domain: an old employer's address is no use."""
+    email = verified_email(hit)
+    if email is None:
         return None
-    link = profile_link(hit.get("linkedin_url"))
-    if link is None or not _same_name(name, hit) or not _same_company(company, domain, hit):
-        return None
-    return link
+    at = email.rsplit("@", 1)[1]
+    return email if any(d and same_domain(at, d) for d in (domain or "", _org_domain(hit))) else None
+
+
+def verified_contact(name: str, company: str, domain: str | None, hit: dict[str, Any] | None) -> Contact:
+    """Apollo's profile link and verified email for this person, only when the first name, the last name and the
+    company all agree."""
+    if not hit or not askable(name) or not _same_name(name, hit) or not _same_company(company, domain, hit):
+        return Contact()
+    return Contact(link=profile_link(hit.get("linkedin_url")), email=_company_email(hit, domain))
 
 
 def _ask(name: str, company: str, domain: str | None, email: str | None = None) -> dict[str, Any]:
@@ -156,12 +179,17 @@ def _keep[T](items: Iterable[T], limit: int) -> tuple[list[T], int]:
 # ----------------------------------------------------------------------------- the board
 
 
+def _blank(value: str | None) -> bool:
+    return not (value or "").strip()
+
+
 def board_to_ask(person: Person) -> bool:
-    """Still at the company, no link, never asked about, and findable: a full name and the company's domain."""
+    """Still at the company, missing a link or an email, never asked about, and findable: a full name and the
+    company's domain."""
     return (
         not person.left
-        and not (person.linkedin or "").strip()
-        and not person.details.get("link_tried")
+        and (_blank(person.linkedin) or _blank(person.email))
+        and not person.details.get("contact_tried")
         and bool(person.company.domain)
         and askable(person.name)
     )
@@ -172,7 +200,7 @@ def _board_todo(session: Session) -> Iterator[Person]:
         select(Person)
         .join(Person.company)
         .where(
-            Person.left.is_(False),  # whether the link is blank is left to board_to_ask, the one place that decides it
+            Person.left.is_(False),  # what's missing is left to board_to_ask, the one place that decides it
             Company.domain.is_not(None),
             Company.domain != "",
         )
@@ -183,38 +211,53 @@ def _board_todo(session: Session) -> Iterator[Person]:
         yield from (p for p in page if board_to_ask(p))
 
 
-def fill_board(session: Session, apollo: LinkFinder, today: date, limit: int) -> Filled:
-    """Links for people on the board, oldest first, up to `limit` people."""
+def _found_line(name: str, links: int, emails: int) -> str:
+    bits = [f"LinkedIn for {_people(links)}"] if links else []
+    bits += [f"verified emails for {_people(emails)}"] if emails else []
+    return f"{name}: Apollo found " + " and ".join(bits)
+
+
+def fill_board(session: Session, apollo: ContactFinder, today: date, limit: int) -> Filled:
+    """Links and verified emails for people on the board, oldest first, up to `limit` people."""
     todo, more = _keep(_board_todo(session), max(limit, 0))
-    tried = found = 0
+    tried = links = emails = 0
     for chunk in _chunks(todo, BULK):
         try:
             hits = apollo.bulk_match([_ask(p.name, p.company.name, p.company.domain, p.email) for p in chunk])
         except ApolloError:
             break  # Apollo is down or out of credits: the rest are asked about next time
-        at: Counter[tuple[str, str]] = Counter()
+        found: dict[tuple[str, str], Counter[str]] = {}
         for person, hit in zip(chunk, hits, strict=True):
-            link = verified_link(person.name, person.company.name, person.company.domain, hit)
-            session.refresh(person, ["linkedin", "details"], with_for_update=True)  # a link typed in meanwhile wins
-            details = {**person.details, "link_tried": today.isoformat()}
-            if link and not (person.linkedin or "").strip():
-                person.linkedin = link
+            contact = verified_contact(person.name, person.company.name, person.company.domain, hit)
+            # what was typed in during the lookup wins
+            session.refresh(person, ["linkedin", "email", "details"], with_for_update=True)
+            details = {**person.details, "contact_tried": today.isoformat()}
+            got = found.setdefault((person.company_id, person.company.name), Counter())
+            if contact.link and _blank(person.linkedin):
+                person.linkedin = contact.link
                 details["link_source"] = "apollo"
-                at[person.company_id, person.company.name] += 1
+                got["links"] += 1
+            if contact.email and _blank(person.email):
+                person.email = contact.email
+                details |= {"email_source": "apollo", "email_status": "verified"}
+                got["emails"] += 1
             person.details = details
-        for (company_id, name), n in at.items():
-            record(session, "research", f"{name}: Apollo found LinkedIn for {_people(n)}", company_id=company_id)
-        tried, found = tried + len(chunk), found + sum(at.values())
+        for (company_id, name), got in found.items():
+            if got:
+                record(session, "research", _found_line(name, got["links"], got["emails"]), company_id=company_id)
+        tried += len(chunk)
+        links += sum(g["links"] for g in found.values())
+        emails += sum(g["emails"] for g in found.values())
         session.commit()
-    return Filled(tried=tried, found=found, left=more + len(todo) - tried)
+    return Filled(tried=tried, links=links, emails=emails, left=more + len(todo) - tried)
 
 
 # ----------------------------------------------------------------------------- the Fractional list
 
 
 def _fractional_todo(session: Session) -> Iterator[tuple[Prospect, dict[str, Any]]]:
-    """Each research person with no link yet, newest prospects first. Links found live in the prospect's `mine`, which
-    the daily research sync never touches, so they outlast it."""
+    """Each research person still missing a link or an email, newest prospects first. What's found lives in the
+    prospect's `mine`, which the daily research sync never touches, so it outlasts the sync."""
     query = (
         select(Prospect).where(Prospect.domain.is_not(None)).order_by(Prospect.day.desc(), Prospect.rank, Prospect.id)
     )
@@ -223,48 +266,55 @@ def _fractional_todo(session: Session) -> Iterator[tuple[Prospect, dict[str, Any
             mine = p.mine or {}
             if (mine.get("status") or "open") in CLOSED:
                 continue
-            done = {**(mine.get("links") or {}), **(mine.get("links_tried") or {})}
+            found_links, found_emails = mine.get("links") or {}, mine.get("emails") or {}
+            asked = mine.get("contact_tried") or {}
             for person in (p.research or {}).get("people") or []:
                 key, name = str(person.get("key") or ""), str(person.get("name") or "")
-                if key and not person.get("linkedin") and key not in done and askable(name):
+                missing = not (person.get("linkedin") or found_links.get(key)) or not found_emails.get(key)
+                if key and missing and key not in asked and askable(name):
                     yield p, person
 
 
-def fill_fractional(session: Session, apollo: LinkFinder, today: date, limit: int) -> Filled:
-    """Links for people on the Fractional list, up to `limit` people."""
+def fill_fractional(session: Session, apollo: ContactFinder, today: date, limit: int) -> Filled:
+    """Links and verified emails for people on the Fractional list, up to `limit` people."""
     todo, more = _keep(_fractional_todo(session), max(limit, 0))
-    tried = found = 0
+    tried = links = emails = 0
     for chunk in _chunks(todo, BULK):
         try:
             hits = apollo.bulk_match([_ask(str(x["name"]), p.name, p.domain) for p, x in chunk])
         except ApolloError:
             break
-        results: dict[str, list[tuple[str, str | None]]] = {}
+        results: dict[str, list[tuple[dict[str, Any], Contact]]] = {}
         prospects: dict[str, Prospect] = {}
         for (p, x), hit in zip(chunk, hits, strict=True):
-            results.setdefault(p.id, []).append((str(x["key"]), verified_link(str(x["name"]), p.name, p.domain, hit)))
+            results.setdefault(p.id, []).append((x, verified_contact(str(x["name"]), p.name, p.domain, hit)))
             prospects[p.id] = p
         for pid, pairs in results.items():
             p = prospects[pid]
             session.refresh(p, ["mine"], with_for_update=True)  # a tick saved during the lookup stays
             mine = dict(p.mine or {})
-            links, asked = dict(mine.get("links") or {}), dict(mine.get("links_tried") or {})
-            new = 0
-            for key, link in pairs:
+            found_links, found_emails = dict(mine.get("links") or {}), dict(mine.get("emails") or {})
+            asked = dict(mine.get("contact_tried") or {})
+            got: Counter[str] = Counter()
+            for person, contact in pairs:
+                key = str(person["key"])
                 asked[key] = today.isoformat()
-                if link and key not in links:
-                    links[key] = link
-                    new += 1
-            p.mine = {**mine, "links": links, "links_tried": asked}
-            if new:
-                record(session, "fractional", f"{p.name}: Apollo found LinkedIn for {_people(new)}")
-            found += new
+                if contact.link and not (person.get("linkedin") or found_links.get(key)):
+                    found_links[key] = contact.link
+                    got["links"] += 1
+                if contact.email and not found_emails.get(key):
+                    found_emails[key] = contact.email
+                    got["emails"] += 1
+            p.mine = {**mine, "links": found_links, "emails": found_emails, "contact_tried": asked}
+            if got:
+                record(session, "fractional", _found_line(p.name, got["links"], got["emails"]))
+            links, emails = links + got["links"], emails + got["emails"]
         tried += len(chunk)
         session.commit()
-    return Filled(tried=tried, found=found, left=more + len(todo) - tried)
+    return Filled(tried=tried, links=links, emails=emails, left=more + len(todo) - tried)
 
 
-def fill(session: Session, apollo: LinkFinder, today: date, limit: int) -> Filled:
+def fill(session: Session, apollo: ContactFinder, today: date, limit: int) -> Filled:
     """The board first (the people you're writing to now), then the Fractional list, up to `limit` people in all."""
     board = fill_board(session, apollo, today, limit)
     return board + fill_fractional(session, apollo, today, limit - board.tried)

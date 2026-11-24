@@ -1,4 +1,5 @@
-"""LinkedIn profile links from Apollo, with a fake Apollo. Every name, company and link here is made up."""
+"""LinkedIn links and verified emails from Apollo, with a fake Apollo. Every name, company, link and address here is
+made up."""
 
 import logging
 from typing import Any
@@ -10,12 +11,12 @@ from pydantic import SecretStr
 from sqlalchemy import Connection, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.api.enrich import get_link_finder
+from app.api.enrich import get_contact_finder
 from app.config import get_settings
 from app.enrich.apollo import Apollo, ApolloError
 from app.models import Activity, Person
 from app.radar import run as radar
-from app.services import links
+from app.services import contacts
 from tests import factories as f
 from tests.conftest import TODAY
 from tests.radar_fakes import FakeWeb
@@ -61,7 +62,7 @@ class FakeApollo:
 @pytest.fixture
 def apollo(signed_in: TestClient) -> FakeApollo:
     fake = FakeApollo()
-    signed_in.app.dependency_overrides[get_link_finder] = lambda: fake  # type: ignore[attr-defined]
+    signed_in.app.dependency_overrides[get_contact_finder] = lambda: fake  # type: ignore[attr-defined]
     return fake
 
 
@@ -109,48 +110,79 @@ def apollo(signed_in: TestClient) -> FakeApollo:
 def test_a_link_is_kept_only_when_the_name_and_the_company_agree(
     name: str, company: str, domain: str, found: dict[str, Any] | None, expected: str | None
 ) -> None:
-    assert links.verified_link(name, company, domain, found) == expected
+    assert contacts.verified_contact(name, company, domain, found).link == expected
+
+
+@pytest.mark.parametrize(
+    ("found", "email"),
+    [
+        (hit("Ana", "Example", email_status="verified"), "ana@acme.example"),
+        (hit("Ana", "Example", email_status="Verified", email="Ana@EU.Acme.example"), "ana@eu.acme.example"),
+        (hit("Ana", "Example", email_status="guessed"), None),  # only verified addresses
+        (hit("Ana", "Example", email_status="unavailable"), None),
+        (hit("Ana", "Example"), None),  # no status at all
+        (hit("Ana", "Example", email_status="verified", email="ana@personal.example"), None),  # not at the company
+        (hit("Ana", "Example", email_status="verified", email="email_not_unlocked@domain.com"), None),
+        (hit("Ana", "Stranger", email_status="verified"), None),  # someone else's address
+    ],
+)
+def test_an_email_is_kept_only_when_verified_and_at_the_company(found: dict[str, Any], email: str | None) -> None:
+    assert contacts.verified_contact("Ana Example", "Acme", ACME, found).email == email
 
 
 def test_links_come_back_in_one_shape() -> None:
     assert (
-        links.profile_link("http://linkedin.com/in/ana-example?trk=feed") == "https://www.linkedin.com/in/ana-example"
+        contacts.profile_link("http://linkedin.com/in/ana-example?trk=feed")
+        == "https://www.linkedin.com/in/ana-example"
     )
-    assert links.profile_link("https://ca.linkedin.com/in/ana-example/") == "https://www.linkedin.com/in/ana-example"
-    assert links.profile_link("https://example.com/in/ana") is None
+    assert contacts.profile_link("https://ca.linkedin.com/in/ana-example/") == "https://www.linkedin.com/in/ana-example"
+    assert contacts.profile_link("https://example.com/in/ana") is None
 
 
 # ----------------------------------------------------------------------------- the board
 
 
-def test_people_on_the_board_get_their_link_once_and_nothing_else(
+def test_people_on_the_board_get_their_link_and_verified_email_once(
     signed_in: TestClient, db: Session, apollo: FakeApollo
 ) -> None:
     c = f.company(db, name="Acme", domain=ACME)
     ana, _ = f.person(db, c, name="Ana Example")
     bo, _ = f.person(db, c, name="Bo Example")
-    linked, _ = f.person(db, c, name="Cy Example")
-    linked.linkedin = "https://www.linkedin.com/in/cy-typed"
+    cy, _ = f.person(db, c, name="Cy Example")
+    cy.linkedin = "https://www.linkedin.com/in/cy-typed"  # a link but no email: still asked, for the email
+    done, _ = f.person(db, c, name="Dee Example")
+    done.linkedin, done.email = "https://www.linkedin.com/in/dee", "dee@acme.example"  # nothing missing
     gone, _ = f.person(db, c, name="Di Example")
     gone.left = True
     f.person(db, c, name="Ed")  # a first name alone isn't asked about
     elsewhere = f.company(db, name="No Site")
     f.person(db, elsewhere, name="Fay Example")  # no domain: nothing to check the company against
     db.flush()
-    apollo.people = {"Ana Example": hit("Ana", "Example"), "Bo Example": hit("Bo", "Stranger")}
+    apollo.people = {
+        "Ana Example": hit("Ana", "Example", email_status="verified"),
+        "Bo Example": hit("Bo", "Stranger", email_status="verified"),  # someone else: nothing of theirs is kept
+        "Cy Example": hit("Cy", "Example", email_status="guessed"),  # not verified: no email
+    }
 
-    assert signed_in.post("/api/people/links").json() == {"tried": 2, "found": 1, "left": 0}
-    assert sorted(apollo.asked) == ["Ana Example", "Bo Example"]
-    db.refresh(ana)
-    db.refresh(bo)
-    assert (ana.linkedin, ana.email) == (link("Ana", "Example"), None)  # never the email Apollo sent
-    assert (ana.details["link_tried"], ana.details["link_source"]) == (TODAY.isoformat(), "apollo")
-    assert (bo.linkedin, bo.details["link_tried"]) == (None, TODAY.isoformat())
+    assert signed_in.post("/api/people/contacts").json() == {"tried": 3, "links": 1, "emails": 1, "left": 0}
+    assert sorted(apollo.asked) == ["Ana Example", "Bo Example", "Cy Example"]
+    for p in (ana, bo, cy):
+        db.refresh(p)
+    assert (ana.linkedin, ana.email) == (link("Ana", "Example"), "ana@acme.example")
+    assert {k: ana.details[k] for k in ("contact_tried", "link_source", "email_source", "email_status")} == {
+        "contact_tried": TODAY.isoformat(),
+        "link_source": "apollo",
+        "email_source": "apollo",
+        "email_status": "verified",
+    }
+    assert (bo.linkedin, bo.email, bo.details["contact_tried"]) == (None, None, TODAY.isoformat())
+    assert (cy.linkedin, cy.email) == ("https://www.linkedin.com/in/cy-typed", None)  # the typed link stays
     assert db.scalar(select(Activity.text).where(Activity.company_id == c.id, Activity.kind == "research")) == (
-        "Acme: Apollo found LinkedIn for 1 person"
+        "Acme: Apollo found LinkedIn for 1 person and verified emails for 1 person"
     )
 
-    assert signed_in.post("/api/people/links").json() == {"tried": 0, "found": 0, "left": 0}  # a miss isn't paid twice
+    again = signed_in.post("/api/people/contacts").json()
+    assert again == {"tried": 0, "links": 0, "emails": 0, "left": 0}  # nobody is paid for twice
     assert len(apollo.requests) == 1
 
 
@@ -161,7 +193,7 @@ def test_a_blank_link_counts_as_none(db: Session, blank: str) -> None:
     ana.linkedin = blank  # the import from the old tracker kept such values as they were
     db.flush()
     fake = FakeApollo({"Ana Example": hit("Ana", "Example")})
-    assert links.fill_board(db, fake, TODAY, 10) == links.Filled(tried=1, found=1, left=0)
+    assert contacts.fill_board(db, fake, TODAY, 10) == contacts.Filled(tried=1, links=1, emails=0, left=0)
     db.refresh(ana)
     assert ana.linkedin == link("Ana", "Example")
 
@@ -172,7 +204,7 @@ def test_a_work_email_we_have_helps_apollo_find_them(db: Session) -> None:
     ana.email = "will@acme.example"
     db.flush()
     fake = FakeApollo()
-    links.fill_board(db, fake, TODAY, 10)
+    contacts.fill_board(db, fake, TODAY, 10)
     assert fake.requests == [
         [{"name": "William Example", "organization_name": "Acme", "domain": ACME, "email": "will@acme.example"}]
     ]
@@ -184,27 +216,30 @@ def test_ten_people_a_request_and_no_more_than_the_limit(db: Session) -> None:
         f.person(db, c, name=f"Ana Example{chr(97 + i)}")
     db.flush()
     fake = FakeApollo()
-    assert links.fill_board(db, fake, TODAY, 12) == links.Filled(tried=12, found=0, left=2)
+    assert contacts.fill_board(db, fake, TODAY, 12) == contacts.Filled(tried=12, links=0, emails=0, left=2)
     assert [len(r) for r in fake.requests] == [10, 2]
 
 
-def test_a_link_typed_in_during_the_lookup_wins(db: Session) -> None:
+def test_a_link_or_email_typed_in_during_the_lookup_wins(db: Session) -> None:
     c = f.company(db, name="Acme", domain=ACME)
     ana, _ = f.person(db, c, name="Ana Example")
     db.flush()
-    typed = "https://www.linkedin.com/in/ana-typed-by-hand"
+    typed_link, typed_email = "https://www.linkedin.com/in/ana-typed-by-hand", "ana.typed@acme.example"
 
     class Slow(FakeApollo):
         def bulk_match(self, details: list[dict[str, Any]]) -> list[dict[str, Any] | None]:  # noqa: ARG002
             db.execute(
-                update(Person).where(Person.id == ana.id).values(linkedin=typed),
+                update(Person).where(Person.id == ana.id).values(linkedin=typed_link, email=typed_email),
                 execution_options={"synchronize_session": False},
             )
-            return [hit("Ana", "Example")]
+            return [hit("Ana", "Example", email_status="verified")]
 
-    assert links.fill_board(db, Slow(), TODAY, 10).found == 0
+    done = contacts.fill_board(db, Slow(), TODAY, 10)
+    assert (done.links, done.emails) == (0, 0)
     db.refresh(ana)
-    assert (ana.linkedin, ana.details["link_tried"], "link_source" in ana.details) == (typed, TODAY.isoformat(), False)
+    assert (ana.linkedin, ana.email, ana.details["contact_tried"]) == (typed_link, typed_email, TODAY.isoformat())
+    assert "link_source" not in ana.details
+    assert "email_source" not in ana.details
 
 
 def test_when_apollo_fails_nobody_is_marked_tried(signed_in: TestClient, db: Session, apollo: FakeApollo) -> None:
@@ -216,15 +251,15 @@ def test_when_apollo_fails_nobody_is_marked_tried(signed_in: TestClient, db: Ses
         raise ApolloError("Apollo 422: insufficient credits")
 
     apollo.bulk_match = down  # type: ignore[method-assign]
-    assert signed_in.post("/api/people/links").json() == {"tried": 0, "found": 0, "left": 1}
+    assert signed_in.post("/api/people/contacts").json() == {"tried": 0, "links": 0, "emails": 0, "left": 1}
     db.refresh(ana)
-    assert "link_tried" not in ana.details
+    assert "contact_tried" not in ana.details
 
 
 # ----------------------------------------------------------------------------- the Fractional list
 
 
-def test_fractional_people_get_links_that_outlast_the_research_sync(
+def test_fractional_people_get_links_and_emails_that_outlast_the_research_sync(
     signed_in: TestClient, db: Session, apollo: FakeApollo
 ) -> None:
     people = [
@@ -234,22 +269,30 @@ def test_fractional_people_get_links_that_outlast_the_research_sync(
     ]
     sync(signed_in, prospect("acme", people=people), prospect("gone", people=[{"key": "di", "name": "Di Example"}]))
     signed_in.patch("/api/fx/prospects/gone", json={"status": "lost"})  # closed: not worth a credit
-    apollo.people = {"Ana Example": hit("Ana", "Example", domain="acme.example", org="Acme Example")}
+    apollo.people = {
+        "Ana Example": hit("Ana", "Example", domain="acme.example", org="Acme Example", email_status="verified")
+    }
 
-    assert signed_in.post("/api/people/links").json() == {"tried": 2, "found": 1, "left": 0}
-    assert sorted(apollo.asked) == ["Ana Example", "Bo Example"]
+    # Cy has a link from research but no email, so Cy is asked too
+    assert signed_in.post("/api/people/contacts").json() == {"tried": 3, "links": 1, "emails": 1, "left": 0}
+    assert sorted(apollo.asked) == ["Ana Example", "Bo Example", "Cy Example"]
     assert apollo.requests[0][0]["organization_name"] == "Acme Example"
 
-    def shown() -> dict[str, str | None]:
-        return {p["key"]: p["linkedin"] for p in signed_in.get("/api/fx/prospects/acme").json()["people"]}
+    def shown() -> dict[str, tuple[str | None, str | None]]:
+        people = signed_in.get("/api/fx/prospects/acme").json()["people"]
+        return {p["key"]: (p["linkedin"], p["email"]) for p in people}
 
-    expected = {"ana": link("Ana", "Example"), "bo": None, "cy": "https://www.linkedin.com/in/cy-from-research"}
+    expected = {
+        "ana": (link("Ana", "Example"), "ana@acme.example"),
+        "bo": (None, None),
+        "cy": ("https://www.linkedin.com/in/cy-from-research", None),
+    }
     assert shown() == expected
     sync(signed_in, prospect("acme", people=people, why_now="Hiring a CRO"))  # the research is replaced
     assert shown() == expected
-    assert signed_in.post("/api/people/links").json() == {"tried": 0, "found": 0, "left": 0}
-    assert db.scalar(select(Activity.text).where(Activity.text.like("%Apollo found LinkedIn%"))) == (
-        "Acme Example: Apollo found LinkedIn for 1 person"
+    assert signed_in.post("/api/people/contacts").json() == {"tried": 0, "links": 0, "emails": 0, "left": 0}
+    assert db.scalar(select(Activity.text).where(Activity.text.like("%Apollo found%"))) == (
+        "Acme Example: Apollo found LinkedIn for 1 person and verified emails for 1 person"
     )
 
 
@@ -259,25 +302,27 @@ def test_the_board_goes_first_then_the_fractional_list(db: Session, signed_in: T
     f.person(db, c, name="Ana Example")
     db.flush()
     fake = FakeApollo()
-    assert links.fill(db, fake, TODAY, 1) == links.Filled(tried=1, found=0, left=1)
+    assert contacts.fill(db, fake, TODAY, 1) == contacts.Filled(tried=1, links=0, emails=0, left=1)
     assert fake.asked == ["Ana Example"]
 
 
 def test_people_are_read_a_page_at_a_time_and_only_the_limit_is_kept(
     db: Session, signed_in: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(links, "PAGE", 2)
+    monkeypatch.setattr(contacts, "PAGE", 2)
     c = f.company(db, name="Acme", domain=ACME)
     for i in range(5):
         f.person(db, c, name=f"Ana Example{chr(97 + i)}")
     sync(signed_in, prospect("acme", people=[{"key": f"k{i}", "name": f"Bo Example{chr(97 + i)}"} for i in range(3)]))
     db.flush()
     fake = FakeApollo()
-    assert links.fill(db, fake, TODAY, 0) == links.Filled(tried=0, found=0, left=8)  # counted, nobody asked
+    assert contacts.fill(db, fake, TODAY, 0) == contacts.Filled(
+        tried=0, links=0, emails=0, left=8
+    )  # counted, nobody asked
     assert fake.requests == []
-    assert links.fill(db, fake, TODAY, 6) == links.Filled(tried=6, found=0, left=2)
+    assert contacts.fill(db, fake, TODAY, 6) == contacts.Filled(tried=6, links=0, emails=0, left=2)
     assert [len(r) for r in fake.requests] == [5, 1]
-    assert links.fill(db, fake, TODAY, 6) == links.Filled(tried=2, found=0, left=0)
+    assert contacts.fill(db, fake, TODAY, 6) == contacts.Filled(tried=2, links=0, emails=0, left=0)
 
 
 # ----------------------------------------------------------------------------- the route and the client
@@ -287,11 +332,16 @@ def test_links_work_without_sign_in_but_need_apollo(client: TestClient) -> None:
     settings = get_settings()
     overrides = client.app.dependency_overrides  # type: ignore[attr-defined]
     overrides[get_settings] = lambda: settings.model_copy(update={"open_access": True, "apollo_api_key": None})
-    r = client.post("/api/people/links")
+    r = client.post("/api/people/contacts")
     assert (r.status_code, r.json()["detail"]) == (409, "Apollo isn't set up (APOLLO_API_KEY).")
     key = SecretStr("made-up-key")
     overrides[get_settings] = lambda: settings.model_copy(update={"open_access": True, "apollo_api_key": key})
-    assert client.post("/api/people/links").json() == {"tried": 0, "found": 0, "left": 0}  # nobody to ask: no call
+    assert client.post("/api/people/contacts").json() == {
+        "tried": 0,
+        "links": 0,
+        "emails": 0,
+        "left": 0,
+    }  # nobody to ask: no call
 
 
 def test_the_client_matches_ten_at_a_time_and_never_asks_for_personal_details() -> None:
@@ -333,7 +383,7 @@ def test_each_radar_pass_finds_links_for_new_people(db: Session, factory: sessio
     assert ana.linkedin == link("Ana", "Example")
     line = db.scalar(select(Activity.text).where(Activity.text.like("Job radar:%")))
     assert line is not None
-    assert line.endswith("LinkedIn links found for 1 person")
+    assert line.endswith("Apollo: 1 LinkedIn links and 0 verified emails")
 
 
 def test_a_links_failure_never_fails_the_radar_pass(
@@ -350,7 +400,7 @@ def test_a_links_failure_never_fails_the_radar_pass(
     caplog.set_level(logging.ERROR, logger="gtm_tracker.radar")
     radar.run_once(factory, get_settings(), radar.Tools(web=FakeWeb(), treg=None, apollo=Broken()), "test")
     # only the kind of error is logged: a database error's text would carry the values, such as LinkedIn links
-    assert "finding LinkedIn links failed: RuntimeError" in caplog.text
+    assert "finding LinkedIn links and emails failed: RuntimeError" in caplog.text
     assert "something unexpected" not in caplog.text
     with factory() as session:
         status = radar.get_setting(session, "radar_status", {})

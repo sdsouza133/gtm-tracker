@@ -98,6 +98,7 @@ def goals(session: Session) -> dict[str, int]:
 def card(p: Prospect, today: date) -> ProspectCard:
     r, mine = p.research, p.mine or {}
     links: dict[str, str] = mine.get("links") or {}
+    emails: dict[str, str] = mine.get("emails") or {}
     follow = fx.next_follow_up(mine)
     return ProspectCard(
         id=p.id,
@@ -113,8 +114,10 @@ def card(p: Prospect, today: date) -> ProspectCard:
         dmarc=r.get("dmarc", ""),
         one_liner=(r.get("research") or {}).get("one_liner", ""),
         why_now=r.get("why_now", ""),
-        people=[  # a link Apollo found later (kept in `mine`, so the research sync can't undo it) fills a gap
-            ProspectPerson.model_validate({**x, "linkedin": x.get("linkedin") or links.get(x.get("key"))})
+        people=[  # what Apollo found later (kept in `mine`, so the research sync can't undo it) fills the gaps
+            ProspectPerson.model_validate(
+                {**x, "linkedin": x.get("linkedin") or links.get(x.get("key")), "email": emails.get(x.get("key"))}
+            )
             for x in r.get("people", [])
         ],
         touched=sorted(k for k, kinds in (mine.get("touches") or {}).items() if kinds),
