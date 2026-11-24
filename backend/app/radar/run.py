@@ -771,8 +771,8 @@ def find_links(factory: sessionmaker[Session], apollo: links.LinkFinder, today: 
         with factory() as session:
             done = links.fill(session, apollo, today, RADAR_LINKS)
             session.commit()
-    except Exception:
-        log.exception("finding LinkedIn links failed")
+    except Exception as e:  # only the kind: a database error's text carries the values, such as LinkedIn links
+        log.error("finding LinkedIn links failed: %s", type(e).__name__)
         return {"links_tried": 0, "links_found": 0}
     return {"links_tried": done.tried, "links_found": done.found}
 

@@ -1,5 +1,6 @@
 """LinkedIn profile links from Apollo, with a fake Apollo. Every name, company and link here is made up."""
 
+import logging
 from typing import Any
 
 import httpx2
@@ -74,6 +75,7 @@ def apollo(signed_in: TestClient) -> FakeApollo:
         # Apollo once called a stranger with another last name a sure match
         ("Ana Example", "Acme", ACME, hit("Ana", "Stranger", domain=None, org="Some Clinic"), None),
         ("Ana Example", "Acme", ACME, hit("Ana", "Stranger"), None),
+        ("Ana Example", "Acme", ACME, hit("Example", "Example"), None),  # our surname isn't a first name
         ("Ana Example", "Acme", ACME, hit("Ana", "Example", domain="other.example", org="Other"), None),
         # Apollo's own doubt doesn't matter when the name and the company agree
         ("Ana Example", "Acme", ACME, hit("Ana", "Example", match_confidence="low"), link("Ana", "Example")),
@@ -249,6 +251,23 @@ def test_the_board_goes_first_then_the_fractional_list(db: Session, signed_in: T
     assert fake.asked == ["Ana Example"]
 
 
+def test_people_are_read_a_page_at_a_time_and_only_the_limit_is_kept(
+    db: Session, signed_in: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(links, "PAGE", 2)
+    c = f.company(db, name="Acme", domain=ACME)
+    for i in range(5):
+        f.person(db, c, name=f"Ana Example{chr(97 + i)}")
+    sync(signed_in, prospect("acme", people=[{"key": f"k{i}", "name": f"Bo Example{chr(97 + i)}"} for i in range(3)]))
+    db.flush()
+    fake = FakeApollo()
+    assert links.fill(db, fake, TODAY, 0) == links.Filled(tried=0, found=0, left=8)  # counted, nobody asked
+    assert fake.requests == []
+    assert links.fill(db, fake, TODAY, 6) == links.Filled(tried=6, found=0, left=2)
+    assert [len(r) for r in fake.requests] == [5, 1]
+    assert links.fill(db, fake, TODAY, 6) == links.Filled(tried=2, found=0, left=0)
+
+
 # ----------------------------------------------------------------------------- the route and the client
 
 
@@ -305,7 +324,9 @@ def test_each_radar_pass_finds_links_for_new_people(db: Session, factory: sessio
     assert line.endswith("LinkedIn links found for 1 person")
 
 
-def test_a_links_failure_never_fails_the_radar_pass(db: Session, factory: sessionmaker[Session]) -> None:
+def test_a_links_failure_never_fails_the_radar_pass(
+    db: Session, factory: sessionmaker[Session], caplog: pytest.LogCaptureFixture
+) -> None:
     c = f.company(db, name="Acme", domain=ACME)
     f.person(db, c, name="Ana Example")
     db.commit()
@@ -314,7 +335,11 @@ def test_a_links_failure_never_fails_the_radar_pass(db: Session, factory: sessio
         def bulk_match(self, details: list[dict[str, Any]]) -> list[dict[str, Any] | None]:  # noqa: ARG002
             raise RuntimeError("something unexpected")
 
+    caplog.set_level(logging.ERROR, logger="gtm_tracker.radar")
     radar.run_once(factory, get_settings(), radar.Tools(web=FakeWeb(), treg=None, apollo=Broken()), "test")
+    # only the kind of error is logged: a database error's text would carry the values, such as LinkedIn links
+    assert "finding LinkedIn links failed: RuntimeError" in caplog.text
+    assert "something unexpected" not in caplog.text
     with factory() as session:
         status = radar.get_setting(session, "radar_status", {})
     assert (status["error"], status["summary"]["links_found"]) == ("", 0)

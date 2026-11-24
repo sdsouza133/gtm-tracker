@@ -9,14 +9,14 @@ marked tried, so a miss is never paid for twice, and each batch of ten is saved 
 import re
 import unicodedata
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import Select, or_, select
+from sqlalchemy.orm import Session, contains_eager
 
 from app.enrich.apollo import BULK, ApolloError
 from app.models import Company, Person, Prospect
@@ -25,6 +25,7 @@ from app.services.history import record
 PROFILE = re.compile(r"linkedin\.com/in/([^/?#\s]+)", re.IGNORECASE)
 ASIDE = re.compile(r"\([^)]*\)")  # "(Will)" in "William (Will) Cielen", "(MISUMI Americas)" after a company's name
 CLOSED = {"lost", "skipped"}  # Fractional prospects not worth a credit
+PAGE = 200  # rows read at a time while looking for people to ask about, so a big table is never loaded whole
 
 
 class LinkFinder(Protocol):
@@ -81,7 +82,7 @@ def profile_link(url: object) -> str | None:
 
 def _same_name(name: str, hit: dict[str, Any]) -> bool:
     core = tokens(plain_name(name))
-    every = set(tokens(name))  # with the asides: "William (Will) Cielen" may be Will in Apollo
+    every = {core[0]} | (set(tokens(name)) - set(core))  # the first name and nicknames: "William (Will) Cielen"
     first, last = core[0], {t for t in core[1:] if len(t) > 1}
     hit_first = tokens(str(hit.get("first_name") or ""))
     hit_last = [t for t in tokens(str(hit.get("last_name") or "")) if len(t) > 1]
@@ -132,6 +133,26 @@ def _people(n: int) -> str:
     return "1 person" if n == 1 else f"{n} people"
 
 
+def _pages[T](session: Session, query: Select[T]) -> Iterator[Sequence[T]]:
+    """The query's rows a page at a time. Its order must be stable, so it ends with the primary key."""
+    offset = 0
+    while rows := session.scalars(query.limit(PAGE).offset(offset)).all():
+        yield rows
+        offset += PAGE
+
+
+def _keep[T](items: Iterable[T], limit: int) -> tuple[list[T], int]:
+    """The first `limit` items, and how many more there were: counted, not kept."""
+    kept: list[T] = []
+    more = 0
+    for item in items:
+        if len(kept) < limit:
+            kept.append(item)
+        else:
+            more += 1
+    return kept, more
+
+
 # ----------------------------------------------------------------------------- the board
 
 
@@ -146,18 +167,28 @@ def board_to_ask(person: Person) -> bool:
     )
 
 
-def fill_board(session: Session, apollo: LinkFinder, today: date, limit: int) -> Filled:
-    """Links for people on the board, oldest first, up to `limit` people."""
+def _board_todo(session: Session) -> Iterator[Person]:
     query = (
         select(Person)
         .join(Person.company)
-        .where(Person.left.is_(False), Company.domain.is_not(None))
-        .options(joinedload(Person.company))
+        .where(
+            Person.left.is_(False),
+            or_(Person.linkedin.is_(None), Person.linkedin == ""),
+            Company.domain.is_not(None),
+            Company.domain != "",
+        )
+        .options(contains_eager(Person.company))
         .order_by(Person.created_at, Person.id)
     )
-    todo = [p for p in session.scalars(query) if board_to_ask(p)]
+    for page in _pages(session, query):
+        yield from (p for p in page if board_to_ask(p))
+
+
+def fill_board(session: Session, apollo: LinkFinder, today: date, limit: int) -> Filled:
+    """Links for people on the board, oldest first, up to `limit` people."""
+    todo, more = _keep(_board_todo(session), max(limit, 0))
     tried = found = 0
-    for chunk in _chunks(todo[: max(limit, 0)], BULK):
+    for chunk in _chunks(todo, BULK):
         try:
             hits = apollo.bulk_match([_ask(p.name, p.company.name, p.company.domain, p.email) for p in chunk])
         except ApolloError:
@@ -176,34 +207,35 @@ def fill_board(session: Session, apollo: LinkFinder, today: date, limit: int) ->
             record(session, "research", f"{name}: Apollo found LinkedIn for {_people(n)}", company_id=company_id)
         tried, found = tried + len(chunk), found + sum(at.values())
         session.commit()
-    return Filled(tried=tried, found=found, left=len(todo) - tried)
+    return Filled(tried=tried, found=found, left=more + len(todo) - tried)
 
 
 # ----------------------------------------------------------------------------- the Fractional list
 
 
-def _fractional_todo(session: Session) -> list[tuple[Prospect, dict[str, Any]]]:
+def _fractional_todo(session: Session) -> Iterator[tuple[Prospect, dict[str, Any]]]:
     """Each research person with no link yet, newest prospects first. Links found live in the prospect's `mine`, which
     the daily research sync never touches, so they outlast it."""
-    query = select(Prospect).where(Prospect.domain.is_not(None)).order_by(Prospect.day.desc(), Prospect.rank)
-    todo: list[tuple[Prospect, dict[str, Any]]] = []
-    for p in session.scalars(query):
-        mine = p.mine or {}
-        if (mine.get("status") or "open") in CLOSED:
-            continue
-        done = {**(mine.get("links") or {}), **(mine.get("links_tried") or {})}
-        for person in (p.research or {}).get("people") or []:
-            key, name = str(person.get("key") or ""), str(person.get("name") or "")
-            if key and not person.get("linkedin") and key not in done and askable(name):
-                todo.append((p, person))
-    return todo
+    query = (
+        select(Prospect).where(Prospect.domain.is_not(None)).order_by(Prospect.day.desc(), Prospect.rank, Prospect.id)
+    )
+    for page in _pages(session, query):
+        for p in page:
+            mine = p.mine or {}
+            if (mine.get("status") or "open") in CLOSED:
+                continue
+            done = {**(mine.get("links") or {}), **(mine.get("links_tried") or {})}
+            for person in (p.research or {}).get("people") or []:
+                key, name = str(person.get("key") or ""), str(person.get("name") or "")
+                if key and not person.get("linkedin") and key not in done and askable(name):
+                    yield p, person
 
 
 def fill_fractional(session: Session, apollo: LinkFinder, today: date, limit: int) -> Filled:
     """Links for people on the Fractional list, up to `limit` people."""
-    todo = _fractional_todo(session)
+    todo, more = _keep(_fractional_todo(session), max(limit, 0))
     tried = found = 0
-    for chunk in _chunks(todo[: max(limit, 0)], BULK):
+    for chunk in _chunks(todo, BULK):
         try:
             hits = apollo.bulk_match([_ask(str(x["name"]), p.name, p.domain) for p, x in chunk])
         except ApolloError:
@@ -230,7 +262,7 @@ def fill_fractional(session: Session, apollo: LinkFinder, today: date, limit: in
             found += new
         tried += len(chunk)
         session.commit()
-    return Filled(tried=tried, found=found, left=len(todo) - tried)
+    return Filled(tried=tried, found=found, left=more + len(todo) - tried)
 
 
 def fill(session: Session, apollo: LinkFinder, today: date, limit: int) -> Filled:
