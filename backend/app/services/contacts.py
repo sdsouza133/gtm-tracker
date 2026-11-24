@@ -126,8 +126,11 @@ def _company_email(hit: dict[str, Any], domain: str | None) -> str | None:
     email = verified_email(hit)
     if email is None:
         return None
-    at = email.rsplit("@", 1)[1]
-    return email if any(d and same_domain(at, d) for d in (domain or "", _org_domain(hit))) else None
+    at = host(email.rsplit("@", 1)[1])
+    # at the company's domain or under it, never above it: tenant.free-mail.example mustn't take a free-mail address
+    return (
+        email if any(d and (at == d or at.endswith(f".{d}")) for d in (host(domain or ""), _org_domain(hit))) else None
+    )
 
 
 def verified_contact(name: str, company: str, domain: str | None, hit: dict[str, Any] | None) -> Contact:
@@ -138,12 +141,12 @@ def verified_contact(name: str, company: str, domain: str | None, hit: dict[str,
     return Contact(link=profile_link(hit.get("linkedin_url")), email=_company_email(hit, domain))
 
 
-def _ask(name: str, company: str, domain: str | None, email: str | None = None) -> dict[str, Any]:
+def _ask(name: str, company: str, domain: str | None) -> dict[str, Any]:
+    """What Apollo is asked: the name and the company. An email we already have is never sent, so a personal address
+    can't reach Apollo."""
     ask: dict[str, Any] = {"name": plain_name(name), "organization_name": plain_name(company)}
     if domain:
         ask["domain"] = domain
-    if email and domain and same_domain(email.rsplit("@", 1)[-1], domain):
-        ask["email"] = email  # a work email we already have pins the person down best; a personal one is never sent
     return ask
 
 
@@ -223,7 +226,7 @@ def fill_board(session: Session, apollo: ContactFinder, today: date, limit: int)
     tried = links = emails = 0
     for chunk in _chunks(todo, BULK):
         try:
-            hits = apollo.bulk_match([_ask(p.name, p.company.name, p.company.domain, p.email) for p in chunk])
+            hits = apollo.bulk_match([_ask(p.name, p.company.name, p.company.domain) for p in chunk])
         except ApolloError:
             break  # Apollo is down or out of credits: the rest are asked about next time
         found: dict[tuple[str, str], Counter[str]] = {}

@@ -130,6 +130,11 @@ def test_an_email_is_kept_only_when_verified_and_at_the_company(found: dict[str,
     assert contacts.verified_contact("Ana Example", "Acme", ACME, found).email == email
 
 
+def test_an_address_above_the_company_domain_is_not_its_own() -> None:
+    found = hit("Ana", "Example", domain="tenant.mail.example", email_status="verified", email="ana@mail.example")
+    assert contacts.verified_contact("Ana Example", "Acme", "tenant.mail.example", found).email is None
+
+
 def test_links_come_back_in_one_shape() -> None:
     assert (
         contacts.profile_link("http://linkedin.com/in/ana-example?trk=feed")
@@ -198,23 +203,15 @@ def test_a_blank_link_counts_as_none(db: Session, blank: str) -> None:
     assert ana.linkedin == link("Ana", "Example")
 
 
-@pytest.mark.parametrize(
-    ("stored", "sent"),
-    [
-        ("will@acme.example", {"email": "will@acme.example"}),  # a work email pins the person down
-        ("will@eu.acme.example", {"email": "will@eu.acme.example"}),
-        ("will.example@personal.example", {}),  # a personal address never goes to Apollo
-    ],
-)
-def test_only_a_work_email_we_have_is_sent_to_apollo(db: Session, stored: str, sent: dict[str, str]) -> None:
+@pytest.mark.parametrize("stored", ["will@acme.example", "will@gmail.example", None])
+def test_apollo_is_asked_by_name_and_company_only(db: Session, stored: str | None) -> None:
     c = f.company(db, name="Acme (Holdings)", domain=ACME)
     will, _ = f.person(db, c, name="William (Will) Example")
-    will.email = stored
-    will.linkedin = None
+    will.email = stored  # never sent: it could be a personal address
     db.flush()
     fake = FakeApollo()
     contacts.fill_board(db, fake, TODAY, 10)
-    assert fake.requests == [[{"name": "William Example", "organization_name": "Acme", "domain": ACME, **sent}]]
+    assert fake.requests == [[{"name": "William Example", "organization_name": "Acme", "domain": ACME}]]
 
 
 def test_ten_people_a_request_and_no_more_than_the_limit(db: Session) -> None:
