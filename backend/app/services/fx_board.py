@@ -25,6 +25,7 @@ from app.schemas import (
     ProspectPerson,
     Synced,
 )
+from app.services import contacts
 from app.services import fractional as fx
 from app.services.history import record
 
@@ -95,10 +96,15 @@ def goals(session: Session) -> dict[str, int]:
     return {"default": fx.DEFAULT_GOAL, **value}
 
 
+def _person(x: dict[str, Any], mine: dict[str, Any], domain: str | None) -> ProspectPerson:
+    """A research person, with what Apollo found later filling the gaps. Finds live in `mine`, so the research sync
+    can't undo them, and count only for the person and company they were found for."""
+    found = contacts.found_for(mine, str(x.get("key") or ""), str(x.get("name") or ""), domain)
+    return ProspectPerson.model_validate({**x, "linkedin": x.get("linkedin") or found.link, "email": found.email})
+
+
 def card(p: Prospect, today: date) -> ProspectCard:
     r, mine = p.research, p.mine or {}
-    links: dict[str, str] = mine.get("links") or {}
-    emails: dict[str, str] = mine.get("emails") or {}
     follow = fx.next_follow_up(mine)
     return ProspectCard(
         id=p.id,
@@ -114,12 +120,7 @@ def card(p: Prospect, today: date) -> ProspectCard:
         dmarc=r.get("dmarc", ""),
         one_liner=(r.get("research") or {}).get("one_liner", ""),
         why_now=r.get("why_now", ""),
-        people=[  # what Apollo found later (kept in `mine`, so the research sync can't undo it) fills the gaps
-            ProspectPerson.model_validate(
-                {**x, "linkedin": x.get("linkedin") or links.get(x.get("key")), "email": emails.get(x.get("key"))}
-            )
-            for x in r.get("people", [])
-        ],
+        people=[_person(x, mine, p.domain) for x in r.get("people", [])],
         touched=sorted(k for k, kinds in (mine.get("touches") or {}).items() if kinds),
         status=mine.get("status") or "open",
         stage=fx.stage(mine).value,

@@ -84,9 +84,12 @@ Research written by automation never overwrites what the user changed: stage, no
   - Each radar pass does the same for up to 50 people, so new people get both too.
   - A match is used only when Apollo's first name, last name and company match ours. When Apollo has no domain for
     the employer, the employer's name must contain the company's name. Apollo's own confidence isn't used.
-  - An email is kept only when Apollo marks it verified and it's at the company's domain.
+  - An email is kept only when Apollo marks it verified and it's at the company's domain or under it. Apollo's own
+    domain for the employer never widens that.
   - Each person is asked once: `details.contact_tried` on the board, `mine.contact_tried` on a Fractional prospect.
   - A Fractional link or email lives in `mine.links` and `mine.emails`, which the research sync never replaces.
+    `mine.contact_for` records whom each was found for (name and company domain). When the research gives a key to
+    someone else, or moves the prospect to a new domain, the old finds stop showing and that person is asked again.
 - `POST /api/restore` loads a backup into an empty tracker (for a server whose database is reachable only through the
   app). A tracker with any data refuses it.
 - Strict Content Security Policy (`default-src 'self'`). The one exception is Google's sign-in button: its script,

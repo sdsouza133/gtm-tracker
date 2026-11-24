@@ -122,15 +122,14 @@ def _same_company(company: str, domain: str | None, hit: dict[str, Any]) -> bool
 
 
 def _company_email(hit: dict[str, Any], domain: str | None) -> str | None:
-    """Apollo's verified email, only at the company's own domain: an old employer's address is no use."""
-    email = verified_email(hit)
-    if email is None:
+    """Apollo's verified email, only at the company's own domain or under it: an old employer's address is no use, and
+    neither is one above it (tenant.free-mail.example mustn't take a free-mail address). Apollo's domain for the
+    employer never widens that."""
+    email, ours = verified_email(hit), host(domain or "")
+    if email is None or not ours:
         return None
     at = host(email.rsplit("@", 1)[1])
-    # at the company's domain or under it, never above it: tenant.free-mail.example mustn't take a free-mail address
-    return (
-        email if any(d and (at == d or at.endswith(f".{d}")) for d in (host(domain or ""), _org_domain(hit))) else None
-    )
+    return email if at == ours or at.endswith(f".{ours}") else None
 
 
 def verified_contact(name: str, company: str, domain: str | None, hit: dict[str, Any] | None) -> Contact:
@@ -139,6 +138,25 @@ def verified_contact(name: str, company: str, domain: str | None, hit: dict[str,
     if not hit or not askable(name) or not _same_name(name, hit) or not _same_company(company, domain, hit):
         return Contact()
     return Contact(link=profile_link(hit.get("linkedin_url")), email=_company_email(hit, domain))
+
+
+def identity(name: str, domain: str | None) -> str:
+    """Whom a Fractional link or email was found for: the person's name, as words, at the company's domain."""
+    return f"{' '.join(tokens(plain_name(name)))}@{host(domain or '')}"
+
+
+def _theirs(mine: dict[str, Any], key: str, name: str, domain: str | None) -> bool:
+    """Whether what's saved under this research key was found for this person at this company. The research can hand
+    a key to someone else or move the prospect to a new domain; then the old finds don't count and they're asked
+    again. Finds saved without a record of whom they were for don't count either."""
+    return (mine.get("contact_for") or {}).get(key) == identity(name, domain)
+
+
+def found_for(mine: dict[str, Any], key: str, name: str, domain: str | None) -> Contact:
+    """The link and email Apollo found for this Fractional person, if they were found for this very person."""
+    if not _theirs(mine, key, name, domain):
+        return Contact()
+    return Contact(link=(mine.get("links") or {}).get(key), email=(mine.get("emails") or {}).get(key))
 
 
 def _ask(name: str, company: str, domain: str | None) -> dict[str, Any]:
@@ -269,12 +287,10 @@ def _fractional_todo(session: Session) -> Iterator[tuple[Prospect, dict[str, Any
             mine = p.mine or {}
             if (mine.get("status") or "open") in CLOSED:
                 continue
-            found_links, found_emails = mine.get("links") or {}, mine.get("emails") or {}
-            asked = mine.get("contact_tried") or {}
             for person in (p.research or {}).get("people") or []:
                 key, name = str(person.get("key") or ""), str(person.get("name") or "")
-                missing = not (person.get("linkedin") or found_links.get(key)) or not found_emails.get(key)
-                if key and missing and key not in asked and askable(name):
+                # asked once per person: someone new under an old key, or at a new domain, is asked again
+                if key and askable(name) and not _theirs(mine, key, name, p.domain):
                     yield p, person
 
 
@@ -297,18 +313,27 @@ def fill_fractional(session: Session, apollo: ContactFinder, today: date, limit:
             session.refresh(p, ["mine"], with_for_update=True)  # a tick saved during the lookup stays
             mine = dict(p.mine or {})
             found_links, found_emails = dict(mine.get("links") or {}), dict(mine.get("emails") or {})
-            asked = dict(mine.get("contact_tried") or {})
+            asked, found_for_whom = dict(mine.get("contact_tried") or {}), dict(mine.get("contact_for") or {})
             got: Counter[str] = Counter()
             for person, contact in pairs:
-                key = str(person["key"])
-                asked[key] = today.isoformat()
+                key, name = str(person["key"]), str(person["name"])
+                if not _theirs(mine, key, name, p.domain):  # finds for whoever had this key before go
+                    found_links.pop(key, None)
+                    found_emails.pop(key, None)
+                asked[key], found_for_whom[key] = today.isoformat(), identity(name, p.domain)
                 if contact.link and not (person.get("linkedin") or found_links.get(key)):
                     found_links[key] = contact.link
                     got["links"] += 1
                 if contact.email and not found_emails.get(key):
                     found_emails[key] = contact.email
                     got["emails"] += 1
-            p.mine = {**mine, "links": found_links, "emails": found_emails, "contact_tried": asked}
+            p.mine = {
+                **mine,
+                "links": found_links,
+                "emails": found_emails,
+                "contact_tried": asked,
+                "contact_for": found_for_whom,
+            }
             if got:
                 record(session, "fractional", _found_line(p.name, got["links"], got["emails"]))
             links, emails = links + got["links"], emails + got["emails"]

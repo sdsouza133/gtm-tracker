@@ -14,9 +14,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.api.enrich import get_contact_finder
 from app.config import get_settings
 from app.enrich.apollo import Apollo, ApolloError
-from app.models import Activity, Person
+from app.models import Activity, Person, Prospect
 from app.radar import run as radar
-from app.services import contacts
+from app.services import contacts, fx_board
 from tests import factories as f
 from tests.conftest import TODAY
 from tests.radar_fakes import FakeWeb
@@ -130,9 +130,11 @@ def test_an_email_is_kept_only_when_verified_and_at_the_company(found: dict[str,
     assert contacts.verified_contact("Ana Example", "Acme", ACME, found).email == email
 
 
-def test_an_address_above_the_company_domain_is_not_its_own() -> None:
-    found = hit("Ana", "Example", domain="tenant.mail.example", email_status="verified", email="ana@mail.example")
-    assert contacts.verified_contact("Ana Example", "Acme", "tenant.mail.example", found).email is None
+@pytest.mark.parametrize("employer", ["tenant.mail.example", "mail.example"])  # Apollo's domain for the employer
+def test_an_address_above_the_company_domain_is_not_its_own(employer: str) -> None:
+    found = hit("Ana", "Example", domain=employer, email_status="verified", email="ana@mail.example")
+    contact = contacts.verified_contact("Ana Example", "Acme", "tenant.mail.example", found)
+    assert (contact.link, contact.email) == (link("Ana", "Example"), None)
 
 
 def test_links_come_back_in_one_shape() -> None:
@@ -298,6 +300,88 @@ def test_fractional_people_get_links_and_emails_that_outlast_the_research_sync(
     assert db.scalar(select(Activity.text).where(Activity.text.like("%Apollo found%"))) == (
         "Acme Example: Apollo found LinkedIn for 1 person and verified emails for 1 person"
     )
+
+
+def test_a_fractional_find_stays_with_the_person_and_company_it_was_found_for(
+    signed_in: TestClient, db: Session, apollo: FakeApollo
+) -> None:
+    people = [
+        {"key": "ana", "name": "Ana Example", "linkedin": "https://www.linkedin.com/in/ana-from-research"},
+        {"key": "bo", "name": "Bo Example"},
+    ]
+    sync(signed_in, prospect("acme", people=people))
+    apollo.people = {
+        "Ana Example": hit("Ana", "Example", email_status="verified"),
+        "Bo Example": hit("Bo", "Example", email_status="verified"),
+    }
+    assert signed_in.post("/api/people/contacts").json() == {"tried": 2, "links": 1, "emails": 2, "left": 0}
+
+    def shown() -> dict[str, tuple[str | None, str | None]]:
+        people = signed_in.get("/api/fx/prospects/acme").json()["people"]
+        return {p["key"]: (p["linkedin"], p["email"]) for p in people}
+
+    assert shown() == {
+        "ana": ("https://www.linkedin.com/in/ana-from-research", "ana@acme.example"),
+        "bo": (link("Bo", "Example"), "bo@acme.example"),
+    }
+
+    # the research gives Ana's key to someone else: Ana's email never shows on them, and they're asked about
+    people[0] = {**people[0], "name": "Ann Other"}
+    sync(signed_in, prospect("acme", people=people))
+    assert shown()["ana"] == ("https://www.linkedin.com/in/ana-from-research", None)
+    assert signed_in.post("/api/people/contacts").json() == {"tried": 1, "links": 0, "emails": 0, "left": 0}
+    assert apollo.asked[-1] == "Ann Other"  # Apollo knows no Ann Other: Ana's finds are gone, not handed on
+    assert shown()["ana"] == ("https://www.linkedin.com/in/ana-from-research", None)
+    assert signed_in.post("/api/people/contacts").json() == {"tried": 0, "links": 0, "emails": 0, "left": 0}
+
+    # the prospect moves to a new domain: the old finds stop showing until Apollo is asked at the new one
+    sync(signed_in, prospect("acme", domain="acme-new.example", people=people))
+    assert shown() == {"ana": ("https://www.linkedin.com/in/ana-from-research", None), "bo": (None, None)}
+    apollo.people["Bo Example"] = hit("Bo", "Example", domain="acme-new.example", email_status="verified")
+    assert signed_in.post("/api/people/contacts").json() == {"tried": 2, "links": 1, "emails": 1, "left": 0}
+    assert shown()["bo"] == (link("Bo", "Example"), "bo@acme-new.example")
+
+
+def test_finds_saved_without_whom_they_were_for_are_hidden_and_asked_again(
+    signed_in: TestClient, db: Session, apollo: FakeApollo
+) -> None:
+    sync(signed_in, prospect("acme", people=[{"key": "ana", "name": "Ana Example"}]))
+    row = db.get(Prospect, "acme")
+    assert row is not None
+    row.mine = {
+        **row.mine,
+        "links": {"ana": "https://www.linkedin.com/in/someone"},
+        "emails": {"ana": "someone@acme.example"},
+        "contact_tried": {"ana": TODAY.isoformat()},
+    }
+    db.flush()
+    assert signed_in.get("/api/fx/prospects/acme").json()["people"][0]["email"] is None
+    assert signed_in.post("/api/people/contacts").json() == {"tried": 1, "links": 0, "emails": 0, "left": 0}
+    assert apollo.asked == ["Ana Example"]
+
+
+def test_research_that_changes_during_the_lookup_keeps_the_find_off_the_new_person(
+    signed_in: TestClient, db: Session
+) -> None:
+    sync(signed_in, prospect("acme", people=[{"key": "ana", "name": "Ana Example"}]))
+
+    class Slow(FakeApollo):
+        def bulk_match(self, details: list[dict[str, Any]]) -> list[dict[str, Any] | None]:  # noqa: ARG002
+            db.execute(
+                update(Prospect)
+                .where(Prospect.id == "acme")
+                .values(research={"people": [{"key": "ana", "name": "Ann Other"}]}),
+                execution_options={"synchronize_session": False},
+            )
+            return [hit("Ana", "Example", email_status="verified")]
+
+    assert contacts.fill_fractional(db, Slow(), TODAY, 10).emails == 1  # found for Ana, as asked
+    row = db.get(Prospect, "acme")
+    assert row is not None
+    db.refresh(row)
+    ann = fx_board.card(row, TODAY).people[0]
+    assert (ann.name, ann.linkedin, ann.email) == ("Ann Other", None, None)
+    assert contacts.fill_fractional(db, FakeApollo(), TODAY, 10).tried == 1  # Ann is asked about in turn
 
 
 def test_the_board_goes_first_then_the_fractional_list(db: Session, signed_in: TestClient) -> None:
