@@ -220,6 +220,12 @@ class EnrichOut(BaseModel):
     companies: int
 
 
+class LinksOut(BaseModel):
+    tried: int = Field(description="People Apollo was asked about this time")
+    found: int = Field(description="Of them, how many now have a LinkedIn profile link")
+    left: int = Field(description="People still to ask about: call again while this is above zero")
+
+
 # ----------------------------------------------------------------------------- companies
 
 

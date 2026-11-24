@@ -1,4 +1,5 @@
-"""Finding work emails (and what a company does) with Apollo, a company at a time or for everything on Today."""
+"""Apollo: work emails (and what a company does), a company at a time or for everything on Today, and LinkedIn
+profile links for people who have none."""
 
 from typing import Annotated
 
@@ -11,13 +12,15 @@ from app.auth import AppSettings, DbSession, SignedIn
 from app.clock import Today
 from app.enrich.apollo import Apollo, Finder
 from app.models import Company
-from app.schemas import EnrichOut
+from app.schemas import EnrichOut, LinksOut
+from app.services import links
 from app.services import today as today_service
 from app.services.enrich import enrich_company, needs_lookup
 
 router = APIRouter(prefix="/api", tags=["enrich"], dependencies=[SignedIn])
 
 TODAY_COMPANIES = 10  # at most this many companies a call, so one call stays quick
+LINKS_PER_CALL = 100  # people a call asks Apollo about, at most: ten requests, so one call stays well under a minute
 
 
 def get_finder(settings: AppSettings) -> Finder:
@@ -31,6 +34,18 @@ def get_finder(settings: AppSettings) -> Finder:
 
 
 ApolloFinder = Annotated[Finder, Depends(get_finder)]
+
+
+def get_link_finder(settings: AppSettings) -> links.LinkFinder:
+    """Apollo for LinkedIn links. Only links are kept, never an email, so unlike the email finder this works while the
+    tracker runs without sign-in."""
+    key = settings.apollo_api_key.get_secret_value() if settings.apollo_api_key else ""
+    if not key:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Apollo isn't set up (APOLLO_API_KEY).")
+    return Apollo(key)
+
+
+LinkApollo = Annotated[links.LinkFinder, Depends(get_link_finder)]
 
 
 @router.post("/companies/{company_id}/enrich")
@@ -58,3 +73,13 @@ def enrich_today(session: DbSession, settings: AppSettings, today: Today, apollo
         tried, found = tried + done.tried, found + done.found
         session.commit()
     return EnrichOut(tried=tried, found=found, companies=min(len(todo), TODAY_COMPANIES))
+
+
+@router.post("/people/links")
+def find_links(session: DbSession, today: Today, apollo: LinkApollo) -> LinksOut:
+    """LinkedIn profile links for people on the board and the Fractional list who have none, up to 100 people a call.
+    Each person is asked about once and only the link is kept. Call again while `left` is above zero; once everyone
+    has been asked about, a call costs nothing."""
+    done = links.fill(session, apollo, today, LINKS_PER_CALL)
+    session.commit()
+    return LinksOut(tried=done.tried, found=done.found, left=done.left)

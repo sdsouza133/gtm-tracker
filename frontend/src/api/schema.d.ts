@@ -648,6 +648,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Find Links
+         * @description LinkedIn profile links for people on the board and the Fractional list who have none, up to 100 people a call.
+         *     Each person is asked about once and only the link is kept. Call again while `left` is above zero; once everyone
+         *     has been asked about, a call costs nothing.
+         */
+        post: operations["find_links_api_people_links_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/companies/{company_id}/magnets": {
         parameters: {
             query?: never;
@@ -1537,6 +1559,24 @@ export interface components {
             next_xp: number | null;
             /** Next Name */
             next_name: string | null;
+        };
+        /** LinksOut */
+        LinksOut: {
+            /**
+             * Tried
+             * @description People Apollo was asked about this time
+             */
+            tried: number;
+            /**
+             * Found
+             * @description Of them, how many now have a LinkedIn profile link
+             */
+            found: number;
+            /**
+             * Left
+             * @description People still to ask about: call again while this is above zero
+             */
+            left: number;
         };
         /** LoginBody */
         LoginBody: {
@@ -3959,6 +3999,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EnrichOut"];
+                };
+            };
+        };
+    };
+    find_links_api_people_links_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinksOut"];
                 };
             };
         };

@@ -78,6 +78,13 @@ Research written by automation never overwrites what the user changed: stage, no
   answer 409, so emails never sit in a tracker anyone can open. Today asks `POST /api/enrich/today` when it opens and a
   company panel asks `POST /api/companies/{id}/enrich`; each person is looked up once (`details.apollo_tried`), so a
   repeat call costs no credits. Apollo is asked for work emails only, never personal ones.
+- LinkedIn profile links also come from Apollo, with or without sign-in: only the link is kept, never an email.
+  - `POST /api/people/links` covers people on the board and the Fractional list who have none, up to 100 a call.
+  - Each radar pass does the same for up to 50 people, so new people get a link too.
+  - A link is kept only when Apollo's first name, last name and company match ours. When Apollo has no domain for
+    the employer, the employer's name must contain the company's name. Apollo's own confidence isn't used.
+  - Each person is asked once: `details.link_tried` on the board, and `mine.links_tried` on a Fractional prospect.
+  - A Fractional link lives in `mine.links`, which the research sync never replaces.
 - `POST /api/restore` loads a backup into an empty tracker (for a server whose database is reachable only through the
   app). A tracker with any data refuses it.
 - Strict Content Security Policy (`default-src 'self'`). The one exception is Google's sign-in button: its script,

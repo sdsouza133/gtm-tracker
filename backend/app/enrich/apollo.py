@@ -10,6 +10,7 @@ import httpx2
 
 API = "https://api.apollo.io/api/v1"
 TIMEOUT_S = 30
+BULK = 10  # Apollo matches at most this many people a request
 LOCKED = "email_not_unlocked"  # Apollo's placeholder when the plan can't show an email
 WEAK = {"low", "none"}  # match_confidence values too unsure to put an email on someone
 
@@ -63,6 +64,18 @@ class Apollo:
         if not isinstance(person, dict) or str(person.get("match_confidence") or "").lower() in WEAK:
             return None
         return person
+
+    def bulk_match(self, details: list[dict[str, Any]]) -> list[dict[str, Any] | None]:
+        """The person Apollo matches for each one asked about, in the same order (None where it found no one). Up to
+        ten a request. Personal emails and phone numbers are never asked for."""
+        if len(details) > BULK:
+            raise ValueError(f"Apollo matches at most {BULK} people a request.")
+        if not details:
+            return []
+        body = {"details": details, "reveal_personal_emails": False, "reveal_phone_number": False}
+        matches = self._call("POST", "/people/bulk_match", json=body).get("matches")
+        found = [m if isinstance(m, dict) else None for m in matches] if isinstance(matches, list) else []
+        return (found + [None] * len(details))[: len(details)]
 
     def organization(self, domain: str) -> dict[str, Any] | None:
         org = self._call("GET", "/organizations/enrich", params={"domain": domain}).get("organization")

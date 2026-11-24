@@ -1831,6 +1831,28 @@
     }
    }
   },
+  "/api/people/links": {
+   "post": {
+    "tags": [
+     "enrich"
+    ],
+    "summary": "Find Links",
+    "description": "LinkedIn profile links for people on the board and the Fractional list who have none, up to 100 people a call.\nEach person is asked about once and only the link is kept. Call again while `left` is above zero; once everyone\nhas been asked about, a call costs nothing.",
+    "operationId": "find_links_api_people_links_post",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/LinksOut"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "/api/companies/{company_id}/magnets": {
    "get": {
     "tags": [
@@ -4597,6 +4619,32 @@
      "next_name"
     ],
     "title": "LevelOut"
+   },
+   "LinksOut": {
+    "properties": {
+     "tried": {
+      "type": "integer",
+      "title": "Tried",
+      "description": "People Apollo was asked about this time"
+     },
+     "found": {
+      "type": "integer",
+      "title": "Found",
+      "description": "Of them, how many now have a LinkedIn profile link"
+     },
+     "left": {
+      "type": "integer",
+      "title": "Left",
+      "description": "People still to ask about: call again while this is above zero"
+     }
+    },
+    "type": "object",
+    "required": [
+     "tried",
+     "found",
+     "left"
+    ],
+    "title": "LinksOut"
    },
    "LoginBody": {
     "properties": {
